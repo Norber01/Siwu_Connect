@@ -144,7 +144,7 @@ test('Phase 1 journeys', async ({ page }, info) => {
   await page.reload();
   await page.getByRole('link', { name: 'Admin area' }).click();
 
-  // Journey 5: publish an announcement for all four towns.
+  // Journey 5: publish an announcement for all five towns.
   await page.getByRole('link', { name: 'Announcements' }).click();
   await page.getByLabel('Title').fill('Akpafu Youth Meeting');
   await page.getByLabel('Message').fill('All youth are invited to the meeting on 1 December at Odomi.');

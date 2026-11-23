@@ -335,7 +335,7 @@ function AnnouncementsTab() {
   const toast = useToast();
   const qc = useQueryClient();
   const allowedTowns = [
-    ...(canAnnounce(role, 'all') ? [{ id: 'all', name: 'All Akpafu (all four towns)' }] : []),
+    ...(canAnnounce(role, 'all') ? [{ id: 'all', name: 'All Akpafu (all five towns)' }] : []),
     ...TOWNS.filter((t) => canAnnounce(role, t.id)),
   ];
   const [townId, setTownId] = useState(allowedTowns[0]?.id ?? '');

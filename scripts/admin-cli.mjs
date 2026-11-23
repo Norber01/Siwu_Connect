@@ -18,6 +18,7 @@ const TOWNS = [
   { id: 'mempeasem', name: 'Akpafu Mempeasem', shortName: 'Mempeasem', order: 2 },
   { id: 'todzi', name: 'Akpafu Todzi', shortName: 'Todzi', order: 3 },
   { id: 'adokor', name: 'Akpafu Adokor', shortName: 'Adokor', order: 4 },
+  { id: 'sokpo', name: 'Akpafu Sokpo', shortName: 'Sokpo', order: 5 },
 ];
 
 const project = process.env.FIREBASE_PROJECT_ID ?? 'demo-siwu';

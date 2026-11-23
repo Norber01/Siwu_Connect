@@ -64,6 +64,9 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 "Real test environment" (a deployed staging project) is still outstanding — needs accounts.
 
 ## Decisions made
+- 2026-11-23 — **Fifth town added: Akpafu Sokpo** (founder correction; it was missing from the brief). ID `sokpo`.
+  Tagline updated to "Five Towns. One Community." Added to rules, shared code, chips, sign-up, welcome banner,
+  admin CLI and tests. Existing databases need `npm run admin -- seed-towns` re-run to add the town record.
 - 2026-11-23 — **Founder brought Sports, Events and Marketplace into the first release** (brief §6 had them in
   Phases 2–3). Still excluded: livestreaming, audio rooms, private messaging, stories, payments/escrow,
   betting of any kind (votes are free and for fun). Bottom navigation is now Home · Sports · + · Events · Profile,
@@ -98,9 +101,13 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 - Community rules and privacy notice text — drafts are in the app, clearly marked "Draft"; need approval and a privacy contact.
 - Logo artwork: the app uses an SVG redraw of the mockup logo; supply the original logo file to use it exactly. Real town photos for the town cards. Domain, social handles.
 - People for Moderator roles.
-- Pilot group from all four towns.
+- Pilot group from all five towns.
 
 ## Known limitations / issues
+- Fixed 2026-11-23: right after signing up or switching accounts on the same phone, the app could briefly treat
+  the user as having no profile and send them back to the setup form. The app now tracks whose profile is loaded,
+  retries the profile listener if the database refuses it during a sign-in switch, and only trusts a brand-new
+  profile once the server has confirmed it. Verified with repeated end-to-end runs.
 - Notifications are in-app only (no phone push yet). Push via Firebase Cloud Messaging is the natural next step.
 - Team crests are coloured initials; real club badges can be uploaded later.
 - Photos: one per event/listing, max 1280 px / 400 KB, 200 photos per member (R2 free tier is 10 GB).
@@ -114,4 +121,4 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 1. Founder creates Firebase + Cloudflare accounts → deploy **staging** following `docs/DEPLOYMENT.md`.
 2. Test on real Android/iPhone devices on mobile data; verify password-reset and Google sign-in emails/popups.
 3. Founder approves rules/privacy text and minimum age; add privacy contact.
-4. Pilot with a small group from all four towns; collect feedback before Phase 2.
+4. Pilot with a small group from all five towns; collect feedback before Phase 2.

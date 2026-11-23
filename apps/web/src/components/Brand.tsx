@@ -34,7 +34,7 @@ export function StackedLogo() {
       <LogoMark size={112} />
       <p className="mt-2 text-5xl font-black leading-[0.9] tracking-tight text-brand-900">Siwu</p>
       <p className="text-5xl font-black leading-[0.95] tracking-tight text-brand-600">Connect</p>
-      <p className="mt-2 text-base font-semibold italic text-gray-800">Four Towns. One Community.</p>
+      <p className="mt-2 text-base font-semibold italic text-gray-800">Five Towns. One Community.</p>
     </div>
   );
 }

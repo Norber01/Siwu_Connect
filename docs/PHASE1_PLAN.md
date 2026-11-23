@@ -3,8 +3,8 @@
 Status: **Approved and implemented (2026-11-23).** See PROJECT_LOG.md for decisions and progress.
 Source: `docs/Siwu_Connect_Product_and_Development_Brief.docx` (sections 4, 8–15).
 
-Phase 1 = a text-first community platform for the four Akpafu towns: registration,
-profiles, four town feeds, an Akpafu-wide feed, text posts, reactions, comments,
+Phase 1 = a text-first community platform for the five Akpafu towns (Akpafu Sokpo added 2026-11-23): registration,
+profiles, five town feeds, an Akpafu-wide feed, text posts, reactions, comments,
 announcements, reporting/blocking and a small admin/moderation area.
 Explicitly **out**: video, livestreaming, private chat, stories, marketplace,
 sports centre, payments, monetisation.
@@ -77,7 +77,7 @@ PROJECT_LOG.md     running log (tasks, decisions, bugs, next steps)
 | `/register`, `/login`, `/forgot-password` | Auth flows | public |
 | `/onboarding` | Display name, username, hometown, optional residence/country, optional photo, accept community rules | signed-in |
 | `/` | **Home**: pinned announcements + feed with toggle *My town / All Akpafu* | signed-in |
-| `/towns` | The four towns | signed-in |
+| `/towns` | The five towns | signed-in |
 | `/towns/:townId` | One town's feed + its announcements | signed-in |
 | `/new` | **Create post** (choose town, text, visibility) | signed-in |
 | `/p/:postId` | Post detail, comments, react, report | signed-in |
@@ -95,7 +95,7 @@ Every screen implements loading, empty, error and permission-denied states.
 
 ## 3. Data model (Cloud Firestore)
 
-Stable town IDs: `odomi`, `mempeasem`, `todzi`, `adokor`. Display names live in `towns/*`.
+Stable town IDs: `odomi`, `mempeasem`, `todzi`, `adokor`, `sokpo`. Display names live in `towns/*`.
 
 ```
 towns/{townId}
@@ -156,7 +156,7 @@ reaction/comment, and the rules verify the counter moved by exactly ±1 (`exists
   Username claim must atomically create `usernames/{name}` pointing to them.
 - Suspended users cannot create posts, comments, reactions or reports.
 - Posts: author-only create/edit/delete; `authorId` must equal the caller; `townId` must
-  be one of the four valid IDs; text length validated; `status`, `pinned` and counters are
+  be one of the five valid IDs; text length validated; `status`, `pinned` and counters are
   not client-writable except the ±1 counter rule.
 - Reactions: doc id must equal caller's uid ⇒ one reaction per user per post.
 - Reports: anyone signed in may create; only moderators/admins scoped to that town may read.
@@ -188,7 +188,7 @@ reactions, suspended users, editing others' posts, etc.).
 | Assign/remove roles, town configuration, platform settings | — | — | ✓ |
 | View audit log | — | — | ✓ |
 
-Launch staffing: 2 Super Admins + Moderators. Moderators may be scoped to all four towns.
+Launch staffing: 2 Super Admins + Moderators. Moderators may be scoped to all five towns.
 
 ## 5. Implementation plan (module by module)
 

@@ -48,7 +48,7 @@ for (const [username, name, town, residence] of people) {
     set(`usernames/${username}`, { uid }),
   ]);
 }
-const towns = [['odomi', 'Akpafu Odomi', 'Odomi', 1], ['mempeasem', 'Akpafu Mempeasem', 'Mempeasem', 2], ['todzi', 'Akpafu Todzi', 'Todzi', 3], ['adokor', 'Akpafu Adokor', 'Adokor', 4]];
+const towns = [['odomi', 'Akpafu Odomi', 'Odomi', 1], ['mempeasem', 'Akpafu Mempeasem', 'Mempeasem', 2], ['todzi', 'Akpafu Todzi', 'Todzi', 3], ['adokor', 'Akpafu Adokor', 'Adokor', 4], ['sokpo', 'Akpafu Sokpo', 'Sokpo', 5]];
 await commit(towns.map(([id, name, shortName, order]) => set(`towns/${id}`, { id, name, shortName, order, active: true })));
 await commit([set('admin_roles/' + uids.demo_admin, { role: 'super_admin', townIds: [], username: 'demo_admin' })]);
 
@@ -66,11 +66,11 @@ for (const [id, who, town, text, min, likes, comments] of posts) {
     writes.push(set(`posts/${id}/comments/c${c}`, { authorId: uids[author], townId: town, text: ['Thank you for this!', 'We will be there 💪', 'Great news for the community.'][c % 3], status: 'published', createdAt: ago(min - 10 - c) }));
   }
 }
-writes.push(set('announcements/a1', { townId: 'all', title: 'Akpafu Cultural Festival', body: 'The festival takes place on Saturday 24 May at Akpafu Odomi. All four towns are invited — come and celebrate together!', pinned: true, status: 'published', authorId: uids.demo_admin, createdAt: ago(60), updatedAt: ago(60), expiresAt: null }));
+writes.push(set('announcements/a1', { townId: 'all', title: 'Akpafu Cultural Festival', body: 'The festival takes place on Saturday 24 May at Akpafu Odomi. All five towns are invited — come and celebrate together!', pinned: true, status: 'published', authorId: uids.demo_admin, createdAt: ago(60), updatedAt: ago(60), expiresAt: null }));
 writes.push(set(`posts/p1/reactions/${uids.demo_admin}`, { type: 'like', userId: uids.demo_admin, postId: 'p1', createdAt: ago(30) }));
 const days = (n, h = 10) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, 0, 0, 0); return d; };
 const ev = [
-  ['e1', 'demo_admin', 'odomi', 'Akpafu Cultural Festival', 'festival', 'Odomi Durbar Grounds', 4, 9, 'Drumming, dancing and food from all four towns. Bring the family!', 48, 30],
+  ['e1', 'demo_admin', 'odomi', 'Akpafu Cultural Festival', 'festival', 'Odomi Durbar Grounds', 4, 9, 'Drumming, dancing and food from all five towns. Bring the family!', 48, 30],
   ['e2', 'kofi_mensah', 'todzi', 'Youth football tournament draw', 'sports', 'Todzi Community Centre', 2, 16, 'Team captains please attend.', 12, 5],
   ['e3', 'efua_adokor', 'adokor', 'Harvest Thanksgiving Service', 'church', 'E.P. Church, Adokor', 7, 9, 'Everyone is welcome.', 20, 14],
 ];

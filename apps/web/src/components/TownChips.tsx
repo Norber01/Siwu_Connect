@@ -1,12 +1,14 @@
 import { TOWNS } from '@siwu/shared';
 
-/** Horizontal town selector: "All" plus the four towns. `value` is 'all' or a town id. */
+/** Horizontal town selector: "All" plus the five towns. `value` is 'all' or a town id. */
 export function TownChips({
   value,
   onChange,
   includeAll = true,
   label = 'Choose feed',
+  wrap = false,
 }: {
+  wrap?: boolean;
   value: string;
   onChange: (v: string) => void;
   includeAll?: boolean;
@@ -17,7 +19,11 @@ export function TownChips({
     ...TOWNS.map((t) => ({ id: t.id as string, short: t.shortName as string, full: t.name as string })),
   ];
   return (
-    <div role="tablist" aria-label={label} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+    <div
+      role="tablist"
+      aria-label={label}
+      className={wrap ? 'flex flex-wrap justify-center gap-2' : '-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]'}
+    >
       {options.map((o) => {
         const active = value === o.id;
         return (

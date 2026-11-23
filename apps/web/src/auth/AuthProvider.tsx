@@ -22,7 +22,12 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
-  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
+  // The profile is stored together with the uid it belongs to, so a value left over from a
+  // previous account (or from being signed out) is never shown for a newly signed-in user.
+  const [profileState, setProfileState] = useState<{ uid: string | null; profile: Profile | null | undefined }>({
+    uid: null,
+    profile: undefined,
+  });
   const [role, setRole] = useState<AdminRole | null>(null);
   const [blocked, setBlockedSet] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
@@ -31,30 +36,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) {
-      setProfile(user === null ? null : undefined);
+      setProfileState({ uid: null, profile: user === null ? null : undefined });
       setRole(null);
       setBlockedSet(new Set());
       return;
     }
-    setProfile(undefined);
-    const unsubProfile = onSnapshot(
-      doc(db, 'users', user.uid),
-      (snap) => setProfile(snap.exists() ? toProfile(snap) : null),
-      () => setProfile(null),
-    );
-    const unsubRole = onSnapshot(
-      doc(db, 'admin_roles', user.uid),
-      (snap) => setRole(snap.exists() ? { role: snap.data().role, townIds: snap.data().townIds ?? [] } : null),
-      () => setRole(null),
-    );
-    fetchBlocked(user.uid)
+    const uid = user.uid;
+    const setProfile = (p: Profile | null) => setProfileState({ uid, profile: p });
+    let stopped = false;
+    let confirmed = false;
+    let unsubProfile = () => {};
+    let unsubRole = () => {};
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    // Right after switching accounts the database can briefly still see the previous
+    // sign-in and refuse a listener. Retry instead of treating that as "no profile".
+    const retry = (fn: () => void, attempt: number) => {
+      if (!stopped) timers.push(setTimeout(fn, Math.min(500 * 2 ** attempt, 10_000)));
+    };
+
+    const listenProfile = (attempt = 0) => {
+      unsubProfile = onSnapshot(
+        doc(db, 'users', uid),
+        { includeMetadataChanges: true },
+        (snap) => {
+          // A "does not exist" answer from the local cache can be stale (e.g. right after sign-up
+          // or switching accounts). Only trust "no profile" when the server confirms it.
+          if (!snap.exists() && snap.metadata.fromCache) return;
+          // A brand-new profile is only trusted once the server has accepted it.
+          if (snap.exists() && snap.metadata.hasPendingWrites && !confirmed) return;
+          confirmed = snap.exists();
+          setProfile(snap.exists() ? toProfile(snap) : null);
+        },
+        () => retry(() => listenProfile(attempt + 1), attempt),
+      );
+    };
+    const listenRole = (attempt = 0) => {
+      unsubRole = onSnapshot(
+        doc(db, 'admin_roles', uid),
+        (snap) => setRole(snap.exists() ? { role: snap.data().role, townIds: snap.data().townIds ?? [] } : null),
+        () => retry(() => listenRole(attempt + 1), attempt),
+      );
+    };
+    listenProfile();
+    listenRole();
+    fetchBlocked(uid)
       .then(setBlockedSet)
       .catch(() => setBlockedSet(new Set()));
     return () => {
+      stopped = true;
+      timers.forEach(clearTimeout);
       unsubProfile();
       unsubRole();
     };
-  }, [user]);
+    // Re-subscribe only when the signed-in account changes, not on token refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, user === null]);
 
   const setBlocked = useCallback((uid: string, isBlocked: boolean) => {
     setBlockedSet((prev) => {
@@ -69,6 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fbSignOut(auth);
     queryClient.clear();
   }, [queryClient]);
+
+  const profile: Profile | null | undefined =
+    user === undefined ? undefined : user === null ? null : profileState.uid === user.uid ? profileState.profile : undefined;
 
   const value = useMemo(
     () => ({ user, profile, role, blocked, setBlocked, signOut }),

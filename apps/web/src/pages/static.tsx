@@ -29,7 +29,7 @@ export function RulesPage() {
   return (
     <Doc title="Community rules">
       <p>
-        Siwu Connect is a shared space for the people of Akpafu Odomi, Akpafu Mempeasem, Akpafu Todzi and Akpafu Adokor —
+        Siwu Connect is a shared space for the people of Akpafu Odomi, Akpafu Mempeasem, Akpafu Todzi, Akpafu Adokor and Akpafu Sokpo —
         at home, across Ghana and abroad. Treat others as you would at a gathering in your own town.
       </p>
       <h2>Not allowed</h2>

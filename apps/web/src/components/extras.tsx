@@ -82,6 +82,7 @@ const crestColors: Record<string, string> = {
   mempeasem: 'from-blue-600 to-blue-800',
   todzi: 'from-gold-400 to-gold-600',
   adokor: 'from-red-600 to-red-800',
+  sokpo: 'from-orange-500 to-orange-700',
 };
 
 export function TeamCrest({ name, townId, size = 56 }: { name: string; townId: string | null; size?: number }) {
@@ -158,7 +159,7 @@ export function InviteButton({ className = '', small }: { className?: string; sm
   const toast = useToast();
   const invite = async () => {
     const url = window.location.origin;
-    const text = 'Join me on Siwu Connect — news, events, sports and the marketplace for Akpafu Odomi, Mempeasem, Todzi and Adokor.';
+    const text = 'Join me on Siwu Connect — news, events, sports and the marketplace for Akpafu Odomi, Mempeasem, Todzi, Adokor and Sokpo.';
     try {
       if (navigator.share) {
         await navigator.share({ title: 'Siwu Connect', text, url });

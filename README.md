@@ -1,7 +1,7 @@
 # Siwu Connect
 
-A community platform for the four Siwu-speaking Akpafu towns — Akpafu Odomi, Akpafu Mempeasem,
-Akpafu Todzi and Akpafu Adokor — for residents, Ghanaians elsewhere and the diaspora.
+A community platform for the five Siwu-speaking Akpafu towns — Akpafu Odomi, Akpafu Mempeasem,
+Akpafu Todzi, Akpafu Adokor and Akpafu Sokpo — for residents, Ghanaians elsewhere and the diaspora.
 
 **Stage:** Phase 1 (text-first MVP) built and tested locally. Not yet deployed — see
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -13,7 +13,7 @@ Akpafu Todzi and Akpafu Adokor — for residents, Ghanaians elsewhere and the di
 ## What's in Phase 1
 
 Registration & login (email/password, Google, password reset) · onboarding with hometown and optional
-residence · four town feeds + an Akpafu-wide feed · text posts (create/edit/delete, town-only option) ·
+residence · five town feeds + an Akpafu-wide feed · text posts (create/edit/delete, town-only option) ·
 likes (one per person) and comments · profiles with optional photo · search (posts and people, town filter) ·
 announcements and pinned posts · report and block · admin area (reports queue, suspensions, announcements,
 roles, audit log) · installable mobile-first web app (PWA).
@@ -45,7 +45,7 @@ npm install
 # Terminal 1 — Firebase Auth + Firestore emulators (no real data, project "demo-siwu")
 npm run emulators
 
-# Terminal 2 — add the four town records, then start the API Worker
+# Terminal 2 — add the five town records, then start the API Worker
 npm run seed:emulator
 cp apps/api/.dev.vars.example apps/api/.dev.vars
 npm run dev:api            # http://localhost:8787

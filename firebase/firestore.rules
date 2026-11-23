@@ -19,7 +19,7 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function me() { return request.auth.uid; }
     function d() { return request.resource.data; }
-    function isTown(t) { return t in ['odomi', 'mempeasem', 'todzi', 'adokor']; }
+    function isTown(t) { return t in ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']; }
     function exactKeys(keys) {
       return request.resource.data.keys().hasAll(keys) && request.resource.data.keys().hasOnly(keys);
     }

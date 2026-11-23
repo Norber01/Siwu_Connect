@@ -73,7 +73,7 @@ beforeEach(async () => {
   await seedUser('boss');
   await seedRole('boss', 'super_admin');
   await seedUser('mod');
-  await seedRole('mod', 'moderator', ['odomi', 'mempeasem', 'todzi', 'adokor']);
+  await seedRole('mod', 'moderator', ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']);
   await seedUser('townadmin');
   await seedRole('townadmin', 'town_admin', ['odomi']);
   await seedUser('alice', 'odomi');

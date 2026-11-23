@@ -29,7 +29,7 @@ export function HomePage() {
           key="all"
           feed={{ kind: 'akpafu' }}
           emptyTitle="No posts yet"
-          emptyText="Public posts from all four towns will appear here."
+          emptyText="Public posts from all five towns will appear here."
         />
       ) : (
         <Feed
@@ -78,7 +78,7 @@ export function TownsPage() {
         className="mt-3 flex min-h-[56px] items-center justify-between rounded-2xl bg-gold-400 px-4 font-bold text-brand-900 shadow-sm hover:bg-gold-600"
       >
         <span className="flex items-center gap-2">
-          <Icon name="globe" /> All Akpafu — four towns, one community
+          <Icon name="globe" /> All Akpafu — five towns, one community
         </span>
         <Icon name="back" className="h-5 w-5 rotate-180" />
       </Link>
@@ -89,7 +89,7 @@ export function TownsPage() {
 export function TownPage() {
   const { townId = '' } = useParams();
   if (!isTownId(townId)) {
-    return <EmptyState title="Town not found" icon="towns">Choose one of the four towns from the Towns page.</EmptyState>;
+    return <EmptyState title="Town not found" icon="towns">Choose one of the five towns from the Towns page.</EmptyState>;
   }
   return (
     <div className="space-y-4">

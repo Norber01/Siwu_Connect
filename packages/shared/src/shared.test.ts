@@ -11,9 +11,10 @@ import {
 } from './index';
 
 describe('towns', () => {
-  it('accepts only the four stable town ids', () => {
+  it('accepts only the five stable town ids', () => {
     expect(isTownId('odomi')).toBe(true);
     expect(isTownId('adokor')).toBe(true);
+    expect(isTownId('sokpo')).toBe(true);
     expect(isTownId('Akpafu Odomi')).toBe(false);
     expect(isTownId('')).toBe(false);
   });
@@ -56,7 +57,7 @@ describe('permissions', () => {
   const mod = { role: 'moderator' as const, townIds: ['odomi', 'todzi'] };
 
   it('super admin can do everything everywhere', () => {
-    for (const t of ['odomi', 'mempeasem', 'todzi', 'adokor']) {
+    for (const t of ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']) {
       expect(canModerate(superAdmin, t)).toBe(true);
       expect(canAnnounce(superAdmin, t)).toBe(true);
       expect(canSuspend(superAdmin, t)).toBe(true);

@@ -202,6 +202,8 @@ describe('posts', () => {
 
   it('active users can post in a valid town', async () => {
     await assertSucceeds(ops.createPost(db('alice'), 'alice', { townId: 'adokor', text: 'Hello Adokor', visibility: 'akpafu' }));
+    await assertSucceeds(ops.createProfile(db('sokpo1'), 'sokpo1', profile('sokpo_one', 'sokpo')));
+    await assertSucceeds(ops.createPost(db('sokpo1'), 'sokpo1', { townId: 'sokpo', text: 'Hello from Sokpo', visibility: 'akpafu' }));
     await assertFails(ops.createPost(db('alice'), 'alice', { townId: 'accra' as 'adokor', text: 'x', visibility: 'akpafu' }));
   });
 

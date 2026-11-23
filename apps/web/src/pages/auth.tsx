@@ -47,9 +47,9 @@ export function WelcomePage() {
         <Landscape />
       </div>
       <div className="bg-brand-800 px-4 py-3 text-center text-sm font-bold leading-6 text-white">
-        Akpafu Odomi • Akpafu Mempeasem
+        Akpafu Odomi • Akpafu Mempeasem • Akpafu Todzi
         <br />
-        Akpafu Todzi • Akpafu Adokor
+        Akpafu Adokor • Akpafu Sokpo
       </div>
       <div className="space-y-3 px-6 pt-6">
         <Link
@@ -69,7 +69,7 @@ export function WelcomePage() {
       </div>
       <div className="px-6 pt-6 text-center">
         <p className="mb-3 font-bold text-gray-900">Select your town</p>
-        <TownChips value={town} onChange={chooseTown} includeAll={false} label="Select your town" />
+        <TownChips value={town} onChange={chooseTown} includeAll={false} label="Select your town" wrap />
         <p className="mt-2 min-h-[1.25rem] text-xs text-gray-600">
           {town ? 'We will pre-select this as your hometown when you join.' : 'You can also choose it when you sign up.'}
         </p>

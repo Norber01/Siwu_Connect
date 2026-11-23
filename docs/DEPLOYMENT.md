@@ -84,4 +84,4 @@ FIREBASE_PROJECT_ID=<project-id> GOOGLE_APPLICATION_CREDENTIALS=/secure/path/key
 - Confirm the minimum age (currently 13, provisional).
 - Review Ghana Data Protection Act obligations (registration with the Data Protection Commission may apply).
 - Set a Google Cloud **budget alert** even on the free plan.
-- Pilot with a small group from all four towns.
+- Pilot with a small group from all five towns.
