@@ -31,7 +31,7 @@ Seed the towns:
 FIREBASE_PROJECT_ID=<project-id> GOOGLE_APPLICATION_CREDENTIALS=/secure/path/key.json npm run admin -- seed-towns
 ```
 
-## 2. Cloudflare R2 (profile photos)
+## 2. Cloudflare R2 (profile, event and marketplace photos)
 
 ```bash
 cd apps/api

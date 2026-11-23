@@ -17,6 +17,16 @@ import {
 import { LIMITS, normalize, searchTokens } from '@siwu/shared';
 import { db } from './firebase';
 import {
+  toEvent,
+  toFeedback,
+  toListing,
+  toMatch,
+  toNotification,
+  type AppNotification,
+  type CommunityEvent,
+  type Feedback,
+  type Listing,
+  type Match,
   toAnnouncement,
   toAudit,
   toComment,
@@ -193,6 +203,8 @@ export async function fetchTargetDoc(path: string) {
   const snap = await getDoc(doc(db, path));
   if (!snap.exists()) return null;
   if (path.startsWith('users/')) return { kind: 'user' as const, profile: toProfile(snap) };
+  if (path.startsWith('events/')) return { kind: 'event' as const, event: toEvent(snap) };
+  if (path.startsWith('listings/')) return { kind: 'listing' as const, listing: toListing(snap) };
   if (path.includes('/comments/')) return { kind: 'comment' as const, comment: toComment(snap) };
   return { kind: 'post' as const, post: toPost(snap) };
 }
@@ -217,4 +229,81 @@ export async function fetchRoles(): Promise<RoleAssignment[]> {
 export async function fetchAuditLog() {
   const snap = await getDocs(query(collection(db, 'audit_logs'), orderBy('at', 'desc'), limit(100)));
   return snap.docs.map(toAudit);
+}
+
+// ---------------- events ----------------
+
+export async function fetchUpcomingEvents(townId: string | null): Promise<CommunityEvent[]> {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const constraints: QueryConstraint[] = [where('status', '==', 'published'), where('startsAt', '>=', startOfToday)];
+  if (townId) constraints.unshift(where('townId', '==', townId));
+  const snap = await getDocs(query(collection(db, 'events'), ...constraints, orderBy('startsAt', 'asc'), limit(50)));
+  return snap.docs.map(toEvent);
+}
+
+export async function fetchEvent(id: string): Promise<CommunityEvent | null> {
+  const snap = await getDoc(doc(db, 'events', id));
+  return snap.exists() ? toEvent(snap) : null;
+}
+
+export async function fetchMyRsvp(uid: string, eventId: string): Promise<'going' | 'interested' | null> {
+  const snap = await getDoc(doc(db, 'events', eventId, 'rsvps', uid));
+  return snap.exists() ? (snap.data().status as 'going' | 'interested') : null;
+}
+
+// ---------------- marketplace ----------------
+
+export async function fetchListings(townId: string | null): Promise<Listing[]> {
+  const constraints: QueryConstraint[] = [where('status', '==', 'available')];
+  if (townId) constraints.unshift(where('townId', '==', townId));
+  const snap = await getDocs(query(collection(db, 'listings'), ...constraints, orderBy('createdAt', 'desc'), limit(60)));
+  return snap.docs.map(toListing);
+}
+
+export async function fetchListing(id: string): Promise<Listing | null> {
+  const snap = await getDoc(doc(db, 'listings', id));
+  return snap.exists() ? toListing(snap) : null;
+}
+
+export async function fetchSellerListings(uid: string): Promise<Listing[]> {
+  const snap = await getDocs(
+    query(collection(db, 'listings'), where('sellerId', '==', uid), where('status', 'in', ['available', 'sold']), limit(50)),
+  );
+  return snap.docs.map(toListing).sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+}
+
+// ---------------- sports ----------------
+
+export function matchesQuery(tab: 'live' | 'fixtures' | 'results') {
+  const c = collection(db, 'matches');
+  if (tab === 'live') return query(c, where('status', 'in', ['live', 'halftime']), orderBy('kickoffAt', 'asc'), limit(20));
+  if (tab === 'fixtures') return query(c, where('status', 'in', ['scheduled', 'postponed']), orderBy('kickoffAt', 'asc'), limit(50));
+  return query(c, where('status', '==', 'finished'), orderBy('kickoffAt', 'desc'), limit(200));
+}
+
+export async function fetchMatches(tab: 'live' | 'fixtures' | 'results'): Promise<Match[]> {
+  return (await getDocs(matchesQuery(tab))).docs.map(toMatch);
+}
+
+export async function fetchMyVote(uid: string, matchId: string): Promise<'home' | 'draw' | 'away' | null> {
+  const snap = await getDoc(doc(db, 'matches', matchId, 'votes', uid));
+  return snap.exists() ? (snap.data().pick as 'home' | 'draw' | 'away') : null;
+}
+
+// ---------------- notifications, members, feedback ----------------
+
+export async function fetchNotifications(uid: string): Promise<AppNotification[]> {
+  const snap = await getDocs(query(collection(db, 'users', uid, 'notifications'), orderBy('createdAt', 'desc'), limit(40)));
+  return snap.docs.map(toNotification);
+}
+
+export async function fetchNewMembers(): Promise<Profile[]> {
+  const snap = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(12)));
+  return snap.docs.map(toProfile).filter((p) => p.status === 'active');
+}
+
+export async function fetchFeedback(): Promise<Feedback[]> {
+  const snap = await getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(100)));
+  return snap.docs.map(toFeedback);
 }

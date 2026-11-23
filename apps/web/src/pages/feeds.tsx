@@ -4,6 +4,7 @@ import { useMe } from '../auth/AuthProvider';
 import { Announcements, CreatePostPrompt, Feed } from '../components/Feed';
 import { TownChips } from '../components/TownChips';
 import { Landscape } from '../components/Brand';
+import { NewMembers } from '../components/extras';
 import { Icon } from '../components/Icon';
 import { EmptyState, PageHeader } from '../components/ui';
 
@@ -22,6 +23,7 @@ export function HomePage() {
       />
       <CreatePostPrompt townId={selected === 'all' ? undefined : selected} />
       <Announcements townId={selected === 'all' ? null : selected} />
+      <NewMembers />
       {selected === 'all' ? (
         <Feed
           key="all"

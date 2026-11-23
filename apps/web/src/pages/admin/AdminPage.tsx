@@ -21,6 +21,7 @@ import { useProfileById } from '../../lib/hooks';
 import {
   fetchAllAnnouncements,
   fetchAuditLog,
+  fetchFeedback,
   fetchOpenReports,
   fetchProfileByUsername,
   fetchRoles,
@@ -48,6 +49,12 @@ import {
 export function AdminPage() {
   const { role } = useMe();
   if (!role) return <EmptyState title="Admin access required" icon="shield">You don't have an admin role.</EmptyState>;
+  if (role.role === 'reporter')
+    return (
+      <EmptyState title="You are a Sports reporter" icon="trophy">
+        Add matches and post live scores in the <Link to="/sports" className="font-semibold text-brand-700 underline">Sports Centre</Link>.
+      </EmptyState>
+    );
   const superAdmin = isSuperAdmin(role);
   const showAnnouncements = role.role !== 'moderator';
   const showUsers = role.role !== 'moderator';
@@ -56,7 +63,7 @@ export function AdminPage() {
     { to: 'reports', label: 'Reports' },
     ...(showUsers ? [{ to: 'users', label: 'Users' }] : []),
     ...(showAnnouncements ? [{ to: 'announcements', label: 'Announcements' }] : []),
-    ...(superAdmin ? [{ to: 'roles', label: 'Roles' }, { to: 'audit', label: 'Audit log' }] : []),
+    ...(superAdmin ? [{ to: 'feedback', label: 'Feedback' }, { to: 'roles', label: 'Roles' }, { to: 'audit', label: 'Audit log' }] : []),
   ];
 
   return (
@@ -88,6 +95,7 @@ export function AdminPage() {
         <Route path="reports" element={<ReportsTab />} />
         {showUsers && <Route path="users" element={<UsersTab />} />}
         {showAnnouncements && <Route path="announcements" element={<AnnouncementsTab />} />}
+        {superAdmin && <Route path="feedback" element={<FeedbackTab />} />}
         {superAdmin && <Route path="roles" element={<RolesTab />} />}
         {superAdmin && <Route path="audit" element={<AuditTab />} />}
         <Route path="*" element={<Navigate to="reports" replace />} />
@@ -123,8 +131,18 @@ function ReportItem({ report, onDone }: { report: Report; onDone: () => void }) 
   const { data: reporter } = useProfileById(report.reporterId);
   const reason = REPORT_REASONS.find((r) => r.id === report.reason)?.label ?? report.reason;
 
-  const authorId =
-    target.data?.kind === 'post' ? target.data.post.authorId : target.data?.kind === 'comment' ? target.data.comment.authorId : target.data?.kind === 'user' ? target.data.profile.uid : null;
+  const t = target.data;
+  const authorId = !t
+    ? null
+    : t.kind === 'post'
+      ? t.post.authorId
+      : t.kind === 'comment'
+        ? t.comment.authorId
+        : t.kind === 'user'
+          ? t.profile.uid
+          : t.kind === 'event'
+            ? t.event.authorId
+            : t.listing.sellerId;
   const { data: author } = useProfileById(authorId);
   const canSuspendAuthor = author ? canSuspend(role, author.hometownId) : false;
 
@@ -162,6 +180,21 @@ function ReportItem({ report, onDone }: { report: Report; onDone: () => void }) 
                 {target.data.profile.displayName} (@{target.data.profile.username})
               </Link>
             </p>
+          ) : target.data.kind === 'event' || target.data.kind === 'listing' ? (
+            <>
+              <p className="mb-1 text-xs text-gray-600">
+                By {author ? <Link className="underline" to={`/u/${author.username}`}>@{author.username}</Link> : 'unknown'} · status:{' '}
+                {target.data.kind === 'event' ? target.data.event.status : target.data.listing.status}
+              </p>
+              <p className="font-semibold">{target.data.kind === 'event' ? target.data.event.title : target.data.listing.title}</p>
+              <RichText text={(target.data.kind === 'event' ? target.data.event.description : target.data.listing.description) || ''} />
+              <Link
+                to={target.data.kind === 'event' ? `/events/${target.data.event.id}` : `/market/${target.data.listing.id}`}
+                className="mt-1 inline-block text-xs text-brand-800 underline"
+              >
+                Open {target.data.kind}
+              </Link>
+            </>
           ) : (
             <>
               <p className="mb-1 text-xs text-gray-600">
@@ -429,7 +462,7 @@ function RolesTab() {
 
   const grant = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = grantRoleSchema.safeParse({ username: username.replace(/^@/, ''), role, townIds: role === 'super_admin' ? [] : towns });
+    const parsed = grantRoleSchema.safeParse({ username: username.replace(/^@/, ''), role, townIds: role === 'super_admin' || role === 'reporter' ? [] : towns });
     if (!parsed.success) {
       setError(parsed.error.issues[0]!.message);
       return;
@@ -471,7 +504,7 @@ function RolesTab() {
               </option>
             ))}
           </SelectField>
-          {role !== 'super_admin' && (
+          {role !== 'super_admin' && role !== 'reporter' && (
             <fieldset>
               <legend className="mb-2 text-sm font-medium text-gray-800">Towns</legend>
               <div className="grid grid-cols-2 gap-2">
@@ -491,7 +524,7 @@ function RolesTab() {
           )}
           <p className="text-xs text-gray-600">
             Super Admins can do everything in all towns. Town Admins moderate, announce, pin and suspend in their towns.
-            Moderators review reports and remove content in their towns.
+            Moderators review reports and remove content in their towns. Sports reporters add matches and live scores.
           </p>
           {error && <Alert>{error}</Alert>}
           <Button type="submit" busy={busy}>
@@ -514,7 +547,7 @@ function RolesTab() {
                   {r.uid === user.uid && <span className="text-gray-600"> (you)</span>}
                   <span className="block text-xs text-gray-600">
                     {ROLE_LABELS[r.role]}
-                    {r.role !== 'super_admin' && ` · ${r.townIds.map(townName).join(', ')}`}
+                    {r.role !== 'super_admin' && r.role !== 'reporter' && ` · ${r.townIds.map(townName).join(', ')}`}
                   </span>
                 </div>
                 <Button small variant="ghost" className="text-red-700" onClick={() => revoke(r.uid)}>
@@ -560,5 +593,30 @@ function AuditTab() {
         ))}
       </ul>
     </Card>
+  );
+}
+
+// ---------------- Tester feedback (Super Admin) ----------------
+
+function FeedbackTab() {
+  const q = useQuery({ queryKey: ['admin', 'feedback'], queryFn: fetchFeedback });
+  if (q.isPending) return <PageSpinner />;
+  if (q.isError) return <ErrorState message={friendlyError(q.error)} onRetry={() => q.refetch()} />;
+  if (!q.data.length) return <EmptyState title="No feedback yet" icon="message">Testers can send feedback from the “Beta” badge or Settings.</EmptyState>;
+  return (
+    <ul className="space-y-2">
+      {q.data.map((f) => (
+        <li key={f.id}>
+          <Card className="p-4">
+            <p className="text-xs text-gray-600">
+              <AuditActor uid={f.userId} /> · {fullDate(f.createdAt)} · on <span className="font-mono">{f.page || '/'}</span>
+            </p>
+            <div className="mt-1">
+              <RichText text={f.text} />
+            </div>
+          </Card>
+        </li>
+      ))}
+    </ul>
   );
 }

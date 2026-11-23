@@ -9,6 +9,10 @@ import { OnboardingPage } from './pages/Onboarding';
 import { MyProfileRedirect, ProfilePage, SearchPage, SettingsPage } from './pages/people';
 import { EditPostPage, NewPostPage, NotFoundPage, PostDetailPage } from './pages/posts';
 import { PrivacyPage, RulesPage } from './pages/static';
+import { EventDetailPage, EventFormPage, EventsPage } from './pages/events';
+import { ListingDetailPage, ListingFormPage, MarketPage } from './pages/market';
+import { MatchDetailPage, MatchFormPage, SportsPage } from './pages/sports';
+import { NotificationsPage } from './pages/notifications';
 
 const AdminPage = lazy(() => import('./pages/admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 
@@ -77,6 +81,18 @@ export function App() {
           <Route path="/me" element={<MyProfileRedirect />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/events/new" element={<EventFormPage />} />
+          <Route path="/events/:eventId" element={<EventDetailPage />} />
+          <Route path="/events/:eventId/edit" element={<EventFormPage />} />
+          <Route path="/market" element={<MarketPage />} />
+          <Route path="/market/new" element={<ListingFormPage />} />
+          <Route path="/market/:listingId" element={<ListingDetailPage />} />
+          <Route path="/market/:listingId/edit" element={<ListingFormPage />} />
+          <Route path="/sports" element={<SportsPage />} />
+          <Route path="/sports/new" element={<MatchFormPage />} />
+          <Route path="/sports/:matchId" element={<MatchDetailPage />} />
           <Route path="/admin/*" element={<Suspense fallback={<PageSpinner />}><AdminPage /></Suspense>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

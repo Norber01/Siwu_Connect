@@ -6,7 +6,9 @@ import { useAuth, useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { blockUser, unblockUser, updateProfile } from '../lib/ops';
-import { fetchMyLikes, fetchProfile, fetchProfileByUsername, searchPeople, searchPosts } from '../lib/queries';
+import { fetchMyLikes, fetchProfile, fetchProfileByUsername, fetchSellerListings, searchPeople, searchPosts } from '../lib/queries';
+import { FeedbackDialog, InviteButton } from '../components/extras';
+import { formatPrice } from '../lib/util';
 import type { Profile } from '../lib/types';
 import { friendlyError } from '../lib/util';
 import { Feed } from '../components/Feed';
@@ -141,6 +143,8 @@ export function ProfilePage() {
           )}
         </div>
       </Card>
+
+      {!isBlocked && <SellerListings uid={p.uid} />}
 
       <h2 className="text-base font-bold text-gray-900">{isMe ? 'Your posts' : 'Posts'}</h2>
       {isBlocked ? (
@@ -316,6 +320,7 @@ export function SettingsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const blockedList = useQuery({
     queryKey: ['blockedProfiles', [...blocked].join(',')],
     queryFn: () => Promise.all([...blocked].map((uid) => fetchProfile(uid))),
@@ -401,6 +406,20 @@ export function SettingsPage() {
       </Card>
 
       <Card className="space-y-3 p-5">
+        <h2 className="text-base font-bold text-gray-900">Help Siwu Connect grow</h2>
+        <p className="text-sm text-gray-600">You're one of the first members. Invite family and friends, and tell us what to improve.</p>
+        <div className="flex flex-wrap gap-2">
+          <InviteButton />
+          <Button variant="secondary" icon="message" onClick={() => setFeedbackOpen(true)}>
+            Send feedback
+          </Button>
+          <Button variant="ghost" icon="towns" onClick={() => navigate('/towns')}>
+            Browse towns
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="space-y-3 p-5">
         <h2 className="text-base font-bold text-gray-900">Account</h2>
         <p className="text-sm text-gray-600">Signed in as {user.email ?? 'Google account'}</p>
         <div className="flex flex-wrap gap-2">
@@ -418,6 +437,7 @@ export function SettingsPage() {
       </Card>
 
       <DeleteAccountDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} username={profile.username} />
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }
@@ -468,5 +488,34 @@ function DeleteAccountDialog({ open, onClose, username }: { open: boolean; onClo
         </div>
       </div>
     </Modal>
+  );
+}
+
+function SellerListings({ uid }: { uid: string }) {
+  const q = useQuery({ queryKey: ['sellerListings', uid], queryFn: () => fetchSellerListings(uid) });
+  if (!q.data?.length) return null;
+  return (
+    <section>
+      <h2 className="mb-2 text-base font-bold text-gray-900">For sale</h2>
+      <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+        {q.data.map((l) => (
+          <li key={l.id} className="w-36 shrink-0">
+            <Link to={`/market/${l.id}`} className="block overflow-hidden rounded-2xl border border-sand-200 bg-white shadow-sm">
+              {l.imageUrl ? (
+                <img src={l.imageUrl} alt="" loading="lazy" className="aspect-square w-full object-cover" />
+              ) : (
+                <div className="flex aspect-square items-center justify-center bg-brand-50 text-brand-300">
+                  <Icon name="cart" className="h-10 w-10" />
+                </div>
+              )}
+              <div className="p-2">
+                <p className="truncate text-sm font-bold">{l.title}</p>
+                <p className="text-xs font-black text-brand-700">{l.status === 'sold' ? 'SOLD' : formatPrice(l.price, l.priceUnit)}</p>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

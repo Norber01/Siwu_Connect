@@ -104,3 +104,73 @@ export async function prepareAvatar(file: File, size: number, maxBytes: number):
   }
   throw new Error('This image is too large. Try a different photo.');
 }
+
+/** Resizes a photo (keeping its shape) so its longest side is at most `maxPx`, under `maxBytes`. */
+export async function preparePhoto(file: File, maxPx: number, maxBytes: number): Promise<Blob> {
+  if (!file.type.startsWith('image/')) throw new Error('Please choose an image file.');
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error('This image could not be read. Try a JPEG or PNG.');
+  });
+  for (const scale of [1, 0.8, 0.6]) {
+    const ratio = Math.min(1, (maxPx * scale) / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * ratio);
+    canvas.height = Math.round(bitmap.height * ratio);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const [type, quality] of [
+      ['image/webp', 0.8],
+      ['image/jpeg', 0.75],
+    ] as const) {
+      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, type, quality));
+      if (blob && blob.type === type && blob.size <= maxBytes) {
+        bitmap.close();
+        return blob;
+      }
+    }
+  }
+  bitmap.close();
+  throw new Error('This photo is too large. Try a different one.');
+}
+
+export function formatPrice(price: number | null, unit: string): string {
+  if (price === null) return 'Contact for price';
+  if (price === 0) return 'Free';
+  return `GH₵ ${price.toLocaleString('en-GB')}${unit ? ` / ${unit.replace(/^per\s+/i, '')}` : ''}`;
+}
+
+/** "SAT", "24", "MAY" for calendar-style date tiles. */
+export function dateTile(d: Date): { day: string; date: string; month: string } {
+  return {
+    day: d.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase(),
+    date: String(d.getDate()),
+    month: d.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase(),
+  };
+}
+
+export function eventTime(start: Date, end: Date | null): string {
+  const day = start.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const t = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (!end) return `${day} · ${t(start)}`;
+  const sameDay = end.toDateString() === start.toDateString();
+  return sameDay ? `${day} · ${t(start)}–${t(end)}` : `${day} ${t(start)} – ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${t(end)}`;
+}
+
+/** Value for <input type="datetime-local"> in the user's local time. */
+export function toLocalInput(d: Date | null): string {
+  if (!d) return '';
+  const off = d.getTimezoneOffset() * 60_000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 16);
+}
+
+export function fromLocalInput(v: string): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** wa.me needs digits only, with country code. Local Ghana numbers (0XXXXXXXXX) get 233. */
+export function whatsappLink(phone: string, text: string): string {
+  let digits = phone.replace(/[^0-9]/g, '');
+  if (phone.startsWith('0')) digits = `233${digits.slice(1)}`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}

@@ -68,5 +68,36 @@ for (const [id, who, town, text, min, likes, comments] of posts) {
 }
 writes.push(set('announcements/a1', { townId: 'all', title: 'Akpafu Cultural Festival', body: 'The festival takes place on Saturday 24 May at Akpafu Odomi. All four towns are invited — come and celebrate together!', pinned: true, status: 'published', authorId: uids.demo_admin, createdAt: ago(60), updatedAt: ago(60), expiresAt: null }));
 writes.push(set(`posts/p1/reactions/${uids.demo_admin}`, { type: 'like', userId: uids.demo_admin, postId: 'p1', createdAt: ago(30) }));
+const days = (n, h = 10) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, 0, 0, 0); return d; };
+const ev = [
+  ['e1', 'demo_admin', 'odomi', 'Akpafu Cultural Festival', 'festival', 'Odomi Durbar Grounds', 4, 9, 'Drumming, dancing and food from all four towns. Bring the family!', 48, 30],
+  ['e2', 'kofi_mensah', 'todzi', 'Youth football tournament draw', 'sports', 'Todzi Community Centre', 2, 16, 'Team captains please attend.', 12, 5],
+  ['e3', 'efua_adokor', 'adokor', 'Harvest Thanksgiving Service', 'church', 'E.P. Church, Adokor', 7, 9, 'Everyone is welcome.', 20, 14],
+];
+for (const [id, who, town, title, cat, loc, inDays, hour, desc, going, interested] of ev)
+  writes.push(set(`events/${id}`, { authorId: uids[who], townId: town, title, description: desc, category: cat, location: loc, startsAt: days(inDays, hour), endsAt: null, imageUrl: null, status: 'published', goingCount: going, interestedCount: interested, createdAt: ago(200), updatedAt: ago(200) }));
+const ls = [
+  ['l1', 'efua_adokor', 'adokor', 'Fresh tomatoes', 'food', 20, 'basket', 'Picked this morning from my farm.', '+233241234567'],
+  ['l2', 'ama_serwaa', 'mempeasem', 'Kente cloth (6 yards)', 'clothing', 850, '', 'Handwoven, never used.', '+233201112222'],
+  ['l3', 'kofi_mensah', 'todzi', 'Phone repairs', 'services', null, '', 'Screens, batteries and charging ports. Quick service.', '+233551234567'],
+  ['l4', 'akpafu_today', 'odomi', 'Palm oil', 'food', 45, 'gallon', 'Pure, locally made.', null],
+];
+for (const [id, who, town, title, cat, price, unit, desc, phone] of ls)
+  writes.push(set(`listings/${id}`, { sellerId: uids[who], townId: town, title, description: desc, category: cat, price, priceUnit: unit, imageUrl: null, contactPhone: phone, contactWhatsApp: !!phone, status: 'available', searchTokens: tokens(title + ' ' + desc), createdAt: ago(90 + ls.length), updatedAt: ago(90) }));
+const team = (t) => ({ name: t[0].toUpperCase() + t.slice(1), townId: t });
+const mt = [
+  ['m1', 'odomi', 'mempeasem', 'live', 1, 0, 32, ago(32), 62, 10, 28],
+  ['m2', 'todzi', 'adokor', 'scheduled', 0, 0, null, days(3, 15), 4, 2, 6],
+  ['m3', 'odomi', 'todzi', 'finished', 2, 2, 90, days(-7, 15), 0, 0, 0],
+  ['m4', 'mempeasem', 'adokor', 'finished', 3, 1, 90, days(-6, 15), 0, 0, 0],
+  ['m5', 'adokor', 'odomi', 'finished', 0, 1, 90, days(-3, 15), 0, 0, 0],
+];
+for (const [id, h, a, status, hs, as, min, ko, vh, vd, va] of mt)
+  writes.push(set(`matches/${id}`, { competition: 'Akpafu Community Cup', home: team(h), away: team(a), venue: `${team(h).name} Park`, kickoffAt: ko, status, homeScore: hs, awayScore: as, minute: min, votesHome: vh, votesDraw: vd, votesAway: va, createdBy: uids.demo_admin, createdAt: ago(5000), updatedAt: ago(1) }));
+writes.push(set('matches/m1/updates/u1', { type: 'chance', team: 'home', minute: 15, text: 'Great chance for Odomi!', createdBy: uids.demo_admin, createdAt: ago(17) }));
+writes.push(set('matches/m1/updates/u2', { type: 'yellow', team: 'away', minute: 28, text: '', createdBy: uids.demo_admin, createdAt: ago(4) }));
+writes.push(set('matches/m1/updates/u3', { type: 'goal', team: 'home', minute: 32, text: 'Odomi takes the lead!', createdBy: uids.demo_admin, createdAt: ago(1) }));
+writes.push(set(`users/${uids.demo_admin}/notifications/like_p1_x`, { type: 'like', actorId: uids.ama_serwaa, postId: 'p1', commentId: null, read: false, createdAt: ago(20) }));
+writes.push(set(`users/${uids.demo_admin}/notifications/comment_c9`, { type: 'comment', actorId: uids.kofi_mensah, postId: 'p1', commentId: 'c0', read: false, createdAt: ago(8) }));
 await commit(writes);
 console.log('Sample data written to the emulator. Sign in as demo_admin@example.com / demo-password-1');

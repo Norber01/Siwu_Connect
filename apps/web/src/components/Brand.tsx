@@ -19,8 +19,8 @@ export function Wordmark({ size = 'md' }: { size?: 'md' | 'lg' }) {
   const lg = size === 'lg';
   return (
     <span className="inline-flex items-center gap-2">
-      <LogoMark size={lg ? 56 : 34} />
-      <span className={`font-black leading-none tracking-tight ${lg ? 'text-3xl' : 'text-xl'}`}>
+      <LogoMark size={lg ? 56 : 30} />
+      <span className={`whitespace-nowrap font-black leading-none tracking-tight ${lg ? 'text-3xl' : 'text-lg'}`}>
         <span className="text-brand-900">Siwu</span> <span className="text-brand-600">Connect</span>
       </span>
     </span>

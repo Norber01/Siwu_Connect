@@ -1,0 +1,118 @@
+/**
+ * Events, Marketplace, Sports Centre, notifications and tester feedback,
+ * exercised in a real browser. Uses the fictional sample accounts from
+ * scripts/demo-data.mjs (emulator only).
+ */
+import { execFileSync } from 'node:child_process';
+import { type Page, expect, test } from '@playwright/test';
+
+test.describe.configure({ mode: 'serial' });
+
+async function signIn(page: Page, username: string) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(`${username}@example.com`);
+  await page.getByLabel('Password').fill('demo-password-1');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+}
+
+async function signOut(page: Page) {
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL(/\/welcome/);
+}
+
+test('events, marketplace, sports, notifications and feedback', async ({ page }) => {
+  for (const url of ['http://127.0.0.1:8080', 'http://127.0.0.1:9099']) {
+    await expect.poll(() => fetch(url).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
+  }
+  execFileSync('node', ['scripts/demo-data.mjs'], { stdio: 'ignore' });
+  const tag = Date.now().toString(36);
+
+  // --- Kofi adds an event through the "+" menu.
+  await signIn(page, 'kofi_mensah');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: /^Event/ }).click();
+  await page.getByLabel('Event name').fill(`Todzi town meeting ${tag}`);
+  await page.getByLabel('Type').selectOption('meeting');
+  await page.getByLabel('Town').selectOption('todzi');
+  const start = new Date(Date.now() + 2 * 86400_000);
+  start.setHours(17, 0, 0, 0);
+  const local = new Date(start.getTime() - start.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  await page.getByLabel('Starts').fill(local);
+  await page.getByLabel('Place (optional)').fill('Chief’s palace');
+  await page.getByRole('button', { name: 'Publish event' }).click();
+  await expect(page.getByText('Your event is published.')).toBeVisible();
+  const eventUrl = page.url();
+  await signOut(page);
+
+  // --- Ama RSVPs, lists an item with a photo, votes on a match and likes Kofi's post.
+  await signIn(page, 'ama_serwaa');
+  await page.goto(eventUrl);
+  await page.getByRole('button', { name: /Going · 0/ }).click();
+  await expect(page.getByRole('button', { name: /Going · 1/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: /Interested · 0/ }).click(); // switch
+  await expect(page.getByRole('button', { name: /Going · 0/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Interested · 1/ })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Events', exact: true }).click();
+  await page.getByRole('link', { name: 'Marketplace' }).click();
+  await page.getByRole('link', { name: 'Sell' }).click();
+  await page.getByLabel('Choose photo').setInputFiles('apps/web/public/icon-512.png');
+  await expect(page.getByRole('button', { name: 'Change' })).toBeVisible();
+  await page.getByLabel('What are you selling?').fill(`Kente cloth ${tag}`);
+  await page.getByLabel('Category').selectOption('clothing');
+  await page.getByLabel('Price in GH₵').fill('850');
+  await page.getByLabel('Phone number for buyers (optional)').fill('0241234567');
+  await expect(page.getByText('Enter a phone number')).toHaveCount(0);
+  await page.getByRole('button', { name: 'List item' }).click();
+  await expect(page.getByText('Your item is listed in the marketplace.')).toBeVisible();
+  await expect(page.getByText('GH₵ 850')).toBeVisible();
+
+  await page.goto('/sports');
+  await page.getByText('Odomi').first().click();
+  await page.getByRole('button', { name: 'Mempeasem' }).click();
+  await expect(page.getByText('Your vote is in!')).toBeVisible();
+  await expect(page.getByText(/votes · just for fun/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Draw' })).toHaveCount(0); // cannot vote twice
+
+  await page.goto('/?town=todzi');
+  await page.getByRole('button', { name: 'Like', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Unlike' }).first()).toBeVisible();
+
+  // Tester feedback from the Beta badge.
+  await page.getByRole('button', { name: 'Beta' }).click();
+  await page.getByLabel('Your feedback').fill(`The sports centre is brilliant ${tag}`);
+  await page.getByRole('button', { name: 'Send feedback' }).click();
+  await expect(page.getByText('Thank you! Your feedback')).toBeVisible();
+  await signOut(page);
+
+  // --- Efua (buyer) sees Ama's listing with a WhatsApp link in Ghana format.
+  await signIn(page, 'efua_adokor');
+  await page.goto('/market?town=mempeasem');
+  await page.getByText(`Kente cloth ${tag}`).click();
+  await expect(page.getByRole('link', { name: 'WhatsApp' })).toHaveAttribute('href', /^https:\/\/wa\.me\/233241234567\?text=/);
+  await expect(page.getByRole('link', { name: 'Call seller' })).toHaveAttribute('href', 'tel:0241234567');
+  await signOut(page);
+
+  // --- Kofi gets a notification for Ama's like.
+  await signIn(page, 'kofi_mensah');
+  await expect(page.getByRole('link', { name: /Notifications, 1 unread/ })).toBeVisible();
+  await page.getByRole('link', { name: /Notifications/ }).click();
+  await expect(page.getByText('liked your post')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Notifications' })).toBeVisible(); // count cleared
+  await signOut(page);
+
+  // --- Super Admin posts a live goal and reads the feedback.
+  await signIn(page, 'demo_admin');
+  await page.goto('/sports');
+  await page.getByText('Odomi').first().click();
+  await page.getByLabel('What happened?').selectOption('goal');
+  await page.getByLabel('Team').selectOption('away');
+  await page.getByLabel('Comment (optional)').fill('Mempeasem equalise!');
+  await page.getByRole('button', { name: 'Post update' }).click();
+  await expect(page.getByText('Mempeasem equalise!')).toBeVisible();
+  await expect(page.getByText('1 - 1').first()).toBeVisible();
+  await page.goto('/admin/feedback');
+  await expect(page.getByText(`The sports centre is brilliant ${tag}`)).toBeVisible();
+});

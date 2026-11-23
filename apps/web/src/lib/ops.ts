@@ -414,7 +414,7 @@ export async function addMatchUpdate(
     createdBy: uid,
     createdAt: serverTimestamp(),
   });
-  const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+  const patch: { [k: string]: number | string | ReturnType<typeof serverTimestamp> } = { updatedAt: serverTimestamp() };
   if (u.minute !== null) patch.minute = u.minute;
   if (u.type === 'goal' && u.team === 'home') patch.homeScore = match.homeScore + 1;
   if (u.type === 'goal' && u.team === 'away') patch.awayScore = match.awayScore + 1;
@@ -431,9 +431,9 @@ export async function deleteMatch(db: Firestore, matchId: string): Promise<void>
   await deleteDoc(doc(db, 'matches', matchId));
 }
 
-export type Pick = 'home' | 'draw' | 'away';
+export type MatchPick = 'home' | 'draw' | 'away';
 
-export async function voteOnMatch(db: Firestore, uid: string, matchId: string, pick: Pick): Promise<void> {
+export async function voteOnMatch(db: Firestore, uid: string, matchId: string, pick: MatchPick): Promise<void> {
   const batch = writeBatch(db);
   batch.set(doc(db, 'matches', matchId, 'votes', uid), { pick, userId: uid, matchId, createdAt: serverTimestamp() });
   batch.update(doc(db, 'matches', matchId), {

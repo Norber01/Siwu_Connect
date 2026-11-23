@@ -33,6 +33,19 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 - 2026-11-23 — `scripts/demo-data.mjs`: SAMPLE data for local emulator screenshots only (writes only to the local
   demo-siwu emulator).
 
+- 2026-11-23 — **Launch scope expanded (founder request):**
+  - **Events** — calendar with categories (festival, funeral, wedding, church, meeting, sports, community), photo,
+    Going/Interested RSVPs with exact counters, add-to-calendar (.ics), share, cancel/edit, report, moderation.
+  - **Marketplace** — listings with photo, price in GH₵ (or "contact for price"/free), town and category filters,
+    search, WhatsApp and call buttons, mark as sold, safety notice, "For sale" on seller profiles. No payments.
+  - **Sports Centre** — matches between town teams (or other teams), live score and minute updated in real time,
+    live-update timeline (goals, cards, subs, chances), fixtures, results, league table, "Who will win?" voting
+    (one free vote per member, closes at full time). New **Sports reporter** role (no moderation powers).
+  - **For early testers** — notification bell (likes and comments on your posts), "Beta" badge + Settings →
+    send feedback (Super Admins read it in Admin → Feedback), invite friends via the share sheet, "Welcome our
+    newest members" strip on the home feed.
+  - Tests: rules 41, API 22, unit 14, end-to-end 8 (mobile + desktop) — all passing.
+
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
 |---|---|
@@ -51,9 +64,12 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 "Real test environment" (a deployed staging project) is still outstanding — needs accounts.
 
 ## Decisions made
+- 2026-11-23 — **Founder brought Sports, Events and Marketplace into the first release** (brief §6 had them in
+  Phases 2–3). Still excluded: livestreaming, audio rooms, private messaging, stories, payments/escrow,
+  betting of any kind (votes are free and for fun). Bottom navigation is now Home · Sports · + · Events · Profile,
+  matching the founder's design; Search and notifications are in the header.
 - 2026-11-23 — **Design:** follow the founder's mockup. Sports Centre, Events, Marketplace and the notification bell
-  shown in the mockup are later-phase features (brief §6) and are NOT shown as tabs until they are built, so there
-  are no non-working buttons. Bottom navigation for Phase 1: Home · Towns · + · Search · Profile.
+  shown in the mockup were first left out as later-phase features; superseded the same day (see above).
 - 2026-11-23 — **D1** Town names confirmed: Akpafu Odomi, Akpafu Mempeasem, Akpafu Todzi, Akpafu Adokor. IDs `odomi`, `mempeasem`, `todzi`, `adokor`.
 - 2026-11-23 — **D10** Launch roles: Super Admins and Moderators. Town Admin role exists but is unused at launch.
 - 2026-11-23 — Super Admin can do everything Town Admins and Moderators can, in all towns, plus roles, settings and audit log.
@@ -76,6 +92,8 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   Firebase's built-in abuse protection plus rule-enforced cooldowns. Revisit if spam sign-ups appear.
 
 ## Open decisions (founder)
+- Who will be **Sports reporters** for the first tournaments (Admin → Roles → "Sports reporter").
+- Whether marketplace phone numbers should be visible to all members (current) or only after a buyer taps "show".
 - **D9 Minimum age** — the app currently shows **13** as a provisional value (`packages/shared/src/constants.ts`).
 - Community rules and privacy notice text — drafts are in the app, clearly marked "Draft"; need approval and a privacy contact.
 - Logo artwork: the app uses an SVG redraw of the mockup logo; supply the original logo file to use it exactly. Real town photos for the town cards. Domain, social handles.
@@ -83,6 +101,9 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 - Pilot group from all four towns.
 
 ## Known limitations / issues
+- Notifications are in-app only (no phone push yet). Push via Firebase Cloud Messaging is the natural next step.
+- Team crests are coloured initials; real club badges can be uploaded later.
+- Photos: one per event/listing, max 1280 px / 400 KB, 200 photos per member (R2 free tier is 10 GB).
 - Search is basic: whole-word match for posts, start-of-name match for people (Firestore has no full-text search).
 - Author names on posts are loaded per author (cached 5 min) — fine at pilot scale; revisit if reads grow.
 - Email verification is sent but not required to post.

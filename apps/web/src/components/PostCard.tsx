@@ -108,7 +108,7 @@ export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: {
     setLiked(next);
     setLikes((n) => n + (next ? 1 : -1));
     try {
-      await setLike(db, user.uid, post.id, next);
+      await setLike(db, user.uid, post, next);
     } catch (e) {
       setLiked(!next);
       setLikes((n) => n + (next ? -1 : 1));

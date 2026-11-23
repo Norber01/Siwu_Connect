@@ -81,7 +81,8 @@ test('Phase 1 journeys', async ({ page }, info) => {
   await page.screenshot({ path: `test-results/${info.project.name}-1-home-empty.png` });
 
   // Journey 4: publish a text post.
-  await page.getByRole('link', { name: 'Create' }).click();
+  await page.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: /^Post/ }).click();
   await page.getByLabel('Your post').fill(postText);
   await page.getByRole('button', { name: 'Post', exact: true }).click();
   await expect(page.getByText('Your post is live.')).toBeVisible();

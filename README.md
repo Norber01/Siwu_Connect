@@ -18,6 +18,11 @@ likes (one per person) and comments · profiles with optional photo · search (p
 announcements and pinned posts · report and block · admin area (reports queue, suspensions, announcements,
 roles, audit log) · installable mobile-first web app (PWA).
 
+Also in the first release (founder decision): **Events** (RSVPs, photos, add to calendar), **Marketplace**
+(photos, prices in GH₵, WhatsApp/call the seller, no payments), **Sports Centre** (live scores in real time,
+fixtures, results, league tables, free "Who will win?" votes, Sports reporter role), in-app notifications,
+tester feedback, invite friends and a new-members strip.
+
 ## Repository layout
 
 ```
@@ -65,8 +70,8 @@ To fill the local emulator with clearly fictional sample posts for demos/screens
 ```bash
 npm run lint
 npm run typecheck
-npm run test:unit       # shared logic + web utilities
-npm run test:emulator   # security rules (30) + API (18) against the Firebase emulators
+npm run test:unit       # shared logic, web utilities, league table
+npm run test:emulator   # security rules (41) + API (22) against the Firebase emulators
 npm run test:e2e        # full user journeys in Chromium, mobile and desktop (starts all servers)
 ```
 
