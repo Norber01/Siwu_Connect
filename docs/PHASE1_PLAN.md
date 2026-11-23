@@ -178,6 +178,18 @@ reactions, suspended users, editing others' posts, etc.).
 
 ---
 
+### Role hierarchy (confirmed)
+
+| Capability | Moderator | Town Admin (later) | Super Admin |
+|---|---|---|---|
+| Review/resolve reports, remove posts & comments | assigned towns | own town | all towns |
+| Publish/pin announcements and posts | — | own town | all towns + platform-wide |
+| Suspend/restore users | — | own town | all |
+| Assign/remove roles, town configuration, platform settings | — | — | ✓ |
+| View audit log | — | — | ✓ |
+
+Launch staffing: 2 Super Admins + Moderators. Moderators may be scoped to all four towns.
+
 ## 5. Implementation plan (module by module)
 
 Each module ends with: files changed, explanation, exact run/test commands, PROJECT_LOG update.
