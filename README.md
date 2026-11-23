@@ -57,6 +57,9 @@ npm run admin -- grant-super-admin <your_username>
 
 The emulator UI (view data, users) is at http://127.0.0.1:4000.
 
+To fill the local emulator with clearly fictional sample posts for demos/screenshots:
+`node scripts/demo-data.mjs` (sign in as `demo_admin@example.com` / `demo-password-1`). It wipes the emulator first.
+
 ## Tests
 
 ```bash

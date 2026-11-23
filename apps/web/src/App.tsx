@@ -50,9 +50,11 @@ function RequireGuest() {
 export function App() {
   return (
     <Routes>
+      <Route element={<RequireGuest />}>
+        <Route path="/welcome" element={<WelcomePage />} />
+      </Route>
       <Route element={<PublicLayout />}>
         <Route element={<RequireGuest />}>
-          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

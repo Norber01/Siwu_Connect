@@ -26,6 +26,12 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 - 2026-11-23 — **End-to-end tests:** journeys 1–6 of the brief on mobile (Pixel 7) and desktop, plus access control
   and password reset. 6 tests passing.
 - 2026-11-23 — Admin CLI: `seed-towns`, `grant-super-admin <username>`.
+- 2026-11-23 — **Redesign to the founder's mockup** (green, white and yellow): three-figure logo (SVG redraw),
+  "Four Towns. One Community." welcome screen with town chips (pre-selects hometown at sign-up), town chip
+  selector on the home feed, post cards with Like / Comment / Share (Share uses the phone's share sheet or copies
+  the link), centre "+" create button, town cards, profile cover, chat-style comments, green admin tabs.
+- 2026-11-23 — `scripts/demo-data.mjs`: SAMPLE data for local emulator screenshots only (writes only to the local
+  demo-siwu emulator).
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
@@ -45,6 +51,9 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 "Real test environment" (a deployed staging project) is still outstanding — needs accounts.
 
 ## Decisions made
+- 2026-11-23 — **Design:** follow the founder's mockup. Sports Centre, Events, Marketplace and the notification bell
+  shown in the mockup are later-phase features (brief §6) and are NOT shown as tabs until they are built, so there
+  are no non-working buttons. Bottom navigation for Phase 1: Home · Towns · + · Search · Profile.
 - 2026-11-23 — **D1** Town names confirmed: Akpafu Odomi, Akpafu Mempeasem, Akpafu Todzi, Akpafu Adokor. IDs `odomi`, `mempeasem`, `todzi`, `adokor`.
 - 2026-11-23 — **D10** Launch roles: Super Admins and Moderators. Town Admin role exists but is unused at launch.
 - 2026-11-23 — Super Admin can do everything Town Admins and Moderators can, in all towns, plus roles, settings and audit log.
@@ -69,7 +78,7 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 ## Open decisions (founder)
 - **D9 Minimum age** — the app currently shows **13** as a provisional value (`packages/shared/src/constants.ts`).
 - Community rules and privacy notice text — drafts are in the app, clearly marked "Draft"; need approval and a privacy contact.
-- Logo, colours (current green/gold palette and logo are provisional), domain, social handles.
+- Logo artwork: the app uses an SVG redraw of the mockup logo; supply the original logo file to use it exactly. Real town photos for the town cards. Domain, social handles.
 - People for Moderator roles.
 - Pilot group from all four towns.
 

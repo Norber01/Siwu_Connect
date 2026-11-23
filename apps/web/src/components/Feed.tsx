@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { townName } from '@siwu/shared';
+import { townName, townShortName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { useFeed } from '../lib/hooks';
 import { type Feed as FeedSpec, fetchAnnouncements, fetchMyLikes, fetchPinned } from '../lib/queries';
@@ -8,7 +8,7 @@ import type { Announcement } from '../lib/types';
 import { friendlyError, timeAgo } from '../lib/util';
 import { Icon } from './Icon';
 import { PostCard, RichText } from './PostCard';
-import { Button, EmptyState, ErrorState, PageSpinner } from './ui';
+import { Avatar, Button, EmptyState, ErrorState, PageSpinner } from './ui';
 
 export function Announcements({ townId }: { townId: string | null }) {
   const q = useQuery({
@@ -28,7 +28,7 @@ export function Announcements({ townId }: { townId: string | null }) {
 
 function AnnouncementCard({ a }: { a: Announcement }) {
   return (
-    <article className="rounded-2xl border border-gold-400/50 bg-gold-100 p-4">
+    <article className="rounded-2xl border-l-4 border-gold-400 bg-gold-100 p-4 shadow-sm">
       <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gold-800">
         <Icon name="megaphone" className="h-4 w-4" />
         {a.townId === 'all' ? 'All Akpafu' : townName(a.townId)} announcement
@@ -99,12 +99,14 @@ export function CreatePostPrompt({ townId }: { townId?: string }) {
   const { profile } = useMe();
   if (profile.status !== 'active') return null;
   return (
-    <Link
-      to={townId ? `/new?town=${townId}` : '/new'}
-      className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-sand-200 bg-white px-4 text-gray-500 hover:border-brand-300"
-    >
-      <Icon name="edit" />
-      <span>Share news, a question or an update…</span>
-    </Link>
+    <div className="flex items-center gap-3 rounded-2xl border border-sand-200 bg-white p-3 shadow-sm">
+      <Avatar url={profile.photoUrl} name={profile.displayName} size={40} />
+      <Link
+        to={townId ? `/new?town=${townId}` : '/new'}
+        className="flex min-h-[44px] flex-1 items-center rounded-full bg-sand-100 px-4 text-gray-600 hover:bg-sand-200"
+      >
+        {townId ? `What's happening in ${townShortName(townId)}?` : "What's happening in Akpafu?"}
+      </Link>
+    </div>
   );
 }

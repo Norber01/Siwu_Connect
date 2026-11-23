@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Provisional brand palette — final colours are a founder decision.
+        // Siwu Connect brand: green, white and yellow (from the founder's design, 2026-11-23).
         brand: {
-          50: '#effaf3', 100: '#d8f3e1', 200: '#b3e5c6', 300: '#80d0a3', 400: '#4bb47c',
-          500: '#279860', 600: '#1a7a4c', 700: '#16623f', 800: '#14532d', 900: '#0f3d22',
+          50: '#eef8f0', 100: '#d6efdb', 200: '#ade0b8', 300: '#7dcb8e', 400: '#4caf62',
+          500: '#2a9645', 600: '#1f8a3a', 700: '#187530', 800: '#135f27', 900: '#0d4a1e',
         },
-        gold: { 100: '#fdf3d7', 400: '#e9b949', 600: '#b7861b', 800: '#6f500c' },
-        sand: { 50: '#fbfaf6', 100: '#f7f5ef', 200: '#ece8dc' },
+        gold: { 100: '#fff7d1', 400: '#f7c600', 600: '#d9ad00', 800: '#5c4800' },
+        sand: { 50: '#fafbfa', 100: '#f3f6f3', 200: '#e3e9e3' },
       },
       fontFamily: {
         sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],

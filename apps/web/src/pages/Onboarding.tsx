@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { LIMITS, MIN_AGE, profileSchema, usernameSchema } from '@siwu/shared';
+import { Link } from 'react-router-dom';
+import { LIMITS, MIN_AGE, isTownId, profileSchema, usernameSchema } from '@siwu/shared';
+import { getPreferredTown } from './auth';
 import { useAuth } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { createProfile } from '../lib/ops';
@@ -21,10 +22,9 @@ function suggestUsername(name: string): string {
 
 export function OnboardingPage() {
   const { user, signOut } = useAuth();
-  const navigate = useNavigate();
   const [draft, setDraft] = useState<ProfileDraft>({
     displayName: user?.displayName ?? '',
-    hometownId: '',
+    hometownId: isTownId(getPreferredTown()) ? (getPreferredTown() as ProfileDraft['hometownId']) : '',
     residence: '',
     countryCode: '',
     photoUrl: null,
@@ -35,6 +35,7 @@ export function OnboardingPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const parsed = usernameSchema.safeParse(username);
@@ -78,7 +79,10 @@ export function OnboardingPage() {
     setFormError(null);
     try {
       await createProfile(db, user.uid, { ...p.data, username: u.data, photoUrl: draft.photoUrl });
-      navigate('/', { replace: true });
+      // No navigate() here: the onboarding guard sends the user home as soon as the new
+      // profile arrives, which avoids bouncing back to an empty form while it loads.
+      setSaved(true);
+      return;
     } catch (err) {
       if (isPermissionDenied(err)) {
         // Most likely the username was taken a moment ago or is reserved.
@@ -133,7 +137,7 @@ export function OnboardingPage() {
         </label>
         {errors.agree && <p className="-mt-3 text-sm text-red-700">{errors.agree}</p>}
         {formError && <Alert>{formError}</Alert>}
-        <Button type="submit" className="w-full" busy={busy}>
+        <Button type="submit" className="w-full" busy={busy || saved}>
           Finish and enter Siwu Connect
         </Button>
         <button type="button" onClick={signOut} className="block w-full text-center text-sm text-gray-600 underline">

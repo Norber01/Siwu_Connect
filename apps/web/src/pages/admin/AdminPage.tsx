@@ -68,13 +68,13 @@ export function AdminPage() {
         the audit log.
       </p>
       <nav className="-mx-4 overflow-x-auto px-4" aria-label="Admin sections">
-        <ul className="flex gap-1 rounded-xl bg-sand-200 p-1">
+        <ul className="flex gap-2">
           {tabs.map((t) => (
             <li key={t.to}>
               <NavLink
                 to={t.to}
                 className={({ isActive }) =>
-                  `block whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? 'bg-white text-brand-900 shadow-sm' : 'text-gray-600'}`
+                  `block whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold ${isActive ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-gray-700 ring-1 ring-sand-200'}`
                 }
               >
                 {t.label}

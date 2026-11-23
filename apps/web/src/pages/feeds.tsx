@@ -2,47 +2,39 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { TOWNS, isTownId, townName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { Announcements, CreatePostPrompt, Feed } from '../components/Feed';
+import { TownChips } from '../components/TownChips';
+import { Landscape } from '../components/Brand';
 import { Icon } from '../components/Icon';
 import { EmptyState, PageHeader } from '../components/ui';
 
 export function HomePage() {
   const { profile } = useMe();
   const [params, setParams] = useSearchParams();
-  const view = params.get('view') === 'akpafu' ? 'akpafu' : 'town';
-  const town = profile.hometownId;
-
-  const tab = (id: 'town' | 'akpafu', label: string) => (
-    <button
-      role="tab"
-      aria-selected={view === id}
-      onClick={() => setParams(id === 'town' ? {} : { view: 'akpafu' }, { replace: true })}
-      className={`min-h-[44px] flex-1 rounded-lg px-3 text-sm font-semibold ${
-        view === id ? 'bg-white text-brand-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-      }`}
-    >
-      {label}
-    </button>
-  );
+  const requested = params.get('town');
+  const selected = requested === 'all' || isTownId(requested) ? requested : profile.hometownId;
 
   return (
-    <div className="space-y-4">
-      <div role="tablist" aria-label="Choose feed" className="flex gap-1 rounded-xl bg-sand-200 p-1">
-        {tab('town', townName(town))}
-        {tab('akpafu', 'All Akpafu')}
-      </div>
-      <CreatePostPrompt townId={view === 'town' ? town : undefined} />
-      <Announcements townId={view === 'town' ? town : null} />
-      {view === 'town' ? (
+    <div className="space-y-3">
+      <h1 className="sr-only">{selected === 'all' ? 'All Akpafu feed' : `${townName(selected)} feed`}</h1>
+      <TownChips
+        value={selected}
+        onChange={(v) => setParams(v === profile.hometownId ? {} : { town: v }, { replace: true })}
+      />
+      <CreatePostPrompt townId={selected === 'all' ? undefined : selected} />
+      <Announcements townId={selected === 'all' ? null : selected} />
+      {selected === 'all' ? (
         <Feed
-          feed={{ kind: 'town', townId: town }}
-          emptyTitle={`No posts in ${townName(town)} yet`}
-          emptyText="Be the first to share news or ask a question."
-        />
-      ) : (
-        <Feed
+          key="all"
           feed={{ kind: 'akpafu' }}
           emptyTitle="No posts yet"
           emptyText="Public posts from all four towns will appear here."
+        />
+      ) : (
+        <Feed
+          key={selected}
+          feed={{ kind: 'town', townId: selected }}
+          emptyTitle={`No posts in ${townName(selected)} yet`}
+          emptyText="Be the first to share news or ask a question."
         />
       )}
     </div>
@@ -54,33 +46,40 @@ export function TownsPage() {
   return (
     <div>
       <PageHeader title="Towns" />
-      <ul className="space-y-2">
+      <ul className="grid gap-3 sm:grid-cols-2">
         {TOWNS.map((t) => (
           <li key={t.id}>
             <Link
               to={`/towns/${t.id}`}
-              className="flex min-h-[64px] items-center justify-between rounded-2xl border border-sand-200 bg-white px-4 hover:border-brand-300"
+              className="block overflow-hidden rounded-2xl border border-sand-200 bg-white shadow-sm hover:border-brand-300"
             >
-              <span>
-                <span className="block font-semibold text-gray-900">{t.name}</span>
-                {profile.hometownId === t.id && <span className="text-xs font-medium text-brand-700">Your hometown</span>}
-              </span>
-              <Icon name="back" className="h-5 w-5 rotate-180 text-gray-400" />
+              <div className="h-20 overflow-hidden">
+                <Landscape />
+              </div>
+              <div className="flex items-center justify-between bg-brand-800 px-4 py-3 text-white">
+                <span>
+                  <span className="block text-lg font-bold">{t.name}</span>
+                  {profile.hometownId === t.id && (
+                    <span className="mt-0.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-brand-900">
+                      Your hometown
+                    </span>
+                  )}
+                </span>
+                <Icon name="back" className="h-5 w-5 rotate-180 opacity-80" />
+              </div>
             </Link>
           </li>
         ))}
-        <li>
-          <Link
-            to="/?view=akpafu"
-            className="flex min-h-[64px] items-center justify-between rounded-2xl border border-brand-200 bg-brand-50 px-4 hover:border-brand-300"
-          >
-            <span className="flex items-center gap-2 font-semibold text-brand-900">
-              <Icon name="globe" /> All Akpafu
-            </span>
-            <Icon name="back" className="h-5 w-5 rotate-180 text-gray-400" />
-          </Link>
-        </li>
       </ul>
+      <Link
+        to="/?town=all"
+        className="mt-3 flex min-h-[56px] items-center justify-between rounded-2xl bg-gold-400 px-4 font-bold text-brand-900 shadow-sm hover:bg-gold-600"
+      >
+        <span className="flex items-center gap-2">
+          <Icon name="globe" /> All Akpafu — four towns, one community
+        </span>
+        <Icon name="back" className="h-5 w-5 rotate-180" />
+      </Link>
     </div>
   );
 }
@@ -93,6 +92,11 @@ export function TownPage() {
   return (
     <div className="space-y-4">
       <PageHeader title={townName(townId)} back />
+      <div className="-mt-1 overflow-hidden rounded-2xl">
+        <div className="h-16 overflow-hidden">
+          <Landscape />
+        </div>
+      </div>
       <CreatePostPrompt townId={townId} />
       <Announcements townId={townId} />
       <Feed

@@ -106,37 +106,40 @@ export function ProfilePage() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-4">
-            <Avatar url={p.photoUrl} name={p.displayName} size={72} />
-            <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold text-gray-900">{p.displayName}</h1>
-              <p className="text-sm text-gray-600">@{p.username}</p>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-700">
-                <span className="inline-flex items-center gap-1">
-                  <Icon name="home" className="h-4 w-4" /> From
-                </span>
-                <TownBadge townId={p.hometownId} />
-              </div>
-              {residence && <p className="mt-1 text-sm text-gray-600">{residence}</p>}
-            </div>
-          </div>
-          <Menu items={items} label="Profile actions" />
+      <Card className="overflow-hidden shadow-sm">
+        <div className="h-20 bg-gradient-to-r from-brand-800 via-brand-600 to-brand-500">
+          <div className="h-1.5 bg-gold-400" />
         </div>
-        {p.status === 'suspended' && (
-          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">This account is suspended.</p>
-        )}
-        {isMe && (
-          <div className="mt-4 flex gap-2">
-            <Button variant="secondary" small icon="edit" onClick={() => navigate('/settings')}>
-              Edit profile
-            </Button>
-            <Button variant="ghost" small icon="settings" onClick={() => navigate('/settings')}>
-              Settings
-            </Button>
+        <div className="px-5 pb-5">
+          <div className="-mt-10 flex items-end justify-between">
+            <span className="rounded-full ring-4 ring-white">
+              <Avatar url={p.photoUrl} name={p.displayName} size={84} />
+            </span>
+            <Menu items={items} label="Profile actions" />
           </div>
-        )}
+          <h1 className="mt-2 text-xl font-bold text-gray-900">{p.displayName}</h1>
+          <p className="text-sm text-gray-600">@{p.username}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700">
+            <span className="inline-flex items-center gap-1">
+              <Icon name="home" className="h-4 w-4" /> From
+            </span>
+            <TownBadge townId={p.hometownId} />
+            {residence && <span className="text-gray-600">· {residence}</span>}
+          </div>
+          {p.status === 'suspended' && (
+            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">This account is suspended.</p>
+          )}
+          {isMe && (
+            <div className="mt-4 flex gap-2">
+              <Button small icon="edit" onClick={() => navigate('/settings')}>
+                Edit profile
+              </Button>
+              <Button variant="secondary" small icon="settings" onClick={() => navigate('/settings')}>
+                Settings
+              </Button>
+            </div>
+          )}
+        </div>
       </Card>
 
       <h2 className="text-base font-bold text-gray-900">{isMe ? 'Your posts' : 'Posts'}</h2>

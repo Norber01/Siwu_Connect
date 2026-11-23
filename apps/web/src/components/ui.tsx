@@ -15,8 +15,8 @@ import { Icon, type IconName } from './Icon';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 const variants: Record<Variant, string> = {
-  primary: 'bg-brand-800 text-white hover:bg-brand-900 disabled:bg-brand-800/50',
-  secondary: 'bg-white text-brand-900 border border-sand-200 hover:bg-sand-50 disabled:text-gray-400',
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 disabled:bg-brand-600/50',
+  secondary: 'bg-white text-brand-800 border border-sand-200 hover:bg-sand-50 disabled:text-gray-400',
   ghost: 'text-gray-700 hover:bg-sand-200/60 disabled:text-gray-400',
   danger: 'bg-red-700 text-white hover:bg-red-800 disabled:bg-red-700/50',
 };

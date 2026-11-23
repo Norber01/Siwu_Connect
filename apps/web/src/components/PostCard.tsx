@@ -12,7 +12,8 @@ import { Icon } from './Icon';
 import { Menu, type MenuItem } from './Menu';
 import { ReportDialog } from './ReportDialog';
 import { useToast } from './Toast';
-import { Avatar, Button, Modal, TownBadge } from './ui';
+import { Avatar, Button, Modal } from './ui';
+import { townShortName } from '@siwu/shared';
 
 export function RichText({ text }: { text: string }) {
   return (
@@ -37,32 +38,53 @@ export function AuthorLine({ uid, townId, date, edited }: { uid: string; townId?
     <div className="flex min-w-0 items-center gap-3">
       {author ? (
         <Link to={`/u/${author.username}`} className="shrink-0">
-          <Avatar url={author.photoUrl} name={name} />
+          <Avatar url={author.photoUrl} name={name} size={44} />
         </Link>
       ) : (
-        <Avatar url={null} name={name} />
+        <Avatar url={null} name={name} size={44} />
       )}
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          {author ? (
-            <Link to={`/u/${author.username}`} className="truncate font-semibold text-gray-900 hover:underline">
-              {name}
-            </Link>
-          ) : (
-            <span className="font-semibold text-gray-500">{name}</span>
-          )}
-          {townId && <TownBadge townId={townId} />}
-        </div>
-        <div className="text-xs text-gray-600">
-          {author && <span>@{author.username} · </span>}
+        {author ? (
+          <Link to={`/u/${author.username}`} className="block truncate font-bold text-gray-900 hover:underline">
+            {name}
+          </Link>
+        ) : (
+          <span className="block font-bold text-gray-500">{name}</span>
+        )}
+        <div className="text-[13px] text-gray-600">
           <time dateTime={date?.toISOString()} title={fullDate(date)}>
             {timeAgo(date)}
           </time>
+          {townId && (
+            <>
+              {' · '}
+              <Link to={`/towns/${townId}`} className="font-semibold text-brand-700 hover:underline">
+                {townShortName(townId)}
+              </Link>
+            </>
+          )}
           {edited && <span> · edited</span>}
         </div>
       </div>
     </div>
   );
+}
+
+/** Opens the phone's share sheet (WhatsApp etc.), or copies the link on desktop. */
+async function sharePost(post: Post, toast: (m: string, k?: 'success' | 'error') => void) {
+  const url = `${window.location.origin}/p/${post.id}`;
+  const text = post.text.length > 120 ? `${post.text.slice(0, 120)}…` : post.text;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'Siwu Connect', text, url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    toast('Link copied. Paste it anywhere to share.');
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return; // user closed the share sheet
+    toast('Could not share this post on this device.', 'error');
+  }
 }
 
 export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: { post: Post; liked: boolean; linkToDetail?: boolean }) {
@@ -136,50 +158,74 @@ export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: {
     items.push({ label: 'Remove post (moderator)', icon: 'shield', danger: true, onSelect: () => setConfirm('remove') });
 
   return (
-    <article className="rounded-2xl border border-sand-200 bg-white p-4" aria-label="Post">
-      {post.pinned && (
-        <div className="mb-2 flex items-center gap-1 text-xs font-semibold text-gold-800">
-          <Icon name="pin" className="h-3.5 w-3.5" /> Pinned
+    <article className="rounded-2xl border border-sand-200 bg-white shadow-sm" aria-label="Post">
+      <div className="p-4 pb-2">
+        {post.pinned && (
+          <div className="mb-2 inline-flex items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-xs font-bold text-gold-800">
+            <Icon name="pin" className="h-3.5 w-3.5" /> Pinned
+          </div>
+        )}
+        <div className="flex items-start justify-between gap-2">
+          <AuthorLine uid={post.authorId} townId={post.townId} date={post.createdAt} edited={!!post.editedAt} />
+          <Menu items={items} label="Post actions" />
         </div>
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <AuthorLine uid={post.authorId} townId={post.townId} date={post.createdAt} edited={!!post.editedAt} />
-        <Menu items={items} label="Post actions" />
-      </div>
-      <div className="mt-3">
-        {linkToDetail ? (
-          <Link to={`/p/${post.id}`} className="block">
-            <RichText text={post.text.length > 600 ? `${post.text.slice(0, 600)}…` : post.text} />
-          </Link>
-        ) : (
-          <RichText text={post.text} />
+        <div className="mt-3">
+          {linkToDetail ? (
+            <Link to={`/p/${post.id}`} className="block">
+              <RichText text={post.text.length > 600 ? `${post.text.slice(0, 600)}…` : post.text} />
+            </Link>
+          ) : (
+            <RichText text={post.text} />
+          )}
+          {post.visibility === 'town' && <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>}
+        </div>
+        {(likes > 0 || post.commentCount > 0) && (
+          <div className="mt-3 flex items-center justify-between text-[13px] text-gray-600">
+            <span className="inline-flex items-center gap-1">
+              {likes > 0 && (
+                <>
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white">
+                    <Icon name="thumb" filled className="h-3 w-3" />
+                  </span>
+                  {likes}
+                </>
+              )}
+            </span>
+            {post.commentCount > 0 && (
+              <Link to={`/p/${post.id}#comments`} className="hover:underline">
+                {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
+              </Link>
+            )}
+          </div>
         )}
-        {post.visibility === 'town' && (
-          <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>
-        )}
       </div>
-      <div className="mt-3 flex items-center gap-1 border-t border-sand-100 pt-2">
+      <div className="grid grid-cols-3 border-t border-sand-200 px-2 py-1">
         <button
           onClick={toggleLike}
           disabled={!active}
           aria-pressed={liked}
           aria-label={liked ? 'Unlike' : 'Like'}
-          className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-lg px-3 text-sm font-medium hover:bg-sand-100 disabled:opacity-50 ${
-            liked ? 'text-red-600' : 'text-gray-700'
+          className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold hover:bg-sand-100 disabled:opacity-50 ${
+            liked ? 'text-brand-600' : 'text-gray-700'
           }`}
         >
-          <Icon name="heart" filled={liked} />
-          <span>{likes > 0 ? likes : ''}</span>
-          <span className="sr-only">likes</span>
+          <Icon name="thumb" filled={liked} />
+          {liked ? 'Liked' : 'Like'}
         </button>
         <Link
           to={`/p/${post.id}#comments`}
-          className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-gray-700 hover:bg-sand-100"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-sand-100"
         >
           <Icon name="comment" />
-          <span>{post.commentCount > 0 ? post.commentCount : ''}</span>
-          <span className="sr-only">comments</span>
+          Comment
         </Link>
+        <button
+          onClick={() => sharePost(post, toast)}
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-sand-100"
+        >
+          <Icon name="share" />
+          Share
+        </button>
       </div>
 
       <ReportDialog

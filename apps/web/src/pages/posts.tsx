@@ -15,16 +15,16 @@ import {
 import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
-import { useInvalidatePosts } from '../lib/hooks';
+import { useInvalidatePosts, useProfileById } from '../lib/hooks';
 import { addComment, createPost, deleteComment, editPost } from '../lib/ops';
 import { fetchComments, fetchLastPostAt, fetchMyLikes, fetchPost } from '../lib/queries';
 import type { Comment, Post } from '../lib/types';
-import { friendlyError, isPermissionDenied } from '../lib/util';
-import { AuthorLine, PostCard, RichText } from '../components/PostCard';
+import { friendlyError, isPermissionDenied, timeAgo } from '../lib/util';
+import { PostCard, RichText } from '../components/PostCard';
 import { Menu, type MenuItem } from '../components/Menu';
 import { ReportDialog } from '../components/ReportDialog';
 import { useToast } from '../components/Toast';
-import { Alert, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextArea } from '../components/ui';
+import { Alert, Avatar, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextArea } from '../components/ui';
 
 function VisibilityPicker({ value, onChange }: { value: PostVisibility; onChange: (v: PostVisibility) => void }) {
   const opt = (v: PostVisibility, title: string, desc: string) => (
@@ -298,22 +298,25 @@ function Comments({ post, canComment }: { post: Post; canComment: boolean }) {
     <section id="comments" aria-label="Comments" className="space-y-3">
       <h2 className="text-base font-bold text-gray-900">Comments</h2>
       {canComment && (
-        <form onSubmit={submit} className="space-y-2">
-          <TextArea
-            label="Add a comment"
-            rows={2}
+        <form onSubmit={submit} className="flex items-end gap-2 rounded-2xl border border-sand-200 bg-white p-2 shadow-sm">
+          <label htmlFor="new-comment" className="sr-only">
+            Add a comment
+          </label>
+          <textarea
+            id="new-comment"
+            rows={1}
             maxLength={LIMITS.commentMaxChars}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            placeholder="Write a comment…"
+            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl bg-sand-100 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-200"
           />
-          {error && <Alert>{error}</Alert>}
-          <div className="flex justify-end">
-            <Button type="submit" small busy={busy} disabled={!text.trim()}>
-              Comment
-            </Button>
-          </div>
+          <Button type="submit" busy={busy} disabled={!text.trim()}>
+            Comment
+          </Button>
         </form>
       )}
+      {error && <Alert>{error}</Alert>}
       {q.isPending ? (
         <PageSpinner />
       ) : q.isError ? (
@@ -321,7 +324,7 @@ function Comments({ post, canComment }: { post: Post; canComment: boolean }) {
       ) : comments.length === 0 ? (
         <p className="py-4 text-center text-sm text-gray-600">No comments yet.</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {comments.map((c) => (
             <CommentItem key={c.id} comment={c} post={post} onChanged={refresh} toast={toast} />
           ))}
@@ -377,13 +380,17 @@ function CommentItem({
   };
 
   return (
-    <li className="rounded-2xl border border-sand-200 bg-white p-3">
-      <div className="flex items-start justify-between gap-2">
-        <AuthorLine uid={comment.authorId} date={comment.createdAt} />
-        <Menu items={items} label="Comment actions" />
-      </div>
-      <div className="mt-2 pl-[52px]">
-        <RichText text={comment.text} />
+    <li className="flex gap-2">
+      <CommentAvatar uid={comment.authorId} />
+      <div className="min-w-0 flex-1">
+        <div className="rounded-2xl bg-white px-3 py-2 shadow-sm ring-1 ring-sand-200">
+          <div className="flex items-start justify-between gap-2">
+            <CommentAuthor uid={comment.authorId} />
+            <Menu items={items} label="Comment actions" />
+          </div>
+          <RichText text={comment.text} />
+        </div>
+        <p className="mt-1 pl-3 text-xs text-gray-600">{timeAgo(comment.createdAt)}</p>
       </div>
       <ReportDialog
         open={reporting}
@@ -409,6 +416,25 @@ function CommentItem({
         </div>
       </Modal>
     </li>
+  );
+}
+
+function CommentAvatar({ uid }: { uid: string }) {
+  const { data } = useProfileById(uid);
+  return (
+    <span className="pt-1">
+      <Avatar url={data?.photoUrl} name={data?.displayName ?? '?'} size={36} />
+    </span>
+  );
+}
+
+function CommentAuthor({ uid }: { uid: string }) {
+  const { data } = useProfileById(uid);
+  if (!data) return <span className="text-sm font-bold text-gray-500">{data === null ? 'Deleted account' : '…'}</span>;
+  return (
+    <Link to={`/u/${data.username}`} className="truncate text-sm font-bold text-gray-900 hover:underline">
+      {data.displayName}
+    </Link>
   );
 }
 

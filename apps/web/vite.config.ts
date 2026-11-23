@@ -12,8 +12,8 @@ export default defineConfig({
         name: 'Siwu Connect',
         short_name: 'Siwu Connect',
         description: 'Community platform for Akpafu Odomi, Mempeasem, Todzi and Adokor.',
-        theme_color: '#14532d',
-        background_color: '#f7f5ef',
+        theme_color: '#1f8a3a',
+        background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
         icons: [

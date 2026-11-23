@@ -32,7 +32,7 @@ async function resetEmulators() {
 async function register(page: Page, opts: { email: string; name: string; username: string; town: string; photo?: boolean }) {
   await page.goto('/');
   await expect(page).toHaveURL(/\/welcome/);
-  await page.getByRole('link', { name: 'Join Siwu Connect' }).click();
+  await page.getByRole('link', { name: 'Create Account' }).click();
   await page.getByLabel('Email').fill(opts.email);
   await page.getByLabel('Password').fill('correct-horse-42');
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -96,7 +96,7 @@ test('Phase 1 journeys', async ({ page }, info) => {
   await expect(page.getByText('edited')).toBeVisible();
 
   // Profile shows hometown and the post.
-  await page.getByRole('link', { name: 'Profile' }).click();
+  await page.getByRole('link', { name: 'Profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: alice.name })).toBeVisible();
   await expect(page.getByText('Lives in United Kingdom')).toBeVisible();
   await expect(page.getByText('bring brooms')).toBeVisible();
