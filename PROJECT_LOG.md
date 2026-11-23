@@ -46,6 +46,13 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     newest members" strip on the home feed.
   - Tests: rules 41, API 22, unit 14, end-to-end 8 (mobile + desktop) — all passing.
 
+- 2026-11-23 — **Phone-only setup:** founder can set everything up from a phone. New `/setup` page ("Set up
+  Siwu Connect") calls the API, which installs the Firestore rules and indexes (bundled into the Worker by
+  `npm run gen:assets`), adds the five towns, authorises the website domain for sign-in and makes the founder
+  Super Admin. Only the account whose verified email equals the Worker's `FOUNDER_EMAIL` can run it while no
+  Super Admin exists; afterwards only a Super Admin can re-run it. Tested in the emulator end-to-end and against
+  a simulated Google API.
+
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
 |---|---|

@@ -7,6 +7,11 @@ export interface Env {
   PUBLIC_API_URL: string;
   /** Secret: full JSON of a Google service account with Firestore + Firebase Auth admin access. */
   GOOGLE_SERVICE_ACCOUNT_JSON?: string;
+  /**
+   * Email of the founder's (shared Super Admin) account. Only this signed-in, verified
+   * account can run the one-time setup. Set at deploy time; not committed to the repository.
+   */
+  FOUNDER_EMAIL?: string;
   /** Local development only — never set in production. */
   FIRESTORE_EMULATOR_HOST?: string;
   FIREBASE_AUTH_EMULATOR_HOST?: string;

@@ -143,6 +143,9 @@ export function OnboardingPage() {
         <button type="button" onClick={signOut} className="block w-full text-center text-sm text-gray-600 underline">
           Sign out
         </button>
+        <Link to="/setup" className="block text-center text-xs text-gray-500 underline">
+          Site owner? Run the first-time setup
+        </Link>
       </form>
     </div>
   );

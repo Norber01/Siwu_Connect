@@ -8,6 +8,16 @@ const JWKS = createRemoteJWKSet(
 
 export interface Caller {
   uid: string;
+  email: string | null;
+  emailVerified: boolean;
+}
+
+function callerFrom(claims: Record<string, unknown>): Caller {
+  return {
+    uid: claims.sub as string,
+    email: typeof claims.email === 'string' ? claims.email.toLowerCase() : null,
+    emailVerified: claims.email_verified === true,
+  };
 }
 
 /** Verifies a Firebase Authentication ID token (signature, issuer, audience, expiry). */
@@ -18,7 +28,7 @@ export async function verifyIdToken(token: string, env: Env): Promise<Caller> {
     if (claims.aud !== env.FIREBASE_PROJECT_ID || typeof claims.sub !== 'string' || !claims.sub) {
       throw new Error('invalid emulator token');
     }
-    return { uid: claims.sub };
+    return callerFrom(claims);
   }
   const { payload } = await jwtVerify(token, JWKS, {
     issuer: `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`,
@@ -29,7 +39,7 @@ export async function verifyIdToken(token: string, env: Env): Promise<Caller> {
   if (typeof payload.auth_time === 'number' && payload.auth_time > Math.floor(Date.now() / 1000) + 300) {
     throw new Error('auth_time in the future');
   }
-  return { uid: payload.sub };
+  return callerFrom(payload);
 }
 
 /** Deletes a Firebase Authentication account (used for account deletion). */

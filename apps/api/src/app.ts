@@ -17,11 +17,12 @@ import {
   pinSchema,
   resolveReportSchema,
 } from '@siwu/shared';
-import { deleteAuthUser, verifyIdToken } from './auth';
+import { type Caller, deleteAuthUser, verifyIdToken } from './auth';
+import { runSetup, setupStatus } from './setup';
 import type { Env } from './env';
 import { type Data, FieldValue, Firestore, type Write } from './firestore';
 
-type Vars = { uid: string; fs: Firestore };
+type Vars = { uid: string; fs: Firestore; caller: Caller };
 type Ctx = { Bindings: Env; Variables: Vars };
 
 interface PostDoc {
@@ -183,13 +184,28 @@ export function createApp() {
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
     if (!token) fail(401, 'Sign in required');
     try {
-      const { uid } = await verifyIdToken(token, c.env);
-      c.set('uid', uid);
+      const caller = await verifyIdToken(token, c.env);
+      c.set('uid', caller.uid);
+      c.set('caller', caller);
     } catch {
       fail(401, 'Your session has expired. Please sign in again.');
     }
     c.set('fs', new Firestore(c.env));
     await next();
+  });
+
+  // ---------- one-time setup (from the founder's phone) ----------
+  app.get('/setup/status', async (c) => c.json(await setupStatus(c.env, c.get('caller'))));
+
+  app.post('/setup/run', async (c) => {
+    const status = await setupStatus(c.env, c.get('caller'));
+    if (status.superAdminExists) {
+      if (!status.callerIsSuperAdmin) fail(403, 'Setup has already been completed.');
+    } else {
+      if (!status.founderEmailConfigured) fail(403, 'The founder email has not been configured for this site.');
+      if (!status.isFounder) fail(403, 'Only the founder account (with a verified email) can run the setup.');
+    }
+    return c.json(await runSetup(c.env, c.get('caller')));
   });
 
   // ---------- photo uploads ----------

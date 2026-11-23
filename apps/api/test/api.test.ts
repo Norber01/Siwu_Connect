@@ -41,7 +41,8 @@ const fs = () => new Firestore(env());
 const app = createApp();
 
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const token = (uid: string) => `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: uid, aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}` })}.`;
+const token = (uid: string, email?: string) =>
+  `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: uid, aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, ...(email ? { email, email_verified: true } : {}) })}.`;
 
 function call(method: string, path: string, uid?: string, body?: unknown) {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -314,5 +315,33 @@ describe('photo uploads', () => {
     expect((await upload('nobody', jpeg())).status).toBe(403);
     await seedUser('sam', 'odomi', 'suspended');
     expect((await upload('sam', jpeg())).status).toBe(403);
+  });
+});
+
+describe('one-time setup', () => {
+  const run = (uid: string, email: string | undefined, e: Env) =>
+    app.request('/setup/run', { method: 'POST', headers: { authorization: `Bearer ${token(uid, email)}` } }, e);
+
+  it('only the verified founder can run it while no Super Admin exists', async () => {
+    await fetch(`http://${FS_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
+    const e = { ...env(), FOUNDER_EMAIL: 'Founder@Example.com' };
+    expect((await run('stranger', 'someone@example.com', e)).status).toBe(403);
+    expect((await run('nomail', undefined, e)).status).toBe(403);
+    expect((await run('founder', 'founder@example.com', { ...env() })).status).toBe(403); // no founder configured
+    const res = await run('founder', 'founder@example.com', e);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; steps: { id: string; ok: boolean }[] };
+    expect(body.ok).toBe(true);
+    expect(body.steps.map((s) => s.id)).toEqual(['credentials', 'rules', 'indexes', 'towns', 'domains', 'superAdmin']);
+    expect((await fs().get<{ role: string }>('admin_roles/founder'))!.data.role).toBe('super_admin');
+    expect((await fs().query({ collection: 'towns' })).length).toBe(5);
+    // Afterwards nobody else can take over; the Super Admin may re-run it.
+    expect((await run('stranger', 'founder@example.com', e)).status).toBe(403);
+    expect((await run('founder', 'founder@example.com', e)).status).toBe(200);
+  });
+
+  it('reports whether the key is configured', async () => {
+    const res = await app.request('/setup/status', { headers: { authorization: `Bearer ${token('x', 'x@example.com')}` } }, env());
+    expect(((await res.json()) as { keyConfigured: boolean }).keyConfigured).toBe(true);
   });
 });

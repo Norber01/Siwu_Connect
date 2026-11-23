@@ -19,6 +19,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - name: Bundled Firebase rules/indexes are up to date
+        run: npm run gen:assets && git diff --exit-code apps/api/src/generated
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:unit

@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react';
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppLayout, PublicLayout } from './components/Layout';
 import { PageSpinner } from './components/ui';
@@ -9,6 +9,7 @@ import { OnboardingPage } from './pages/Onboarding';
 import { MyProfileRedirect, ProfilePage, SearchPage, SettingsPage } from './pages/people';
 import { EditPostPage, NewPostPage, NotFoundPage, PostDetailPage } from './pages/posts';
 import { PrivacyPage, RulesPage } from './pages/static';
+import { SetupPage } from './pages/Setup';
 import { EventDetailPage, EventFormPage, EventsPage } from './pages/events';
 import { ListingDetailPage, ListingFormPage, MarketPage } from './pages/market';
 import { MatchDetailPage, MatchFormPage, SportsPage } from './pages/sports';
@@ -17,9 +18,24 @@ import { NotificationsPage } from './pages/notifications';
 const AdminPage = lazy(() => import('./pages/admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 
 function FullScreenSpinner() {
+  // If loading takes unusually long (e.g. a brand-new site whose security rules are not
+  // installed yet), offer the way forward instead of an endless spinner.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(t);
+  }, []);
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
       <PageSpinner />
+      {slow && (
+        <p className="max-w-sm text-sm text-gray-600">
+          This is taking longer than usual. Check your internet connection.{' '}
+          <Link to="/setup" className="font-semibold text-brand-700 underline">
+            Setting up Siwu Connect for the first time? Open the setup page.
+          </Link>
+        </p>
+      )}
     </div>
   );
 }
@@ -40,6 +56,14 @@ function RequireOnboarding() {
   if (user === undefined || (user && profile === undefined)) return <FullScreenSpinner />;
   if (!user) return <Navigate to="/welcome" replace />;
   if (profile) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+/** Signed in (with or without a profile). */
+function RequireSignedIn() {
+  const { user } = useAuth();
+  if (user === undefined) return <FullScreenSpinner />;
+  if (!user) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
@@ -65,6 +89,9 @@ export function App() {
         </Route>
         <Route element={<RequireOnboarding />}>
           <Route path="/onboarding" element={<OnboardingPage />} />
+        </Route>
+        <Route element={<RequireSignedIn />}>
+          <Route path="/setup" element={<SetupPage />} />
         </Route>
         <Route path="/rules" element={<RulesPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />

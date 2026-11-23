@@ -18,8 +18,10 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npx firebase emulators:start --only firestore,auth --project demo-siwu',
-      url: 'http://127.0.0.1:8080',
+      // Stops any leftover emulator from an interrupted run first, then waits for the auth emulator
+      // (it starts last), so a stray database emulator can never be mistaken for a ready stack.
+      command: 'bash scripts/test-emulators.sh',
+      url: 'http://127.0.0.1:9099',
       reuseExistingServer: true,
       timeout: 120_000,
     },

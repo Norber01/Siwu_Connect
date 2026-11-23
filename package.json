@@ -20,7 +20,8 @@
     "dev:api": "npm run dev -w @siwu/api",
     "seed:emulator": "node scripts/admin-cli.mjs seed-towns",
     "admin": "node scripts/admin-cli.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "gen:assets": "node scripts/gen-firebase-assets.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
