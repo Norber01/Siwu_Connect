@@ -259,18 +259,18 @@ describe('reactions', () => {
   });
 
   it('like and unlike keep the counter exact', async () => {
-    await assertSucceeds(ops.setLike(db('bob'), 'bob', 'p1', true));
-    await assertSucceeds(ops.setLike(db('alice'), 'alice', 'p1', true));
+    await assertSucceeds(ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, true));
+    await assertSucceeds(ops.setLike(db('alice'), 'alice', { id: 'p1', authorId: 'alice' }, true));
     let snap = await getDoc(doc(db('bob'), 'posts', 'p1'));
     expect(snap.data()?.reactionCount).toBe(2);
-    await assertSucceeds(ops.setLike(db('bob'), 'bob', 'p1', false));
+    await assertSucceeds(ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, false));
     snap = await getDoc(doc(db('bob'), 'posts', 'p1'));
     expect(snap.data()?.reactionCount).toBe(1);
   });
 
   it('prevents duplicate reactions and counter tampering', async () => {
-    await assertSucceeds(ops.setLike(db('bob'), 'bob', 'p1', true));
-    await assertFails(ops.setLike(db('bob'), 'bob', 'p1', true)); // second like
+    await assertSucceeds(ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, true));
+    await assertFails(ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, true)); // second like
     await assertFails(updateDoc(doc(db('bob'), 'posts', 'p1'), { reactionCount: increment(1) })); // counter only
     await assertFails(updateDoc(doc(db('bob'), 'posts', 'p1'), { reactionCount: 50 }));
     const bob = db('bob');
@@ -282,8 +282,8 @@ describe('reactions', () => {
 
   it('users can query only their own reactions across posts', async () => {
     await seedPost('p2', 'alice');
-    await ops.setLike(db('bob'), 'bob', 'p1', true);
-    await ops.setLike(db('bob'), 'bob', 'p2', true);
+    await ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, true);
+    await ops.setLike(db('bob'), 'bob', { id: 'p2', authorId: 'alice' }, true);
     const mine = await getDocs(
       query(collectionGroup(db('bob'), 'reactions'), where('userId', '==', 'bob'), where('postId', 'in', ['p1', 'p2'])),
     );
@@ -300,7 +300,7 @@ describe('comments', () => {
   });
 
   it('add and delete comments with an exact counter', async () => {
-    const cid = await ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi' }, 'Nice');
+    const cid = await ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi', authorId: 'alice' }, 'Nice');
     expect((await getDoc(doc(db('bob'), 'posts', 'p1'))).data()?.commentCount).toBe(1);
     await assertFails(ops.deleteComment(db('alice'), 'p1', cid, true)); // not the comment author
     await assertSucceeds(ops.deleteComment(db('bob'), 'p1', cid, true));
@@ -308,23 +308,23 @@ describe('comments', () => {
   });
 
   it('rejects wrong town, fake counters and comment flooding', async () => {
-    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'odomi' }, 'wrong town'));
+    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'odomi', authorId: 'alice' }, 'wrong town'));
     await assertFails(
       updateDoc(doc(db('bob'), 'posts', 'p1'), { commentCount: increment(1), lastCommentOp: { id: 'nope', op: 'add' } }),
     );
-    await assertSucceeds(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi' }, 'one'));
-    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi' }, 'two too fast'));
+    await assertSucceeds(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi', authorId: 'alice' }, 'one'));
+    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi', authorId: 'alice' }, 'two too fast'));
   });
 
   it('blocked users cannot comment on the blocker\'s posts', async () => {
     await assertSucceeds(ops.blockUser(db('alice'), 'alice', 'bob'));
-    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi' }, 'hi'));
+    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'todzi', authorId: 'alice' }, 'hi'));
     await assertFails(getDoc(doc(db('bob'), 'users', 'alice', 'blocks', 'bob'))); // block list is private
   });
 
   it('cannot comment on removed posts', async () => {
     await seedPost('p2', 'alice', 'todzi', { status: 'removed' });
-    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p2', townId: 'todzi' }, 'hi'));
+    await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p2', townId: 'todzi', authorId: 'alice' }, 'hi'));
   });
 });
 
@@ -424,5 +424,164 @@ describe('privileged collections', () => {
     await assertFails(getDoc(doc(db('alice'), 'announcements', 'a2')));
     await assertSucceeds(getDoc(doc(db('townadmin'), 'announcements', 'a2')));
     await assertFails(updateDoc(doc(db('boss'), 'announcements', 'a1'), { status: 'archived' }));
+  });
+});
+
+
+describe('notifications', () => {
+  beforeEach(async () => {
+    await seedUser('alice');
+    await seedUser('bob');
+    await seedPost('p1', 'alice');
+  });
+
+  it('likes and comments notify the post author, who alone can read them', async () => {
+    await assertSucceeds(ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, true));
+    await ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'odomi', authorId: 'alice' }, 'hi');
+    const list = await getDocs(collection(db('alice'), 'users', 'alice', 'notifications'));
+    expect(list.size).toBe(2);
+    await assertFails(getDocs(collection(db('bob'), 'users', 'alice', 'notifications')));
+    await assertSucceeds(ops.markNotificationsRead(db('alice'), 'alice', list.docs.map((d) => d.id)));
+    // Unlike + like again re-sends the like notification without error.
+    await ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, false);
+    await assertSucceeds(ops.setLike(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, true));
+  });
+
+  it('cannot forge notifications', async () => {
+    const forge = (data: object, id: string) => setDoc(doc(db('bob'), 'users', 'alice', 'notifications', id), data);
+    const base = { actorId: 'bob', postId: 'p1', read: false, createdAt: serverTimestamp() };
+    await assertFails(forge({ ...base, type: 'like', commentId: null }, 'like_p1_bob')); // no actual like
+    await assertFails(forge({ ...base, type: 'comment', commentId: 'zzz' }, 'comment_zzz')); // no actual comment
+    await assertFails(forge({ ...base, actorId: 'carol', type: 'like', commentId: null }, 'like_p1_carol'));
+  });
+});
+
+describe('events', () => {
+  const input = () => ({
+    townId: 'todzi' as const,
+    title: 'Todzi Harvest Thanksgiving',
+    description: 'Service at the Presby church followed by lunch.',
+    category: 'church' as const,
+    location: 'Presby Church, Todzi',
+    startsAt: new Date(Date.now() + 86400_000),
+    endsAt: null,
+  });
+  beforeEach(async () => {
+    await seedUser('alice');
+    await seedUser('bob');
+  });
+
+  it('members create events; RSVP counters stay exact', async () => {
+    const id = await ops.createEvent(db('alice'), 'alice', input(), null);
+    await assertSucceeds(ops.setRsvp(db('bob'), 'bob', id, null, 'going'));
+    await assertSucceeds(ops.setRsvp(db('bob'), 'bob', id, 'going', 'interested'));
+    let e = (await getDoc(doc(db('bob'), 'events', id))).data()!;
+    expect([e.goingCount, e.interestedCount]).toEqual([0, 1]);
+    await assertSucceeds(ops.setRsvp(db('bob'), 'bob', id, 'interested', null));
+    e = (await getDoc(doc(db('bob'), 'events', id))).data()!;
+    expect([e.goingCount, e.interestedCount]).toEqual([0, 0]);
+  });
+
+  it('blocks fake RSVP counts, foreign image URLs and editing others\' events', async () => {
+    const id = await ops.createEvent(db('alice'), 'alice', input(), null);
+    await assertFails(updateDoc(doc(db('bob'), 'events', id), { goingCount: 100 }));
+    await assertFails(ops.setRsvp(db('bob'), 'bob', id, 'going', 'interested')); // lying about current state
+    await assertFails(ops.updateEvent(db('bob'), id, input(), null));
+    await assertFails(ops.setEventStatus(db('bob'), id, 'cancelled'));
+    await assertSucceeds(ops.setEventStatus(db('alice'), id, 'cancelled'));
+    await seedUser('carol');
+    await assertFails(ops.createEvent(db('carol'), 'carol', input(), 'https://x.example/images/alice/a.webp'));
+    await assertSucceeds(ops.createEvent(db('bob'), 'bob', input(), 'https://x.example/images/bob/a.webp'));
+  });
+
+  it('rate-limits event creation', async () => {
+    await assertSucceeds(ops.createEvent(db('alice'), 'alice', input(), null));
+    await assertFails(ops.createEvent(db('alice'), 'alice', input(), null));
+  });
+});
+
+describe('marketplace', () => {
+  const input = () => ({
+    townId: 'adokor' as const,
+    title: 'Fresh tomatoes',
+    description: 'From my farm, picked this morning.',
+    category: 'food' as const,
+    price: 20,
+    priceUnit: 'per basket',
+    contactPhone: '+233241234567',
+    contactWhatsApp: true,
+  });
+  beforeEach(async () => {
+    await seedUser('alice');
+    await seedUser('bob');
+  });
+
+  it('sellers list, mark sold and delete; others cannot', async () => {
+    const id = await ops.createListing(db('alice'), 'alice', input(), null);
+    await assertFails(ops.setListingStatus(db('bob'), id, 'sold'));
+    await assertSucceeds(ops.setListingStatus(db('alice'), id, 'sold'));
+    await assertSucceeds(getDoc(doc(db('bob'), 'listings', id))); // sold items stay visible
+    await assertSucceeds(ops.setListingStatus(db('alice'), id, 'deleted'));
+    await assertFails(getDoc(doc(db('bob'), 'listings', id)));
+  });
+
+  it('validates price and phone', async () => {
+    await assertFails(ops.createListing(db('alice'), 'alice', { ...input(), price: -5 }, null));
+    await assertFails(ops.createListing(db('bob'), 'bob', { ...input(), contactPhone: 'call me' }, null));
+    await assertSucceeds(ops.createListing(db('bob'), 'bob', { ...input(), price: null, contactPhone: null }, null));
+  });
+});
+
+describe('sports centre', () => {
+  const match = () => ({
+    competition: 'Akpafu Community Cup',
+    home: { name: 'Odomi', townId: 'odomi' as const },
+    away: { name: 'Mempeasem', townId: 'mempeasem' as const },
+    venue: 'Odomi Park',
+    kickoffAt: new Date(Date.now() + 3600_000),
+  });
+  beforeEach(async () => {
+    await seedUser('alice');
+    await seedUser('bob');
+    await seedUser('rep');
+    await seedRole('rep', 'reporter', []);
+  });
+
+  it('only reporters/admins create matches and post live updates', async () => {
+    await assertFails(ops.createMatch(db('alice'), 'alice', match()));
+    const id = await ops.createMatch(db('rep'), 'rep', match());
+    const m = { id, homeScore: 0, awayScore: 0, status: 'scheduled' as const };
+    await assertFails(ops.addMatchUpdate(db('alice'), 'alice', m, { type: 'goal', team: 'home', minute: 10, text: '' }));
+    await assertSucceeds(ops.addMatchUpdate(db('rep'), 'rep', m, { type: 'goal', team: 'home', minute: 32, text: 'Odomi takes the lead!' }));
+    const data = (await getDoc(doc(db('alice'), 'matches', id))).data()!;
+    expect([data.homeScore, data.status, data.minute]).toEqual([1, 'live', 32]);
+    await assertFails(updateDoc(doc(db('alice'), 'matches', id), { homeScore: 5 }));
+  });
+
+  it('one vote per member, only while voting is open', async () => {
+    const id = await ops.createMatch(db('rep'), 'rep', match());
+    await assertSucceeds(ops.voteOnMatch(db('alice'), 'alice', id, 'home'));
+    await assertFails(ops.voteOnMatch(db('alice'), 'alice', id, 'away'));
+    await assertFails(updateDoc(doc(db('bob'), 'matches', id), { votesAway: increment(1) }));
+    await ops.updateMatchState(db('rep'), id, { status: 'finished', homeScore: 1, awayScore: 0, minute: 90 });
+    await assertFails(ops.voteOnMatch(db('bob'), 'bob', id, 'draw'));
+    expect((await getDoc(doc(db('bob'), 'matches', id))).data()?.votesHome).toBe(1);
+  });
+
+  it('reporters cannot moderate', async () => {
+    await seedPost('p1', 'alice', 'odomi', { status: 'removed' });
+    await assertFails(getDoc(doc(db('rep'), 'posts', 'p1')));
+  });
+});
+
+describe('feedback', () => {
+  it('any member can send feedback; only super admins read it', async () => {
+    await seedUser('alice');
+    await seedUser('boss');
+    await seedRole('boss', 'super_admin');
+    await assertSucceeds(ops.sendFeedback(db('alice'), 'alice', 'The like button is great!', '/'));
+    await assertFails(ops.sendFeedback(db('alice'), 'bob', 'Pretending to be Bob', '/'));
+    await assertFails(getDocs(collection(db('alice'), 'feedback')));
+    await assertSucceeds(getDocs(collection(db('boss'), 'feedback')));
   });
 });

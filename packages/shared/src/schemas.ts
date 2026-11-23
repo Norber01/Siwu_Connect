@@ -121,8 +121,79 @@ export const grantRoleSchema = z
     role: z.enum(ROLES),
     townIds: z.array(townIdSchema).max(TOWN_IDS.length).default([]),
   })
-  .refine((v) => v.role === 'super_admin' || v.townIds.length > 0, {
+  .refine((v) => v.role === 'super_admin' || v.role === 'reporter' || v.townIds.length > 0, {
     message: 'Choose at least one town for this role',
     path: ['townIds'],
   });
 export type GrantRoleInput = z.infer<typeof grantRoleSchema>;
+
+// ---------------- Events, Marketplace, Sports, Feedback ----------------
+import {
+  EVENT_CATEGORIES,
+  EXTRA_LIMITS,
+  LISTING_CATEGORIES,
+  MATCH_STATUSES,
+  MATCH_UPDATE_TYPES,
+  PHONE_PATTERN,
+} from './constants';
+
+const ids = <T extends readonly { id: string }[]>(list: T) => list.map((x) => x.id) as [T[number]['id'], ...T[number]['id'][]];
+
+export const eventSchema = z
+  .object({
+    townId: townIdSchema,
+    title: z.string().transform(cleanSingleLine).pipe(z.string().min(3, 'Give the event a title').max(EXTRA_LIMITS.eventTitleMax)),
+    description: z.string().transform(cleanMultiline).pipe(z.string().max(EXTRA_LIMITS.eventDescriptionMax)),
+    category: z.enum(ids(EVENT_CATEGORIES)),
+    location: z.string().transform(cleanSingleLine).pipe(z.string().max(EXTRA_LIMITS.eventLocationMax)),
+    startsAt: z.date({ invalid_type_error: 'Choose a date and time' }),
+    endsAt: z.date().nullable(),
+  })
+  .refine((e) => !e.endsAt || e.endsAt > e.startsAt, { message: 'The end must be after the start', path: ['endsAt'] });
+export type EventInput = z.infer<typeof eventSchema>;
+
+export const listingSchema = z.object({
+  townId: townIdSchema,
+  title: z.string().transform(cleanSingleLine).pipe(z.string().min(3, 'Give your listing a title').max(EXTRA_LIMITS.listingTitleMax)),
+  description: z.string().transform(cleanMultiline).pipe(z.string().max(EXTRA_LIMITS.listingDescriptionMax)),
+  category: z.enum(ids(LISTING_CATEGORIES)),
+  price: z.number().int('Use whole cedis').min(0).max(EXTRA_LIMITS.listingPriceMax).nullable(),
+  priceUnit: z.string().transform(cleanSingleLine).pipe(z.string().max(EXTRA_LIMITS.priceUnitMax)),
+  contactPhone: z
+    .string()
+    .transform((s) => s.replace(/[\s()-]/g, ''))
+    .pipe(z.string().regex(PHONE_PATTERN, 'Enter a phone number with country code, e.g. +233241234567'))
+    .nullable(),
+  contactWhatsApp: z.boolean(),
+});
+export type ListingInput = z.infer<typeof listingSchema>;
+
+const teamSchema = z.object({
+  name: z.string().transform(cleanSingleLine).pipe(z.string().min(2, 'Enter a team name').max(EXTRA_LIMITS.teamNameMax)),
+  townId: townIdSchema.nullable(),
+});
+
+export const matchSchema = z
+  .object({
+    competition: z.string().transform(cleanSingleLine).pipe(z.string().min(3, 'Enter the competition name').max(EXTRA_LIMITS.competitionMax)),
+    home: teamSchema,
+    away: teamSchema,
+    venue: z.string().transform(cleanSingleLine).pipe(z.string().max(EXTRA_LIMITS.eventLocationMax)),
+    kickoffAt: z.date({ invalid_type_error: 'Choose the kick-off date and time' }),
+  })
+  .refine((m) => m.home.name.toLowerCase() !== m.away.name.toLowerCase(), { message: 'Choose two different teams', path: ['away'] });
+export type MatchInput = z.infer<typeof matchSchema>;
+
+export const matchStatusSchema = z.enum(ids(MATCH_STATUSES));
+
+export const matchUpdateSchema = z.object({
+  type: z.enum(ids(MATCH_UPDATE_TYPES)),
+  team: z.enum(['home', 'away']).nullable(),
+  minute: z.number().int().min(0).max(130).nullable(),
+  text: z.string().transform(cleanSingleLine).pipe(z.string().max(EXTRA_LIMITS.matchUpdateMax)),
+});
+export type MatchUpdateInput = z.infer<typeof matchUpdateSchema>;
+
+export const feedbackSchema = z.object({
+  text: z.string().transform(cleanMultiline).pipe(z.string().min(3, 'Tell us a little more').max(EXTRA_LIMITS.feedbackMax)),
+});

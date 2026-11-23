@@ -53,16 +53,17 @@ export const REPORT_REASONS = [
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number]['id'];
 
-export const REPORT_TARGET_TYPES = ['post', 'comment', 'user'] as const;
+export const REPORT_TARGET_TYPES = ['post', 'comment', 'user', 'event', 'listing'] as const;
 export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
 
-export const ROLES = ['super_admin', 'town_admin', 'moderator'] as const;
+export const ROLES = ['super_admin', 'town_admin', 'moderator', 'reporter'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: 'Super Admin',
   town_admin: 'Town Admin',
   moderator: 'Moderator',
+  reporter: 'Sports reporter',
 };
 
 /** Countries offered in the optional "current country" field (ISO 3166-1 alpha-2). */
@@ -96,3 +97,70 @@ export const COUNTRIES: ReadonlyArray<{ code: string; name: string }> = [
   { code: 'AU', name: 'Australia' },
   { code: 'OTHER', name: 'Other country' },
 ];
+
+// ---------------- Events, Marketplace, Sports, Notifications, Feedback ----------------
+
+export const EVENT_CATEGORIES = [
+  { id: 'festival', label: 'Festival' },
+  { id: 'funeral', label: 'Funeral' },
+  { id: 'wedding', label: 'Wedding' },
+  { id: 'church', label: 'Church programme' },
+  { id: 'meeting', label: 'Meeting' },
+  { id: 'sports', label: 'Sports' },
+  { id: 'community', label: 'Community work' },
+  { id: 'other', label: 'Other' },
+] as const;
+export type EventCategory = (typeof EVENT_CATEGORIES)[number]['id'];
+
+export const LISTING_CATEGORIES = [
+  { id: 'food', label: 'Food & farm produce' },
+  { id: 'clothing', label: 'Clothing & fabrics' },
+  { id: 'electronics', label: 'Phones & electronics' },
+  { id: 'household', label: 'Household' },
+  { id: 'services', label: 'Services' },
+  { id: 'vehicles', label: 'Vehicles' },
+  { id: 'property', label: 'Land & property' },
+  { id: 'other', label: 'Other' },
+] as const;
+export type ListingCategory = (typeof LISTING_CATEGORIES)[number]['id'];
+
+export const MATCH_STATUSES = [
+  { id: 'scheduled', label: 'Scheduled' },
+  { id: 'live', label: 'Live' },
+  { id: 'halftime', label: 'Half time' },
+  { id: 'finished', label: 'Full time' },
+  { id: 'postponed', label: 'Postponed' },
+  { id: 'cancelled', label: 'Cancelled' },
+] as const;
+export type MatchStatus = (typeof MATCH_STATUSES)[number]['id'];
+
+export const MATCH_UPDATE_TYPES = [
+  { id: 'goal', label: 'Goal', emoji: '⚽' },
+  { id: 'yellow', label: 'Yellow card', emoji: '🟨' },
+  { id: 'red', label: 'Red card', emoji: '🟥' },
+  { id: 'sub', label: 'Substitution', emoji: '🔁' },
+  { id: 'chance', label: 'Big chance', emoji: '🔥' },
+  { id: 'note', label: 'Update', emoji: '📣' },
+] as const;
+export type MatchUpdateType = (typeof MATCH_UPDATE_TYPES)[number]['id'];
+
+export const EXTRA_LIMITS = {
+  eventTitleMax: 120,
+  eventDescriptionMax: 2000,
+  eventLocationMax: 200,
+  listingTitleMax: 100,
+  listingDescriptionMax: 1500,
+  listingPriceMax: 10_000_000,
+  priceUnitMax: 30,
+  teamNameMax: 50,
+  competitionMax: 80,
+  matchUpdateMax: 200,
+  feedbackMax: 2000,
+  imageMaxBytes: 400 * 1024,
+  imageMaxPixels: 1280,
+  /** Seconds between two events / listings by the same user. */
+  eventCooldownSeconds: 60,
+  listingCooldownSeconds: 60,
+} as const;
+
+export const PHONE_PATTERN = /^\+?[0-9]{9,15}$/;

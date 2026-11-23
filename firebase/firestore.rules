@@ -36,7 +36,15 @@ service cloud.firestore {
     function isSuper() { return hasRole() && get(rolePath()).data.role == 'super_admin'; }
     function canModerate(townId) {
       return hasRole()
-        && (get(rolePath()).data.role == 'super_admin' || townId in get(rolePath()).data.townIds);
+        && (get(rolePath()).data.role == 'super_admin'
+            || (get(rolePath()).data.role in ['town_admin', 'moderator'] && townId in get(rolePath()).data.townIds));
+    }
+    // Sports reporters and every admin role may manage matches.
+    function canReportSports() { return hasRole(); }
+    function imageOk(url, uid) {
+      return url == null
+        || (str(url, 10, 300)
+            && url.matches('^https?://[^/]+(/[^/]+)*/images/' + uid + '/[A-Za-z0-9_-]+[.](webp|jpg)$'));
     }
 
     function ratePath() { return /databases/$(database)/documents/rate_limits/$(me()); }
@@ -128,13 +136,17 @@ service cloud.firestore {
     match /rate_limits/{uid} {
       allow read: if signedIn() && uid == me();
       allow create: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt'])
         && d().get('lastPostAt', request.time) == request.time
-        && d().get('lastCommentAt', request.time) == request.time;
+        && d().get('lastCommentAt', request.time) == request.time
+        && d().get('lastEventAt', request.time) == request.time
+        && d().get('lastListingAt', request.time) == request.time;
       allow update: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt'])
         && (!('lastPostAt' in changed()) || d().lastPostAt == request.time)
-        && (!('lastCommentAt' in changed()) || d().lastCommentAt == request.time);
+        && (!('lastCommentAt' in changed()) || d().lastCommentAt == request.time)
+        && (!('lastEventAt' in changed()) || d().lastEventAt == request.time)
+        && (!('lastListingAt' in changed()) || d().lastListingAt == request.time);
       allow delete: if false;
     }
 
@@ -258,6 +270,216 @@ service cloud.firestore {
       allow read: if signedIn() && resource.data.userId == me();
     }
 
+    // ---------- notifications (written by the person who liked/commented) ----------
+    function notifOk(uid, nid) {
+      return signedIn() && uid != me()
+        && exactKeys(['type', 'actorId', 'postId', 'commentId', 'read', 'createdAt'])
+        && d().actorId == me()
+        && d().read == false
+        && d().createdAt == request.time
+        && get(postPath(d().postId)).data.authorId == uid
+        && ((d().type == 'like' && nid == 'like_' + d().postId + '_' + me() && d().commentId == null
+              && existsAfter(reactionPath(d().postId, me())))
+            || (d().type == 'comment' && nid == 'comment_' + d().commentId
+              && !exists(commentPath(d().postId, d().commentId))
+              && getAfter(commentPath(d().postId, d().commentId)).data.authorId == me()));
+    }
+    match /users/{uid}/notifications/{nid} {
+      allow read, delete: if signedIn() && uid == me();
+      allow create: if notifOk(uid, nid);
+      allow update: if (signedIn() && uid == me() && changed().hasOnly(['read']) && d().read == true)
+        || notifOk(uid, nid);
+    }
+
+    // ---------- events ----------
+    function eventPath(id) { return /databases/$(database)/documents/events/$(id); }
+    function rsvpPath(eid) { return /databases/$(database)/documents/events/$(eid)/rsvps/$(me()); }
+    function rsvpBefore(eid) { return exists(rsvpPath(eid)) ? get(rsvpPath(eid)).data.status : 'none'; }
+    function rsvpAfter(eid) { return existsAfter(rsvpPath(eid)) ? getAfter(rsvpPath(eid)).data.status : 'none'; }
+    function delta(status, b, a) { return (a == status ? 1 : 0) - (b == status ? 1 : 0); }
+    function rsvpCountersOk(eid, before, after) {
+      return rsvpBefore(eid) != rsvpAfter(eid)
+        && after.goingCount == before.goingCount + delta('going', rsvpBefore(eid), rsvpAfter(eid))
+        && after.interestedCount == before.interestedCount + delta('interested', rsvpBefore(eid), rsvpAfter(eid));
+    }
+    function validEvent(e, uid) {
+      return isTown(e.townId)
+        && str(e.title, 3, 120)
+        && str(e.description, 0, 2000)
+        && e.category in ['festival', 'funeral', 'wedding', 'church', 'meeting', 'sports', 'community', 'other']
+        && str(e.location, 0, 200)
+        && e.startsAt is timestamp
+        && (e.endsAt == null || (e.endsAt is timestamp && e.endsAt > e.startsAt))
+        && imageOk(e.imageUrl, uid);
+    }
+
+    match /events/{eventId} {
+      allow read: if signedIn()
+        && (resource.data.status in ['published', 'cancelled']
+            || resource.data.authorId == me()
+            || canModerate(resource.data.townId));
+      allow create: if isActive()
+        && exactKeys(['authorId', 'townId', 'title', 'description', 'category', 'location', 'startsAt', 'endsAt',
+                      'imageUrl', 'status', 'goingCount', 'interestedCount', 'createdAt', 'updatedAt'])
+        && d().authorId == me()
+        && validEvent(d(), me())
+        && d().status == 'published'
+        && d().goingCount == 0 && d().interestedCount == 0
+        && d().createdAt == request.time && d().updatedAt == request.time
+        && rateOk('lastEventAt', 60);
+      allow update: if
+        (isActive() && resource.data.authorId == me() && resource.data.status == 'published'
+          && changed().hasOnly(['townId', 'title', 'description', 'category', 'location', 'startsAt', 'endsAt',
+                                'imageUrl', 'updatedAt'])
+          && validEvent(d(), me()) && d().updatedAt == request.time)
+        || (signedIn() && resource.data.authorId == me()
+          && changed().hasOnly(['status', 'updatedAt']) && d().updatedAt == request.time
+          && ((resource.data.status == 'published' && d().status == 'cancelled')
+              || (resource.data.status != 'deleted' && d().status == 'deleted')))
+        || (signedIn() && resource.data.status == 'published'
+          && changed().hasOnly(['goingCount', 'interestedCount'])
+          && rsvpCountersOk(eventId, resource.data, d()));
+      allow delete: if false;
+
+      match /rsvps/{rid} {
+        allow read: if signedIn() && rid == me();
+        allow create, update: if isActive() && rid == me()
+          && exactKeys(['status', 'userId', 'eventId', 'createdAt'])
+          && d().status in ['going', 'interested']
+          && d().userId == me() && d().eventId == eventId
+          && d().createdAt is timestamp
+          && get(eventPath(eventId)).data.status == 'published'
+          && rsvpCountersOk(eventId, get(eventPath(eventId)).data, getAfter(eventPath(eventId)).data);
+        allow delete: if signedIn() && rid == me()
+          && (get(eventPath(eventId)).data.status != 'published'
+              || rsvpCountersOk(eventId, get(eventPath(eventId)).data, getAfter(eventPath(eventId)).data));
+      }
+    }
+    match /{path=**}/rsvps/{rid} {
+      allow read: if signedIn() && resource.data.userId == me();
+    }
+
+    // ---------- marketplace ----------
+    function validListing(l, uid) {
+      return isTown(l.townId)
+        && str(l.title, 3, 100)
+        && str(l.description, 0, 1500)
+        && l.category in ['food', 'clothing', 'electronics', 'household', 'services', 'vehicles', 'property', 'other']
+        && (l.price == null || (l.price is int && l.price >= 0 && l.price <= 10000000))
+        && str(l.priceUnit, 0, 30)
+        && imageOk(l.imageUrl, uid)
+        && (l.contactPhone == null || (l.contactPhone is string && l.contactPhone.matches('^[+]?[0-9]{9,15}$')))
+        && l.contactWhatsApp is bool
+        && l.searchTokens is list && l.searchTokens.size() <= 50;
+    }
+
+    match /listings/{listingId} {
+      allow read: if signedIn()
+        && (resource.data.status in ['available', 'sold']
+            || resource.data.sellerId == me()
+            || canModerate(resource.data.townId));
+      allow create: if isActive()
+        && exactKeys(['sellerId', 'townId', 'title', 'description', 'category', 'price', 'priceUnit', 'imageUrl',
+                      'contactPhone', 'contactWhatsApp', 'status', 'searchTokens', 'createdAt', 'updatedAt'])
+        && d().sellerId == me()
+        && validListing(d(), me())
+        && d().status == 'available'
+        && d().createdAt == request.time && d().updatedAt == request.time
+        && rateOk('lastListingAt', 60);
+      allow update: if
+        (isActive() && resource.data.sellerId == me() && resource.data.status in ['available', 'sold']
+          && changed().hasOnly(['townId', 'title', 'description', 'category', 'price', 'priceUnit', 'imageUrl',
+                                'contactPhone', 'contactWhatsApp', 'status', 'searchTokens', 'updatedAt'])
+          && d().status in ['available', 'sold']
+          && validListing(d(), me()) && d().updatedAt == request.time)
+        || (signedIn() && resource.data.sellerId == me() && resource.data.status != 'deleted'
+          && changed().hasOnly(['status', 'updatedAt']) && d().status == 'deleted' && d().updatedAt == request.time);
+      allow delete: if false;
+    }
+
+    // ---------- sports centre ----------
+    function matchPath(id) { return /databases/$(database)/documents/matches/$(id); }
+    function votePath(mid) { return /databases/$(database)/documents/matches/$(mid)/votes/$(me()); }
+    function validTeam(t) {
+      return t.keys().hasOnly(['name', 'townId']) && str(t.name, 2, 50) && (t.townId == null || isTown(t.townId));
+    }
+    function validMatch(m) {
+      return str(m.competition, 3, 80)
+        && validTeam(m.home) && validTeam(m.away)
+        && str(m.venue, 0, 200)
+        && m.kickoffAt is timestamp
+        && m.status in ['scheduled', 'live', 'halftime', 'finished', 'postponed', 'cancelled']
+        && m.homeScore is int && m.homeScore >= 0 && m.homeScore <= 99
+        && m.awayScore is int && m.awayScore >= 0 && m.awayScore <= 99
+        && (m.minute == null || (m.minute is int && m.minute >= 0 && m.minute <= 130));
+    }
+    function votingOpen(m) { return m.status in ['scheduled', 'live', 'halftime']; }
+    function voteCountersOk(before, after, pick) {
+      return after.votesHome == before.votesHome + (pick == 'home' ? 1 : 0)
+        && after.votesDraw == before.votesDraw + (pick == 'draw' ? 1 : 0)
+        && after.votesAway == before.votesAway + (pick == 'away' ? 1 : 0);
+    }
+
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow create: if canReportSports()
+        && exactKeys(['competition', 'home', 'away', 'venue', 'kickoffAt', 'status', 'homeScore', 'awayScore', 'minute',
+                      'votesHome', 'votesDraw', 'votesAway', 'createdBy', 'createdAt', 'updatedAt'])
+        && validMatch(d())
+        && d().status == 'scheduled' && d().homeScore == 0 && d().awayScore == 0 && d().minute == null
+        && d().votesHome == 0 && d().votesDraw == 0 && d().votesAway == 0
+        && d().createdBy == me()
+        && d().createdAt == request.time && d().updatedAt == request.time;
+      allow update: if
+        (canReportSports()
+          && changed().hasOnly(['competition', 'home', 'away', 'venue', 'kickoffAt', 'status', 'homeScore', 'awayScore',
+                                'minute', 'updatedAt'])
+          && validMatch(d()) && d().updatedAt == request.time)
+        || (signedIn() && votingOpen(resource.data)
+          && changed().hasOnly(['votesHome', 'votesDraw', 'votesAway'])
+          && !exists(votePath(matchId)) && existsAfter(votePath(matchId))
+          && voteCountersOk(resource.data, d(), getAfter(votePath(matchId)).data.pick));
+      allow delete: if canReportSports();
+
+      match /updates/{updateId} {
+        allow read: if signedIn();
+        allow create: if canReportSports()
+          && exactKeys(['type', 'team', 'minute', 'text', 'createdBy', 'createdAt'])
+          && d().type in ['goal', 'yellow', 'red', 'sub', 'chance', 'note']
+          && (d().team == null || d().team in ['home', 'away'])
+          && (d().minute == null || (d().minute is int && d().minute >= 0 && d().minute <= 130))
+          && str(d().text, 0, 200)
+          && d().createdBy == me() && d().createdAt == request.time;
+        allow delete: if canReportSports();
+        allow update: if false;
+      }
+
+      // One free prediction per member per match (no money involved).
+      match /votes/{rid} {
+        allow read: if signedIn() && rid == me();
+        allow create: if isActive() && rid == me()
+          && exactKeys(['pick', 'userId', 'matchId', 'createdAt'])
+          && d().pick in ['home', 'draw', 'away']
+          && d().userId == me() && d().matchId == matchId
+          && d().createdAt == request.time
+          && votingOpen(get(matchPath(matchId)).data)
+          && voteCountersOk(get(matchPath(matchId)).data, getAfter(matchPath(matchId)).data, d().pick);
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- tester feedback ----------
+    match /feedback/{id} {
+      allow create: if signedIn()
+        && exactKeys(['userId', 'text', 'page', 'createdAt'])
+        && d().userId == me()
+        && str(d().text, 3, 2000)
+        && str(d().page, 0, 200)
+        && d().createdAt == request.time;
+      allow read: if isSuper();
+      allow update, delete: if false;
+    }
+
     // ---------- reports ----------
     match /reports/{reportId} {
       // Report id = <reporter>_<type>_<targetId>, so a user can report an item once.
@@ -265,12 +487,14 @@ service cloud.firestore {
         && exactKeys(['reporterId', 'targetType', 'targetId', 'targetPath', 'townId', 'reason', 'details',
                       'status', 'createdAt', 'resolvedBy', 'resolvedAt', 'resolution'])
         && d().reporterId == me()
-        && d().targetType in ['post', 'comment', 'user']
+        && d().targetType in ['post', 'comment', 'user', 'event', 'listing']
         && str(d().targetId, 1, 128)
         && reportId == me() + '_' + d().targetType + '_' + d().targetId
         && ((d().targetType == 'post' && d().targetPath == 'posts/' + d().targetId)
             || (d().targetType == 'comment' && d().targetPath.matches('^posts/[A-Za-z0-9]+/comments/' + d().targetId + '$'))
-            || (d().targetType == 'user' && d().targetPath == 'users/' + d().targetId && d().targetId != me()))
+            || (d().targetType == 'user' && d().targetPath == 'users/' + d().targetId && d().targetId != me())
+            || (d().targetType == 'event' && d().targetPath == 'events/' + d().targetId)
+            || (d().targetType == 'listing' && d().targetPath == 'listings/' + d().targetId))
         && isTown(d().townId)
         && d().reason in ['harassment', 'threat', 'impersonation', 'spam', 'misinformation', 'defamation', 'fraud', 'other']
         && str(d().details, 0, 500)

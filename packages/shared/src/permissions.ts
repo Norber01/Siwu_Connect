@@ -6,6 +6,7 @@ import type { Role } from './constants';
  *    plus roles, platform settings, town configuration and the audit log.
  *  - Town Admin: moderation, announcements, pins and suspensions in assigned towns.
  *  - Moderator: review reports and remove/restore content in assigned towns.
+ *  - Sports reporter: create matches and post live score updates (no moderation powers).
  *
  * The same rules are mirrored in firestore.rules and enforced in the Worker.
  * The web app uses these helpers only to decide what to show.
@@ -18,7 +19,9 @@ export interface AdminRole {
 export const isSuperAdmin = (r: AdminRole | null | undefined): boolean => r?.role === 'super_admin';
 
 function inScope(r: AdminRole, townId: string): boolean {
-  return r.role === 'super_admin' || r.townIds.includes(townId);
+  if (r.role === 'super_admin') return true;
+  if (r.role === 'reporter') return false;
+  return r.townIds.includes(townId);
 }
 
 /** Review reports, remove/restore posts and comments. */
@@ -45,5 +48,8 @@ export function canSuspend(r: AdminRole | null | undefined, townId: string): boo
 export const canManageRoles = isSuperAdmin;
 export const canViewAuditLog = isSuperAdmin;
 
-/** Any admin role at all — used to show the Admin area link. */
-export const hasAdminAccess = (r: AdminRole | null | undefined): boolean => !!r;
+/** Any moderation role — used to show the Admin area link (reporters only manage sports). */
+export const hasAdminAccess = (r: AdminRole | null | undefined): boolean => !!r && r.role !== 'reporter';
+
+/** Create matches and post live updates in the Sports Centre: every role, including reporters. */
+export const canReportSports = (r: AdminRole | null | undefined): boolean => !!r;
