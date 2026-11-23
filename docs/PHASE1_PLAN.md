@@ -1,6 +1,6 @@
 # Siwu Connect — Phase 1 Plan
 
-Status: **PROPOSAL — awaiting founder approval before any application code is written.**
+Status: **Approved and implemented (2026-11-23).** See PROJECT_LOG.md for decisions and progress.
 Source: `docs/Siwu_Connect_Product_and_Development_Brief.docx` (sections 4, 8–15).
 
 Phase 1 = a text-first community platform for the four Akpafu towns: registration,
@@ -49,7 +49,7 @@ pay-as-you-go Blaze plan) and matches the founder's Cloudflare preference.
   Firestore REST API with a service-account credential stored as a Worker secret.
 - **Images:** client-side resize to ≤ 256 px WebP before upload → R2 via a short-lived
   signed URL issued by the Worker. Hard size limit (e.g. 200 KB).
-- **Anti-spam:** Cloudflare Turnstile (free) on registration; Firebase App Check later if needed.
+- **Anti-spam:** posting/commenting cooldowns enforced in security rules; Firebase's built-in sign-up protection. (Turnstile deferred — see PROJECT_LOG.)
 - **Testing:** Vitest (unit), `@firebase/rules-unit-testing` against the Firestore
   emulator (security rules), Playwright (end-to-end, mobile + desktop viewports).
 - **CI:** GitHub Actions — lint, typecheck, unit tests, rules tests on every push.

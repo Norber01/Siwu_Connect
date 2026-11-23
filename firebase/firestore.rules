@@ -207,8 +207,10 @@ service cloud.firestore {
       match /reactions/{rid} {
         allow read: if signedIn();
         allow create: if isActive() && rid == me()
-          && exactKeys(['type', 'createdAt'])
+          && exactKeys(['type', 'userId', 'postId', 'createdAt'])
           && d().type == 'like'
+          && d().userId == me()
+          && d().postId == postId
           && d().createdAt == request.time
           && get(postPath(postId)).data.status == 'published'
           && getAfter(postPath(postId)).data.reactionCount == get(postPath(postId)).data.reactionCount + 1;
@@ -249,6 +251,11 @@ service cloud.firestore {
 
         allow delete: if false;
       }
+    }
+
+    // Lets a user find their own reactions across posts (one query per feed page).
+    match /{path=**}/reactions/{rid} {
+      allow read: if signedIn() && resource.data.userId == me();
     }
 
     // ---------- reports ----------

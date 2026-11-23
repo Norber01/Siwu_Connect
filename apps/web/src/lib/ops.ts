@@ -115,7 +115,7 @@ export async function deletePost(db: Firestore, postId: string): Promise<void> {
 export async function setLike(db: Firestore, uid: string, postId: string, like: boolean): Promise<void> {
   const batch = writeBatch(db);
   const reaction = doc(db, 'posts', postId, 'reactions', uid);
-  if (like) batch.set(reaction, { type: 'like', createdAt: serverTimestamp() });
+  if (like) batch.set(reaction, { type: 'like', userId: uid, postId, createdAt: serverTimestamp() });
   else batch.delete(reaction);
   batch.update(doc(db, 'posts', postId), { reactionCount: increment(like ? 1 : -1) });
   await batch.commit();

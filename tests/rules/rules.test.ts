@@ -15,6 +15,7 @@ import {
   type Firestore,
   Timestamp,
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -274,9 +275,20 @@ describe('reactions', () => {
     await assertFails(updateDoc(doc(db('bob'), 'posts', 'p1'), { reactionCount: 50 }));
     const bob = db('bob');
     const b = writeBatch(bob);
-    b.set(doc(bob, 'posts', 'p1', 'reactions', 'alice'), { type: 'like', createdAt: serverTimestamp() });
+    b.set(doc(bob, 'posts', 'p1', 'reactions', 'alice'), { type: 'like', userId: 'alice', postId: 'p1', createdAt: serverTimestamp() });
     b.update(doc(bob, 'posts', 'p1'), { reactionCount: increment(1) });
     await assertFails(b.commit()); // reacting on behalf of someone else
+  });
+
+  it('users can query only their own reactions across posts', async () => {
+    await seedPost('p2', 'alice');
+    await ops.setLike(db('bob'), 'bob', 'p1', true);
+    await ops.setLike(db('bob'), 'bob', 'p2', true);
+    const mine = await getDocs(
+      query(collectionGroup(db('bob'), 'reactions'), where('userId', '==', 'bob'), where('postId', 'in', ['p1', 'p2'])),
+    );
+    expect(mine.size).toBe(2);
+    await assertFails(getDocs(query(collectionGroup(db('alice'), 'reactions'), where('userId', '==', 'bob'))));
   });
 });
 
@@ -338,6 +350,16 @@ describe('reports', () => {
     await assertFails(getDoc(doc(db('modtodzi'), 'reports', id)));
     await assertSucceeds(getDoc(doc(db('mod'), 'reports', id)));
     await assertSucceeds(getDoc(doc(db('boss'), 'reports', id)));
+  });
+
+  it('moderators can list open reports for their towns', async () => {
+    await ops.submitReport(db('bob'), 'bob', target, 'spam', '');
+    const reports = collection(db('mod'), 'reports');
+    await assertSucceeds(
+      getDocs(query(reports, where('status', '==', 'open'), where('townId', 'in', ['odomi']), orderBy('createdAt', 'desc'))),
+    );
+    await assertFails(getDocs(query(collection(db('modtodzi'), 'reports'), where('status', '==', 'open'), where('townId', 'in', ['odomi']))));
+    await assertSucceeds(getDocs(query(collection(db('boss'), 'reports'), where('status', '==', 'open'), orderBy('createdAt', 'desc'))));
   });
 
   it('reports cannot be resolved by clients, even moderators', async () => {
