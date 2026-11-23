@@ -267,3 +267,52 @@ describe('account deletion', () => {
     expect((await call('POST', '/me/delete-account', 'boss')).status).toBe(409);
   });
 });
+
+describe('events and marketplace moderation', () => {
+  it('moderator removes and restores a listing; report on an event resolves', async () => {
+    await fs().commit([
+      { kind: 'set', path: 'listings/l1', data: { sellerId: 'alice', townId: 'odomi', title: 'Phone', status: 'available' } },
+      { kind: 'set', path: 'events/e1', data: { authorId: 'bob', townId: 'todzi', title: 'Party', status: 'published' } },
+      { kind: 'set', path: 'reports/r1', data: { reporterId: 'alice', targetType: 'event', targetId: 'e1', targetPath: 'events/e1', townId: 'todzi', status: 'open' } },
+    ]);
+    expect((await call('POST', '/admin/listings/l1/remove', 'mod', { note: 'scam' })).status).toBe(200);
+    expect((await fs().get<{ status: string }>('listings/l1'))!.data.status).toBe('removed');
+    expect((await call('POST', '/admin/listings/l1/restore', 'mod', {})).status).toBe(200);
+    expect((await fs().get<{ status: string }>('listings/l1'))!.data.status).toBe('available');
+    expect((await call('POST', '/admin/listings/l1/remove', 'townadmin', {})).status).toBe(200); // odomi
+    expect((await call('POST', '/admin/events/e1/remove', 'townadmin', {})).status).toBe(403); // todzi
+    expect((await call('POST', '/admin/reports/r1/resolve', 'mod', { action: 'remove_content' })).status).toBe(200);
+    expect((await fs().get<{ status: string }>('events/e1'))!.data.status).toBe('removed');
+  });
+
+  it('reporters have no admin powers', async () => {
+    await seedUser('rep');
+    await seedRole('rep', 'reporter', []);
+    await seedPost('p1', 'alice');
+    expect((await call('POST', '/admin/posts/p1/remove', 'rep', {})).status).toBe(403);
+  });
+});
+
+describe('photo uploads', () => {
+  const jpeg = () => {
+    const b = new Uint8Array(64);
+    b.set([0xff, 0xd8, 0xff, 0xe0]);
+    return b;
+  };
+  const upload = (uid: string, bytes: Uint8Array) =>
+    app.request('/uploads/image', { method: 'POST', headers: { authorization: `Bearer ${token(uid)}`, 'content-type': 'image/jpeg' }, body: bytes }, env());
+
+  it('members upload event/listing photos that are served publicly', async () => {
+    const res = await upload('alice', jpeg());
+    expect(res.status).toBe(200);
+    const { url } = (await res.json()) as { url: string };
+    expect(url).toMatch(/\/images\/alice\/[A-Za-z0-9]+\.jpg$/);
+    expect((await app.request(new URL(url).pathname, {}, env())).status).toBe(200);
+  });
+
+  it('requires a profile and an active account', async () => {
+    expect((await upload('nobody', jpeg())).status).toBe(403);
+    await seedUser('sam', 'odomi', 'suspended');
+    expect((await upload('sam', jpeg())).status).toBe(403);
+  });
+});

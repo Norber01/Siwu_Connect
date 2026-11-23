@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { z } from 'zod';
 import {
   type AdminRole,
+  EXTRA_LIMITS,
   LIMITS,
   announcementSchema,
   announcementUpdateSchema,
@@ -42,7 +43,7 @@ interface UserDoc {
   photoUrl: string | null;
 }
 interface ReportDoc {
-  targetType: 'post' | 'comment' | 'user';
+  targetType: 'post' | 'comment' | 'user' | 'event' | 'listing';
   targetId: string;
   targetPath: string;
   townId: string;
@@ -83,37 +84,47 @@ function moderation(uid: string, action: string, note: string): Data {
   return { moderation: { by: uid, action, note, at: new Date() }, updatedAt: FieldValue.serverTimestamp() };
 }
 
-/** Builds the writes to remove or restore a post/comment. */
+interface ContentDoc {
+  authorId?: string;
+  sellerId?: string;
+  townId: string;
+  status: string;
+}
+
+/** Which statuses count as "visible" for each kind of content, and what a restore returns to. */
+function contentKind(path: string): { kind: 'post' | 'comment' | 'event' | 'listing'; visible: string[]; restoreTo: string } {
+  const p = path.split('/');
+  if (p.length === 2 && p[0] === 'posts') return { kind: 'post', visible: ['published'], restoreTo: 'published' };
+  if (p.length === 4 && p[0] === 'posts' && p[2] === 'comments') return { kind: 'comment', visible: ['published'], restoreTo: 'published' };
+  if (p.length === 2 && p[0] === 'events') return { kind: 'event', visible: ['published', 'cancelled'], restoreTo: 'published' };
+  if (p.length === 2 && p[0] === 'listings') return { kind: 'listing', visible: ['available', 'sold'], restoreTo: 'available' };
+  return fail(400, 'Unsupported target');
+}
+
+/** Builds the writes to remove or restore a post, comment, event or listing. */
 async function contentStatusWrites(
   fs: Firestore,
   uid: string,
   targetPath: string,
-  newStatus: 'removed' | 'published',
+  action: 'remove' | 'restore',
   note: string,
 ): Promise<{ writes: Write[]; townId: string; authorId: string }> {
-  const parts = targetPath.split('/');
-  const isComment = parts.length === 4 && parts[2] === 'comments';
-  if (!isComment && !(parts.length === 2 && parts[0] === 'posts')) fail(400, 'Unsupported target');
-  const target = await fs.get<PostDoc | CommentDoc>(targetPath);
+  const { kind, visible, restoreTo } = contentKind(targetPath);
+  const target = await fs.get<ContentDoc>(targetPath);
   if (!target) fail(404, 'Content not found');
-  const from = newStatus === 'removed' ? 'published' : 'removed';
-  if (target!.data.status !== from) fail(409, `Content is ${target!.data.status}, not ${from}`);
-  const action = newStatus === 'removed' ? 'remove' : 'restore';
-  const writes: Write[] = [
-    { kind: 'update', path: targetPath, data: { status: newStatus, ...moderation(uid, action, note) } },
-  ];
-  if (isComment) {
-    const postPath = `posts/${parts[1]}`;
+  const status = target!.data.status;
+  if (action === 'remove' && !visible.includes(status)) fail(409, `Content is ${status}, it cannot be removed`);
+  if (action === 'restore' && status !== 'removed') fail(409, `Content is ${status}, not removed`);
+  const newStatus = action === 'remove' ? 'removed' : restoreTo;
+  const writes: Write[] = [{ kind: 'update', path: targetPath, data: { status: newStatus, ...moderation(uid, action, note) } }];
+  if (kind === 'comment') {
+    const postPath = targetPath.split('/comments/')[0]!;
     const post = await fs.get<PostDoc>(postPath);
     if (post?.data.status === 'published') {
-      writes.push({
-        kind: 'update',
-        path: postPath,
-        data: { commentCount: FieldValue.increment(newStatus === 'removed' ? -1 : 1) },
-      });
+      writes.push({ kind: 'update', path: postPath, data: { commentCount: FieldValue.increment(action === 'remove' ? -1 : 1) } });
     }
   }
-  return { writes, townId: target!.data.townId, authorId: target!.data.authorId };
+  return { writes, townId: target!.data.townId, authorId: (target!.data.authorId ?? target!.data.sellerId)! };
 }
 
 export function createApp() {
@@ -152,6 +163,20 @@ export function createApp() {
     });
   });
 
+  app.get('/images/:uid/:file', async (c) => {
+    const { uid, file } = c.req.param();
+    if (!/^[A-Za-z0-9_-]+\.(webp|jpg)$/.test(file) || !/^[A-Za-z0-9]+$/.test(uid)) fail(404, 'Not found');
+    const obj = await c.env.AVATARS.get(`images/${uid}/${file}`);
+    if (!obj) fail(404, 'Not found');
+    return new Response(obj!.body, {
+      headers: {
+        'content-type': obj!.httpMetadata?.contentType ?? 'image/webp',
+        'cache-control': 'public, max-age=31536000, immutable',
+        'x-content-type-options': 'nosniff',
+      },
+    });
+  });
+
   // Everything below requires a verified Firebase user.
   app.use('*', async (c, next) => {
     const header = c.req.header('authorization') ?? '';
@@ -167,22 +192,25 @@ export function createApp() {
     await next();
   });
 
-  // ---------- profile photo upload ----------
+  // ---------- photo uploads ----------
+  async function readImage(c: { req: { header: (n: string) => string | undefined; arrayBuffer: () => Promise<ArrayBuffer> } }, maxBytes: number) {
+    const type = c.req.header('content-type') ?? '';
+    if (type !== 'image/webp' && type !== 'image/jpeg') fail(415, 'Upload a WebP or JPEG image');
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength === 0) fail(400, 'Empty upload');
+    if (bytes.byteLength > maxBytes) fail(413, 'Image is too large');
+    const isWebp = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[8] === 0x57 && bytes[9] === 0x45;
+    const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if (type === 'image/webp' ? !isWebp : !isJpeg) fail(415, 'File content does not match its type');
+    return { bytes, type, ext: type === 'image/webp' ? 'webp' : 'jpg' };
+  }
+
   app.post('/uploads/avatar', async (c) => {
     const uid = c.get('uid');
     const fs = c.get('fs');
     const user = await fs.get<UserDoc>(`users/${uid}`);
     if (user && user.data.status !== 'active') fail(403, 'Your account is suspended');
-    const type = c.req.header('content-type') ?? '';
-    if (type !== 'image/webp' && type !== 'image/jpeg') fail(415, 'Upload a WebP or JPEG image');
-    const bytes = new Uint8Array(await c.req.arrayBuffer());
-    if (bytes.byteLength === 0) fail(400, 'Empty upload');
-    if (bytes.byteLength > LIMITS.avatarMaxBytes) fail(413, 'Image is too large');
-    const isWebp = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[8] === 0x57 && bytes[9] === 0x45;
-    const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    if (type === 'image/webp' ? !isWebp : !isJpeg) fail(415, 'File content does not match its type');
-
-    const ext = type === 'image/webp' ? 'webp' : 'jpg';
+    const { bytes, type, ext } = await readImage(c, LIMITS.avatarMaxBytes);
     const key = `avatars/${uid}/${fs.newId()}.${ext}`;
     await c.env.AVATARS.put(key, bytes, { httpMetadata: { contentType: type } });
 
@@ -192,6 +220,21 @@ export function createApp() {
     const stale = existing.objects.map((o) => o.key).filter((k) => k !== key && k !== `avatars/${current}`);
     if (stale.length) await c.env.AVATARS.delete(stale);
 
+    return c.json({ url: `${c.env.PUBLIC_API_URL.replace(/\/$/, '')}/${key}` });
+  });
+
+  /** Photos for events and marketplace listings. Members only; max 200 photos per member. */
+  app.post('/uploads/image', async (c) => {
+    const uid = c.get('uid');
+    const fs = c.get('fs');
+    const user = await fs.get<UserDoc>(`users/${uid}`);
+    if (!user) fail(403, 'Finish setting up your profile first');
+    if (user!.data.status !== 'active') fail(403, 'Your account is suspended');
+    const existing = await c.env.AVATARS.list({ prefix: `images/${uid}/`, limit: 201 });
+    if (existing.objects.length >= 200) fail(409, 'You have reached the photo limit. Delete old listings or events first.');
+    const { bytes, type, ext } = await readImage(c, EXTRA_LIMITS.imageMaxBytes);
+    const key = `images/${uid}/${fs.newId()}.${ext}`;
+    await c.env.AVATARS.put(key, bytes, { httpMetadata: { contentType: type } });
     return c.json({ url: `${c.env.PUBLIC_API_URL.replace(/\/$/, '')}/${key}` });
   });
 
@@ -221,6 +264,23 @@ export function createApp() {
           data: { status: 'deleted', text: '', searchTokens: [], updatedAt: FieldValue.serverTimestamp() },
         })),
       );
+    }
+    // Wipe the user's events and listings.
+    for (const [collection, field, live] of [
+      ['events', 'authorId', ['published', 'cancelled', 'removed']],
+      ['listings', 'sellerId', ['available', 'sold', 'removed']],
+    ] as const) {
+      for (;;) {
+        const docs = await fs.query({ collection, where: [[field, 'EQUAL', uid], ['status', 'IN', [...live]]], limit: 200 });
+        if (!docs.length) break;
+        await fs.commit(
+          docs.map((d) => ({
+            kind: 'update' as const,
+            path: d.path,
+            data: { status: 'deleted', description: '', imageUrl: null, updatedAt: FieldValue.serverTimestamp() },
+          })),
+        );
+      }
     }
     // Wipe the user's comments, keeping counters right.
     for (;;) {
@@ -255,8 +315,10 @@ export function createApp() {
     if (user) writes.push({ kind: 'delete', path: `usernames/${user.data.username}` });
     await fs.commit(writes);
 
-    const avatars = await c.env.AVATARS.list({ prefix: `avatars/${uid}/`, limit: 100 });
-    if (avatars.objects.length) await c.env.AVATARS.delete(avatars.objects.map((o) => o.key));
+    for (const prefix of [`avatars/${uid}/`, `images/${uid}/`]) {
+      const objects = await c.env.AVATARS.list({ prefix, limit: 1000 });
+      if (objects.objects.length) await c.env.AVATARS.delete(objects.objects.map((o) => o.key));
+    }
     await deleteAuthUser(c.env, uid);
     return c.json({ ok: true });
   });
@@ -271,15 +333,25 @@ export function createApp() {
   });
 
   // Remove / restore a post.
-  for (const [route, status] of [
-    ['remove', 'removed'],
-    ['restore', 'published'],
-  ] as const) {
+  for (const route of ['remove', 'restore'] as const) {
+    for (const collection of ['events', 'listings'] as const) {
+      admin.post(`/${collection}/:id/${route}`, async (c) => {
+        const { note } = await body(c.req.raw, moderationNoteSchema);
+        const fs = c.get('fs');
+        const path = `${collection}/${c.req.param('id')}`;
+        const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, route, note);
+        if (!canModerate(c.get('role'), townId)) fail(403, 'You cannot moderate this town');
+        writes.push(audit(fs, c.get('uid'), `${collection.slice(0, -1)}.${route}`, path, townId, { note }));
+        await fs.commit(writes);
+        return c.json({ ok: true });
+      });
+    }
+
     admin.post(`/posts/:postId/${route}`, async (c) => {
       const { note } = await body(c.req.raw, moderationNoteSchema);
       const fs = c.get('fs');
       const path = `posts/${c.req.param('postId')}`;
-      const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, status, note);
+      const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, route, note);
       if (!canModerate(c.get('role'), townId)) fail(403, 'You cannot moderate this town');
       writes.push(audit(fs, c.get('uid'), `post.${route}`, path, townId, { note }));
       await fs.commit(writes);
@@ -290,7 +362,7 @@ export function createApp() {
       const { note } = await body(c.req.raw, moderationNoteSchema);
       const fs = c.get('fs');
       const path = `posts/${c.req.param('postId')}/comments/${c.req.param('commentId')}`;
-      const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, status, note);
+      const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, route, note);
       if (!canModerate(c.get('role'), townId)) fail(403, 'You cannot moderate this town');
       writes.push(audit(fs, c.get('uid'), `comment.${route}`, path, townId, { note }));
       await fs.commit(writes);
@@ -335,12 +407,12 @@ export function createApp() {
       authorId = target ? r.targetId : null;
       if (input.action === 'remove_content') fail(400, 'Use "suspend" for reports about a user');
     } else {
-      const target = await fs.get<PostDoc | CommentDoc>(r.targetPath);
+      const target = await fs.get<ContentDoc>(r.targetPath);
       if (target) {
         townId = target.data.townId;
-        authorId = target.data.authorId;
-        if (input.action !== 'dismiss' && target.data.status === 'published') {
-          const removal = await contentStatusWrites(fs, uid, r.targetPath, 'removed', input.note);
+        authorId = (target.data.authorId ?? target.data.sellerId) ?? null;
+        if (input.action !== 'dismiss' && contentKind(r.targetPath).visible.includes(target.data.status)) {
+          const removal = await contentStatusWrites(fs, uid, r.targetPath, 'remove', input.note);
           writes.push(...removal.writes);
         }
       }
