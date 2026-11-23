@@ -1,0 +1,293 @@
+rules_version = '2';
+
+// Siwu Connect — Firestore security rules (Phase 1).
+//
+// Principles:
+//  * Every read needs a signed-in user (decision D3).
+//  * Clients may only write their own profile, posts, comments, reactions,
+//    reports and blocks — always validated here, on the server.
+//  * Privileged actions (roles, suspensions, removing other people's content,
+//    resolving reports, announcements, pins) are NEVER client-writable. They go
+//    through the Cloudflare Worker API, which uses admin credentials and writes
+//    an audit-log entry for each action.
+//  * Limits below mirror packages/shared/src/constants.ts — keep them in sync.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function d() { return request.resource.data; }
+    function isTown(t) { return t in ['odomi', 'mempeasem', 'todzi', 'adokor']; }
+    function exactKeys(keys) {
+      return request.resource.data.keys().hasAll(keys) && request.resource.data.keys().hasOnly(keys);
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function isActive() {
+      return signedIn() && exists(userPath(me())) && get(userPath(me())).data.status == 'active';
+    }
+
+    function rolePath() { return /databases/$(database)/documents/admin_roles/$(me()); }
+    function hasRole() { return signedIn() && exists(rolePath()); }
+    function isSuper() { return hasRole() && get(rolePath()).data.role == 'super_admin'; }
+    function canModerate(townId) {
+      return hasRole()
+        && (get(rolePath()).data.role == 'super_admin' || townId in get(rolePath()).data.townIds);
+    }
+
+    function ratePath() { return /databases/$(database)/documents/rate_limits/$(me()); }
+    // The same batch must stamp rate_limits/{me}.{field} with request.time, and the
+    // previous stamp (if any) must be older than `secs` seconds.
+    function rateOk(field, secs) {
+      return getAfter(ratePath()).data.get(field, null) == request.time
+        && (!exists(ratePath())
+            || get(ratePath()).data.get(field, null) == null
+            || get(ratePath()).data.get(field, null) < request.time - duration.value(secs, 's'));
+    }
+
+    // ---------- towns & settings (read-only for clients) ----------
+    match /towns/{townId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---------- usernames: guarantees uniqueness ----------
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && exactKeys(['uid'])
+        && d().uid == me()
+        && name.matches('^[a-z0-9_]{3,20}$')
+        && !(name in ['admin', 'administrator', 'siwu', 'siwuconnect', 'siwu_connect', 'moderator',
+                      'support', 'official', 'akpafu', 'superadmin', 'super_admin', 'help'])
+        && !exists(userPath(me()))
+        && getAfter(userPath(me())).data.username == name;
+      allow update, delete: if false;
+    }
+
+    // ---------- public profiles ----------
+    function validProfile(p, uid) {
+      return str(p.displayName, 2, 50)
+        && p.displayNameLower == p.displayName.lower()
+        && isTown(p.hometownId)
+        && (p.residence == null || p.residence in ['hometown', 'ghana', 'abroad'])
+        && (p.countryCode == null || str(p.countryCode, 2, 5))
+        && (p.photoUrl == null
+            || (str(p.photoUrl, 10, 300)
+                && p.photoUrl.matches('^https?://[^/]+(/[^/]+)*/avatars/' + uid + '/[A-Za-z0-9_-]+[.](webp|jpg)$')));
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && uid == me()
+        && exactKeys(['displayName', 'displayNameLower', 'username', 'photoUrl', 'hometownId',
+                      'residence', 'countryCode', 'status', 'createdAt', 'updatedAt'])
+        && validProfile(d(), uid)
+        && d().username is string
+        && getAfter(/databases/$(database)/documents/usernames/$(d().username)).data.uid == uid
+        && d().status == 'active'
+        && d().createdAt == request.time
+        && d().updatedAt == request.time;
+      // Username, status and createdAt are immutable from the client.
+      allow update: if isActive() && uid == me()
+        && changed().hasOnly(['displayName', 'displayNameLower', 'photoUrl', 'hometownId',
+                              'residence', 'countryCode', 'updatedAt'])
+        && validProfile(d(), uid)
+        && d().updatedAt == request.time;
+      allow delete: if false;
+
+      // Users this user has blocked. Private to the owner.
+      match /blocks/{blockedUid} {
+        allow read, delete: if signedIn() && uid == me();
+        allow create: if signedIn() && uid == me() && blockedUid != me()
+          && exactKeys(['createdAt']) && d().createdAt == request.time;
+        allow update: if false;
+      }
+    }
+
+    // ---------- private account fields ----------
+    match /users_private/{uid} {
+      allow read: if signedIn() && (uid == me() || isSuper());
+      allow create: if signedIn() && uid == me()
+        && exactKeys(['rulesAcceptedAt', 'ageConfirmedAt', 'createdAt'])
+        && d().rulesAcceptedAt == request.time
+        && d().ageConfirmedAt == request.time
+        && d().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // ---------- per-user rate-limit stamps ----------
+    match /rate_limits/{uid} {
+      allow read: if signedIn() && uid == me();
+      allow create: if signedIn() && uid == me()
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt'])
+        && d().get('lastPostAt', request.time) == request.time
+        && d().get('lastCommentAt', request.time) == request.time;
+      allow update: if signedIn() && uid == me()
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt'])
+        && (!('lastPostAt' in changed()) || d().lastPostAt == request.time)
+        && (!('lastCommentAt' in changed()) || d().lastCommentAt == request.time);
+      allow delete: if false;
+    }
+
+    // ---------- posts ----------
+    function postPath(id) { return /databases/$(database)/documents/posts/$(id); }
+    function reactionPath(postId, uid) { return /databases/$(database)/documents/posts/$(postId)/reactions/$(uid); }
+    function commentPath(postId, cid) { return /databases/$(database)/documents/posts/$(postId)/comments/$(cid); }
+
+    match /posts/{postId} {
+      allow read: if signedIn()
+        && (resource.data.status == 'published'
+            || resource.data.authorId == me()
+            || canModerate(resource.data.townId));
+
+      allow create: if isActive()
+        && exactKeys(['authorId', 'townId', 'text', 'visibility', 'status', 'pinned', 'reactionCount',
+                      'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
+        && d().authorId == me()
+        && isTown(d().townId)
+        && str(d().text, 1, 2000)
+        && d().visibility in ['akpafu', 'town']
+        && d().status == 'published'
+        && d().pinned == false
+        && d().reactionCount == 0
+        && d().commentCount == 0
+        && d().lastCommentOp == null
+        && d().searchTokens is list && d().searchTokens.size() <= 50
+        && d().createdAt == request.time
+        && d().updatedAt == request.time
+        && d().editedAt == null
+        && rateOk('lastPostAt', 20);
+
+      allow update: if
+        // 1. Author edits their own published post.
+        (isActive() && resource.data.authorId == me() && resource.data.status == 'published'
+          && changed().hasOnly(['text', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
+          && str(d().text, 1, 2000)
+          && d().visibility in ['akpafu', 'town']
+          && d().searchTokens is list && d().searchTokens.size() <= 50
+          && d().updatedAt == request.time
+          && d().editedAt == request.time)
+        // 2. Author deletes their own post (soft delete; text is wiped).
+        || (signedIn() && resource.data.authorId == me() && resource.data.status in ['published', 'removed']
+          && changed().hasOnly(['status', 'text', 'searchTokens', 'updatedAt'])
+          && d().status == 'deleted' && d().text == '' && d().searchTokens.size() == 0
+          && d().updatedAt == request.time)
+        // 3. Reaction counter moves by exactly one, together with the caller's reaction doc.
+        || (signedIn() && resource.data.status == 'published'
+          && changed().hasOnly(['reactionCount'])
+          && ((d().reactionCount == resource.data.reactionCount + 1
+                && !exists(reactionPath(postId, me())) && existsAfter(reactionPath(postId, me())))
+              || (d().reactionCount == resource.data.reactionCount - 1
+                && exists(reactionPath(postId, me())) && !existsAfter(reactionPath(postId, me())))))
+        // 4. Comment counter moves by exactly one, together with the named comment.
+        || (signedIn() && resource.data.status == 'published'
+          && changed().hasOnly(['commentCount', 'lastCommentOp'])
+          && d().lastCommentOp.keys().hasOnly(['id', 'op'])
+          && ((d().lastCommentOp.op == 'add'
+                && d().commentCount == resource.data.commentCount + 1
+                && !exists(commentPath(postId, d().lastCommentOp.id))
+                && existsAfter(commentPath(postId, d().lastCommentOp.id)))
+              || (d().lastCommentOp.op == 'remove'
+                && d().commentCount == resource.data.commentCount - 1
+                && get(commentPath(postId, d().lastCommentOp.id)).data.status == 'published'
+                && getAfter(commentPath(postId, d().lastCommentOp.id)).data.status == 'deleted')));
+
+      allow delete: if false;
+
+      // One reaction per user per post: the document id is the user's uid.
+      match /reactions/{rid} {
+        allow read: if signedIn();
+        allow create: if isActive() && rid == me()
+          && exactKeys(['type', 'createdAt'])
+          && d().type == 'like'
+          && d().createdAt == request.time
+          && get(postPath(postId)).data.status == 'published'
+          && getAfter(postPath(postId)).data.reactionCount == get(postPath(postId)).data.reactionCount + 1;
+        allow delete: if signedIn() && rid == me()
+          && getAfter(postPath(postId)).data.reactionCount == get(postPath(postId)).data.reactionCount - 1;
+        allow update: if false;
+      }
+
+      match /comments/{cid} {
+        allow read: if signedIn()
+          && (resource.data.status == 'published'
+              || resource.data.authorId == me()
+              || canModerate(resource.data.townId));
+
+        allow create: if isActive()
+          && exactKeys(['authorId', 'townId', 'text', 'status', 'createdAt'])
+          && d().authorId == me()
+          && d().townId == get(postPath(postId)).data.townId
+          && str(d().text, 1, 1000)
+          && d().status == 'published'
+          && d().createdAt == request.time
+          && get(postPath(postId)).data.status == 'published'
+          // Users blocked by the post author cannot comment on that author's posts.
+          && !exists(/databases/$(database)/documents/users/$(get(postPath(postId)).data.authorId)/blocks/$(me()))
+          && getAfter(postPath(postId)).data.commentCount == get(postPath(postId)).data.commentCount + 1
+          && getAfter(postPath(postId)).data.lastCommentOp == {'id': cid, 'op': 'add'}
+          && rateOk('lastCommentAt', 5);
+
+        // Author deletes their own comment (soft delete). If the post is still
+        // published the counter must go down in the same batch.
+        allow update: if signedIn() && resource.data.authorId == me()
+          && resource.data.status == 'published'
+          && changed().hasOnly(['status', 'text'])
+          && d().status == 'deleted' && d().text == ''
+          && (get(postPath(postId)).data.status != 'published'
+              || (getAfter(postPath(postId)).data.commentCount == get(postPath(postId)).data.commentCount - 1
+                  && getAfter(postPath(postId)).data.lastCommentOp == {'id': cid, 'op': 'remove'}));
+
+        allow delete: if false;
+      }
+    }
+
+    // ---------- reports ----------
+    match /reports/{reportId} {
+      // Report id = <reporter>_<type>_<targetId>, so a user can report an item once.
+      allow create: if isActive()
+        && exactKeys(['reporterId', 'targetType', 'targetId', 'targetPath', 'townId', 'reason', 'details',
+                      'status', 'createdAt', 'resolvedBy', 'resolvedAt', 'resolution'])
+        && d().reporterId == me()
+        && d().targetType in ['post', 'comment', 'user']
+        && str(d().targetId, 1, 128)
+        && reportId == me() + '_' + d().targetType + '_' + d().targetId
+        && ((d().targetType == 'post' && d().targetPath == 'posts/' + d().targetId)
+            || (d().targetType == 'comment' && d().targetPath.matches('^posts/[A-Za-z0-9]+/comments/' + d().targetId + '$'))
+            || (d().targetType == 'user' && d().targetPath == 'users/' + d().targetId && d().targetId != me()))
+        && isTown(d().townId)
+        && d().reason in ['harassment', 'threat', 'impersonation', 'spam', 'misinformation', 'defamation', 'fraud', 'other']
+        && str(d().details, 0, 500)
+        && d().status == 'open'
+        && d().createdAt == request.time
+        && d().resolvedBy == null && d().resolvedAt == null && d().resolution == null;
+      allow read: if canModerate(resource.data.townId);
+      allow update, delete: if false;
+    }
+
+    // ---------- announcements (written only by the Worker) ----------
+    match /announcements/{id} {
+      allow read: if signedIn() && (resource.data.status == 'published' || hasRole());
+      allow write: if false;
+    }
+
+    // ---------- admin roles & audit log (written only by the Worker) ----------
+    match /admin_roles/{uid} {
+      allow read: if signedIn() && (uid == me() || isSuper());
+      allow write: if false;
+    }
+    match /audit_logs/{id} {
+      allow read: if isSuper();
+      allow write: if false;
+    }
+  }
+}
