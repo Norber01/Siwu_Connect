@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { useFriendships } from '../lib/friends';
-import { acceptFriendRequest, openDm, removeFriendship, sendFriendRequest } from '../lib/ops';
+import { api } from '../lib/api';
+import { openDm, removeFriendship } from '../lib/ops';
 import { friendlyError, isPermissionDenied } from '../lib/util';
 import { useToast } from './Toast';
 import { Button, Modal } from './ui';
@@ -51,8 +52,16 @@ export function FriendActions({ uid, name, small = true }: { uid: string; name: 
         disabled={!active}
         onClick={() =>
           act(async () => {
-            const r = await sendFriendRequest(db, user.uid, uid);
-            toast(r === 'accepted' ? `${first} had already asked — you are now friends 🎉` : r === 'already' ? 'You already sent a request.' : `Friend request sent to ${first}.`);
+            const { result: r } = await api<{ result: string }>(`/friends/${uid}`, { json: {} });
+            toast(
+              r === 'accepted'
+                ? `${first} had already asked — you are now friends 🎉`
+                : r === 'friends'
+                  ? `You and ${first} are already friends.`
+                  : r === 'already'
+                    ? 'You already sent a request.'
+                    : `Friend request sent to ${first}.`,
+            );
           })
         }
       >
@@ -62,7 +71,7 @@ export function FriendActions({ uid, name, small = true }: { uid: string; name: 
   if (rel.status === 'pending' && rel.incoming)
     return (
       <>
-        <Button small={small} icon="check" busy={busy} disabled={!active} onClick={() => act(() => acceptFriendRequest(db, user.uid, uid), `You and ${first} are now friends 🎉`)}>
+        <Button small={small} icon="check" busy={busy} disabled={!active} onClick={() => act(() => api(`/friends/${uid}`, { json: {} }), `You and ${first} are now friends 🎉`)}>
           Accept request
         </Button>
         <Button small={small} variant="secondary" disabled={busy} onClick={() => act(() => removeFriendship(db, user.uid, uid), 'Request declined.')}>

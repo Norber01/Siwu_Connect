@@ -441,6 +441,51 @@ export function createApp() {
     return c.json({ ok: true });
   });
 
+  // ---------- friends: send or accept a request (checked here, with clear reasons) ----------
+  app.post('/friends/:uid', async (c) => {
+    const fs = c.get('fs');
+    const me = c.get('uid');
+    const other = c.req.param('uid');
+    if (!/^[A-Za-z0-9]+$/.test(other) || other === me) fail(400, 'You cannot add yourself as a friend.');
+    const [mine, theirs] = await Promise.all([fs.get<UserDoc>(`users/${me}`), fs.get<UserDoc>(`users/${other}`)]);
+    if (!mine) fail(403, 'Finish setting up your profile first.');
+    if (mine!.data.status !== 'active') fail(403, 'Your account is suspended.');
+    if (!theirs) fail(404, 'This member no longer exists.');
+    const [iBlocked, theyBlocked] = await Promise.all([fs.get(`users/${me}/blocks/${other}`), fs.get(`users/${other}/blocks/${me}`)]);
+    if (iBlocked) fail(403, 'You blocked this member. Unblock them in Settings first.');
+    if (theyBlocked) fail(403, 'You cannot send a request to this member.');
+    const members = [me, other].sort();
+    const path = `friendships/${members.join('_')}`;
+    const existing = await fs.get<{ status: string; requesterId: string }>(path);
+    if (existing) {
+      if (existing.data.status === 'pending' && existing.data.requesterId === other) {
+        await fs.commit([
+          { kind: 'update', path, data: { status: 'accepted', acceptedAt: FieldValue.serverTimestamp() } },
+          {
+            kind: 'set',
+            path: `users/${other}/notifications/friendok_${me}`,
+            data: { type: 'friend_accepted', actorId: me, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
+          },
+        ]);
+        return c.json({ result: 'accepted' });
+      }
+      return c.json({ result: existing.data.status === 'accepted' ? 'friends' : 'already' });
+    }
+    await fs.commit([
+      {
+        kind: 'create',
+        path,
+        data: { members, requesterId: me, status: 'pending', createdAt: FieldValue.serverTimestamp(), acceptedAt: null },
+      },
+      {
+        kind: 'set',
+        path: `users/${other}/notifications/friend_${me}`,
+        data: { type: 'friend_request', actorId: me, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
+      },
+    ]);
+    return c.json({ result: 'sent' });
+  });
+
   // ---------- admin: everything below needs an admin role ----------
   const admin = new Hono<Ctx & { Variables: Vars & { role: AdminRole } }>();
   admin.use('*', async (c, next) => {

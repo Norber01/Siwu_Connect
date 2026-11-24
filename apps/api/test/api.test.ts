@@ -352,6 +352,25 @@ describe('one-time setup', () => {
   });
 });
 
+describe('friend requests', () => {
+  it('sends, accepts the other side, and explains refusals', async () => {
+    const f = (who: string, uid: string) => call('POST', `/friends/${uid}`, who, {});
+    expect((await f('alice', 'alice')).status).toBe(400);
+    expect(await (await f('alice', 'bob')).json()).toEqual({ result: 'sent' });
+    expect((await fs().get<{ status: string }>('friendships/alice_bob'))!.data.status).toBe('pending');
+    expect(await (await f('alice', 'bob')).json()).toEqual({ result: 'already' });
+    expect(await (await f('bob', 'alice')).json()).toEqual({ result: 'accepted' });
+    expect((await fs().get<{ status: string }>('friendships/alice_bob'))!.data.status).toBe('accepted');
+    expect((await fs().get<{ type: string }>('users/bob/notifications/friend_alice'))!.data.type).toBe('friend_request');
+    expect((await fs().get<{ type: string }>('users/alice/notifications/friendok_bob'))!.data.type).toBe('friend_accepted');
+    expect(await (await f('bob', 'alice')).json()).toEqual({ result: 'friends' });
+    await fs().commit([{ kind: 'set', path: 'users/mod/blocks/alice', data: { createdAt: new Date() } }]);
+    const blocked = await f('alice', 'mod');
+    expect(blocked.status).toBe(403);
+    expect(((await blocked.json()) as { error: string }).error).toMatch(/cannot send a request/);
+  });
+});
+
 describe('verified badge', () => {
   it('admins verify members of their towns; members cannot verify themselves', async () => {
     const v = (who: string, uid: string, route: string) => call('POST', `/admin/users/${uid}/${route}`, who, {});
