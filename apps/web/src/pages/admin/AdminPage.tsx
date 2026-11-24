@@ -29,7 +29,12 @@ import {
   fetchUsersPage,
   searchPeople,
   fetchTargetDoc,
+  fetchWords,
+  wordOfTheDay,
 } from '../../lib/queries';
+import { db } from '../../lib/firebase';
+import { addWord, deleteWord } from '../../lib/ops';
+import { VoicePlayer, VoiceRecorder, canRecordVoice } from '../../components/voice';
 import type { Profile, Report } from '../../lib/types';
 import { friendlyError, fullDate, timeAgo } from '../../lib/util';
 import { RichText } from '../../components/PostCard';
@@ -64,6 +69,7 @@ export function AdminPage() {
   const tabs = [
     { to: 'reports', label: 'Reports' },
     { to: 'approvals', label: 'Approvals' },
+    { to: 'words', label: 'Siwu words' },
     ...(showUsers ? [{ to: 'users', label: 'Users' }] : []),
     ...(showAnnouncements ? [{ to: 'announcements', label: 'Announcements' }] : []),
     ...(superAdmin ? [{ to: 'feedback', label: 'Feedback' }, { to: 'roles', label: 'Roles' }, { to: 'audit', label: 'Audit log' }] : []),
@@ -97,6 +103,7 @@ export function AdminPage() {
         <Route index element={<Navigate to="reports" replace />} />
         <Route path="reports" element={<ReportsTab />} />
         <Route path="approvals" element={<ApprovalsTab />} />
+        <Route path="words" element={<WordsTab />} />
         {showUsers && <Route path="users" element={<UsersTab />} />}
         {showAnnouncements && <Route path="announcements" element={<AnnouncementsTab />} />}
         {superAdmin && <Route path="feedback" element={<FeedbackTab />} />}
@@ -104,6 +111,120 @@ export function AdminPage() {
         {superAdmin && <Route path="audit" element={<AuditTab />} />}
         <Route path="*" element={<Navigate to="reports" replace />} />
       </Routes>
+    </div>
+  );
+}
+
+// ---------------- Siwu words ----------------
+
+function WordsTab() {
+  const { user } = useMe();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['words'], queryFn: fetchWords });
+  const [word, setWord] = useState('');
+  const [meaning, setMeaning] = useState('');
+  const [example, setExample] = useState('');
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const today = wordOfTheDay(q.data ?? []);
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!word.trim() || !meaning.trim()) {
+      toast('Add the word and its meaning.', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await addWord(db, user.uid, { word, meaning, example, audioUrl });
+      setWord('');
+      setMeaning('');
+      setExample('');
+      setAudioUrl(null);
+      toast('Word added ✔');
+      void qc.invalidateQueries({ queryKey: ['words'] });
+    } catch (err) {
+      toast(friendlyError(err), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Add Siwu words and proverbs. One is shown on everyone's home feed each day, in turn. Record how it is said so younger members
+        and the diaspora can learn it.
+      </p>
+      <Card className="p-4">
+        <form onSubmit={add} className="space-y-3">
+          <TextField label="Siwu word or proverb" value={word} maxLength={60} onChange={(e) => setWord(e.target.value)} />
+          <TextField label="Meaning in English" value={meaning} maxLength={300} onChange={(e) => setMeaning(e.target.value)} />
+          <TextField label="Example sentence (optional)" value={example} maxLength={300} onChange={(e) => setExample(e.target.value)} />
+          <div>
+            <span className="mb-1 block text-sm font-medium text-gray-800">Pronunciation (optional)</span>
+            {audioUrl ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <VoicePlayer url={audioUrl} />
+                </div>
+                <Button type="button" small variant="ghost" onClick={() => setAudioUrl(null)}>
+                  Remove
+                </Button>
+              </div>
+            ) : canRecordVoice() ? (
+              <div className="flex items-center gap-2">
+                <VoiceRecorder onError={(m) => toast(m, 'error')} onSend={async (a) => setAudioUrl(a.url)} />
+                <span className="text-sm text-gray-600">Tap the mic, say the word, then tap send.</span>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600">Recording is not supported on this browser.</p>
+            )}
+          </div>
+          <Button type="submit" busy={busy} icon="plus">
+            Add word
+          </Button>
+        </form>
+      </Card>
+      {q.isPending ? (
+        <PageSpinner />
+      ) : q.isError ? (
+        <ErrorState message={friendlyError(q.error)} onRetry={() => q.refetch()} />
+      ) : q.data.length === 0 ? (
+        <EmptyState title="No words yet" icon="comment">
+          The word of the day appears on the home feed once you add the first word.
+        </EmptyState>
+      ) : (
+        <ul className="divide-y divide-sand-200 rounded-2xl bg-white ring-1 ring-sand-200">
+          {q.data.map((w) => (
+            <li key={w.id} className="flex items-start gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-gray-900">
+                  {w.word} {today?.id === w.id && <span className="ml-1 rounded-full bg-gold-100 px-2 text-[11px] font-bold text-gold-800">Today</span>}
+                </p>
+                <p className="text-sm text-gray-700">{w.meaning}</p>
+                {w.example && <p className="text-sm italic text-gray-600">“{w.example}”</p>}
+                {w.audioUrl && <VoicePlayer url={w.audioUrl} />}
+              </div>
+              <Button
+                small
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await deleteWord(db, w.id);
+                    void qc.invalidateQueries({ queryKey: ['words'] });
+                  } catch (err) {
+                    toast(friendlyError(err), 'error');
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

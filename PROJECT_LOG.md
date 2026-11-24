@@ -97,8 +97,24 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     icon bottom bar (Home · Explore · Sports · Notifications · Chat); floating "+" button; side menu from your
     avatar (Profile, Events, Marketplace, Businesses & jobs, Towns, Admin, Settings, theme, invite, sign out); and
     a three-column layout on computers with "What's happening" and "Coming up".
+  - **Live match bar** at the top while a game is on (hides on scroll down). **Verified badge**: Super Admins
+    (anyone) and Town Admins (their towns) verify accounts; a blue tick shows next to the name everywhere.
   - **Setup fix:** "Run setup" was failing with "Too many subrequests" (Cloudflare's free plan allows 50 outgoing
     calls per request). Setup now runs in parts: the core steps first, then the indexes in batches of 20.
+- 2026-11-24 — **Speed and fun round:**
+  - **Faster:** posts, profiles and chats are kept on the phone (Firestore offline cache), so the feed opens at once
+    with what was seen last and refreshes behind it. The feed loads 10 posts at a time and fetches more automatically
+    as you scroll. Videos get a light **360p data-saver copy**, which plays on 2G/3G or in data-saver mode.
+  - **Voice notes in chat:** tap the mic, record (up to 2 minutes), and send. Notes are stored as small Opus/AAC files.
+  - **Repost and quote:** share someone's post again in the feed, or quote it with your own words. The original
+    author is notified.
+  - **Siwu word of the day:** admins add words or proverbs with a meaning, an example and a recorded pronunciation
+    (Admin → Siwu words). One word shows on everyone's home feed each day. No words are pre-filled: they must
+    come from Siwu speakers.
+  - **Predictions league:** predict the score of a match before kick-off (3 points for the exact score, 1 for the
+    right result). Sports → 🔮 League ranks members and towns over the last 7 days.
+  - Speed ideas not done yet: a custom domain (lets Cloudflare cache photos and videos near users); smaller photo
+    thumbnails; Cloudflare Stream adaptive video (paid).
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

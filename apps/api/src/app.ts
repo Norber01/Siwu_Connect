@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from 'zod';
@@ -172,11 +172,12 @@ export function createApp() {
     });
   });
 
-  /** Videos are served with HTTP Range support, which phones need for playback and seeking. */
-  app.get('/videos/:uid/:file', async (c) => {
-    const { uid, file } = c.req.param();
-    if (!/^[A-Za-z0-9_-]+\.(mp4|mov|webm)$/.test(file) || !/^[A-Za-z0-9]+$/.test(uid)) fail(404, 'Not found');
-    const key = `videos/${uid}/${file}`;
+  /** Videos and voice notes are served with HTTP Range support, which phones need for playback and seeking. */
+  const streamMedia = (kind: 'videos' | 'audio') => async (c: Context<Ctx>) => {
+    const { uid, file } = c.req.param() as { uid: string; file: string };
+    const ok = kind === 'videos' ? /^[A-Za-z0-9_-]+\.(mp4|mov|webm)$/ : /^[A-Za-z0-9_-]+\.(webm|m4a|ogg)$/;
+    if (!ok.test(file) || !/^[A-Za-z0-9]+$/.test(uid)) fail(404, 'Not found');
+    const key = `${kind}/${uid}/${file}`;
     const rangeHeader = c.req.header('range');
     const m = rangeHeader?.match(/^bytes=(\d+)-(\d*)$/);
     const offset = m ? Number(m[1]) : 0;
@@ -197,7 +198,9 @@ export function createApp() {
     }
     if (obj!.size !== undefined) headers['content-length'] = String(obj!.size);
     return new Response(obj!.body, { headers });
-  });
+  };
+  app.get('/videos/:uid/:file', streamMedia('videos'));
+  app.get('/audio/:uid/:file', streamMedia('audio'));
 
   app.get('/images/:uid/:file', async (c) => {
     const { uid, file } = c.req.param();
@@ -270,8 +273,9 @@ export function createApp() {
     if (!ext) fail(415, 'Upload an MP4, MOV or WebM video');
     const declared = Number(c.req.header('content-length') ?? 0);
     if (declared > EXTRA_LIMITS.videoMaxBytes) fail(413, 'This video is too large (maximum 50 MB). Try a shorter clip.');
-    const existing = await c.env.AVATARS.list({ prefix: `videos/${uid}/`, limit: 31 });
-    if (existing.objects.length >= EXTRA_LIMITS.videosPerMember)
+    // Each video may also have a light copy, so up to two files per video.
+    const existing = await c.env.AVATARS.list({ prefix: `videos/${uid}/`, limit: 2 * EXTRA_LIMITS.videosPerMember + 1 });
+    if (existing.objects.length >= 2 * EXTRA_LIMITS.videosPerMember)
       fail(409, `You can have at most ${EXTRA_LIMITS.videosPerMember} videos. Delete an old post with a video first.`);
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0) fail(400, 'Empty upload');
@@ -280,6 +284,30 @@ export function createApp() {
     const isWebm = bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
     if (ext === 'webm' ? !isWebm : !isMp4) fail(415, 'File content does not match its type');
     const key = `videos/${uid}/${fs.newId()}.${ext}`;
+    await c.env.AVATARS.put(key, bytes, { httpMetadata: { contentType: type } });
+    return c.json({ url: `${c.env.PUBLIC_API_URL.replace(/\/$/, '')}/${key}` });
+  });
+
+  /** Voice notes for chat: WebM/Opus (Android, computers), MP4/AAC (iPhone) or Ogg; up to 3 MB (about 2 minutes). */
+  app.post('/uploads/audio', async (c) => {
+    const uid = c.get('uid');
+    const fs = c.get('fs');
+    const user = await fs.get<UserDoc>(`users/${uid}`);
+    if (!user) fail(403, 'Finish setting up your profile first');
+    if (user!.data.status !== 'active') fail(403, 'Your account is suspended');
+    const type = (c.req.header('content-type') ?? '').split(';')[0]!.trim();
+    const ext = ({ 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg' } as Record<string, string>)[type];
+    if (!ext) fail(415, 'Unsupported voice note format');
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength === 0) fail(400, 'Empty upload');
+    if (bytes.byteLength > EXTRA_LIMITS.audioMaxBytes) fail(413, 'This voice note is too long (about 2 minutes maximum).');
+    const isWebm = bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+    const isMp4 = bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70;
+    const isOgg = bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53;
+    if (!({ webm: isWebm, m4a: isMp4, ogg: isOgg } as Record<string, boolean>)[ext!]) fail(415, 'File content does not match its type');
+    const existing = await c.env.AVATARS.list({ prefix: `audio/${uid}/`, limit: EXTRA_LIMITS.audioPerMember + 1 });
+    if (existing.objects.length >= EXTRA_LIMITS.audioPerMember) fail(409, 'You have sent the maximum number of voice notes.');
+    const key = `audio/${uid}/${fs.newId()}.${ext}`;
     await c.env.AVATARS.put(key, bytes, { httpMetadata: { contentType: type } });
     return c.json({ url: `${c.env.PUBLIC_API_URL.replace(/\/$/, '')}/${key}` });
   });
@@ -405,7 +433,7 @@ export function createApp() {
     if (user) writes.push({ kind: 'delete', path: `usernames/${user.data.username}` });
     await fs.commit(writes);
 
-    for (const prefix of [`avatars/${uid}/`, `images/${uid}/`, `videos/${uid}/`]) {
+    for (const prefix of [`avatars/${uid}/`, `images/${uid}/`, `videos/${uid}/`, `audio/${uid}/`]) {
       const objects = await c.env.AVATARS.list({ prefix, limit: 1000 });
       if (objects.objects.length) await c.env.AVATARS.delete(objects.objects.map((o) => o.key));
     }

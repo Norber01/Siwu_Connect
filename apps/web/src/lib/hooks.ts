@@ -19,9 +19,27 @@ export function feedKey(feed: Feed): unknown[] {
   return ['feed', 'akpafu'];
 }
 
+/** The first page as saved on this phone last time (no network), shown while fresh posts load. */
+function useCachedFirstPage(feed: Feed, uid: string | undefined) {
+  return useQuery({
+    queryKey: ['feedCache', ...feedKey(feed)],
+    queryFn: async () => {
+      const page = await fetchFeedPage(feed, null, true);
+      if (!page.items.length) return null;
+      const liked = uid ? await fetchMyLikes(uid, page.items.map((p) => p.id), true).catch(() => new Map<string, string>()) : new Map<string, string>();
+      return { ...page, cursor: null, liked };
+    },
+    staleTime: Infinity,
+    gcTime: 60_000,
+    retry: false,
+  });
+}
+
 export function useFeed(feed: Feed) {
   const { user } = useAuth();
+  const cached = useCachedFirstPage(feed, user?.uid);
   return useInfiniteQuery({
+    placeholderData: cached.data ? { pages: [cached.data], pageParams: [null] } : undefined,
     queryKey: feedKey(feed),
     initialPageParam: null as Awaited<ReturnType<typeof fetchFeedPage>>['cursor'],
     queryFn: async ({ pageParam }) => {

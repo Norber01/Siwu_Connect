@@ -79,12 +79,16 @@ export interface MediaItem {
   /** Pixel size, so the feed can reserve the right space before it loads. */
   width?: number;
   height?: number;
+  /** Light 360p copy of a video for slow connections. */
+  lowUrl?: string;
 }
 
 export interface PostExtras {
   poll?: string[] | null;
   /** uids of mentioned members (resolved from @usernames). */
   mentions?: string[];
+  /** Repost or quote of another post. */
+  quoteOf?: { id: string; authorId: string } | null;
 }
 
 /** #hashtags in a text, lowercase, without "#". */
@@ -107,12 +111,14 @@ export async function createPost(
   const ref = doc(collection(db, 'posts'));
   const batch = writeBatch(db);
   const mentions = (extras.mentions ?? []).filter((m) => m !== uid).slice(0, 10);
+  const quoteOf = extras.quoteOf ?? null;
   const poll = extras.poll && extras.poll.length >= 2 ? { options: extras.poll.slice(0, 4), counts: extras.poll.slice(0, 4).map(() => 0) } : null;
   batch.set(ref, {
     poll,
     tags: extractTags(input.text),
     mentions,
     reactions: {},
+    ...(quoteOf ? { quoteOf: quoteOf.id } : {}),
     authorId: uid,
     townId: input.townId,
     text: input.text,
@@ -130,6 +136,16 @@ export async function createPost(
     editedAt: null,
   });
   batch.set(doc(db, 'rate_limits', uid), { lastPostAt: serverTimestamp() }, { merge: true });
+  if (quoteOf && quoteOf.authorId !== uid) {
+    batch.set(doc(db, 'users', quoteOf.authorId, 'notifications', `repost_${ref.id}`), {
+      type: 'repost',
+      actorId: uid,
+      postId: ref.id,
+      commentId: null,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  }
   for (const m of mentions) {
     batch.set(doc(db, 'users', m, 'notifications', `mention_${ref.id}`), {
       type: 'mention',
@@ -583,20 +599,40 @@ export async function openDm(db: Firestore, uid: string, otherUid: string): Prom
   return id;
 }
 
-export async function sendMessage(db: Firestore, uid: string, chatId: string, text: string, imageUrl: string | null): Promise<void> {
+export async function sendMessage(
+  db: Firestore,
+  uid: string,
+  chatId: string,
+  text: string,
+  imageUrl: string | null,
+  audio?: { url: string; seconds: number },
+): Promise<void> {
   const ref = doc(collection(db, 'chats', chatId, 'messages'));
   const batch = writeBatch(db);
-  batch.set(ref, { senderId: uid, text, imageUrl, status: 'sent', createdAt: serverTimestamp() });
+  batch.set(ref, {
+    senderId: uid,
+    text,
+    imageUrl,
+    status: 'sent',
+    createdAt: serverTimestamp(),
+    ...(audio ? { audioUrl: audio.url, audioSeconds: Math.round(audio.seconds) } : {}),
+  });
+  const preview = text ? text.slice(0, 120) : audio ? '🎤 Voice note' : '📷 Photo';
   batch.update(doc(db, 'chats', chatId), {
-    lastMessage: { id: ref.id, senderId: uid, text: text ? text.slice(0, 120) : '📷 Photo', at: serverTimestamp() },
+    lastMessage: { id: ref.id, senderId: uid, text: preview, at: serverTimestamp() },
     updatedAt: serverTimestamp(),
   });
   batch.set(doc(db, 'rate_limits', uid), { lastMessageAt: serverTimestamp() }, { merge: true });
   await batch.commit();
 }
 
-export async function deleteMessage(db: Firestore, chatId: string, messageId: string): Promise<void> {
-  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), { status: 'deleted', text: '', imageUrl: null });
+export async function deleteMessage(db: Firestore, chatId: string, messageId: string, hadAudio = false): Promise<void> {
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
+    status: 'deleted',
+    text: '',
+    imageUrl: null,
+    ...(hadAudio ? { audioUrl: null } : {}),
+  });
 }
 
 export async function markChatRead(db: Firestore, uid: string, chatId: string): Promise<void> {
@@ -729,4 +765,44 @@ export async function saveEntry(db: Firestore, uid: string, e: EntryInput, image
 
 export async function setEntryStatus(db: Firestore, id: string, status: 'active' | 'closed' | 'deleted'): Promise<void> {
   await updateDoc(doc(db, 'directory', id), { status, updatedAt: serverTimestamp() });
+}
+
+// ---------------- Siwu word of the day ----------------
+
+export interface WordInput {
+  word: string;
+  meaning: string;
+  example: string;
+  audioUrl: string | null;
+}
+
+export async function addWord(db: Firestore, uid: string, w: WordInput): Promise<void> {
+  await setDoc(doc(collection(db, 'words')), {
+    word: w.word.trim().slice(0, 60),
+    meaning: w.meaning.trim().slice(0, 300),
+    example: w.example.trim().slice(0, 300),
+    audioUrl: w.audioUrl,
+    createdBy: uid,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function deleteWord(db: Firestore, id: string): Promise<void> {
+  await deleteDoc(doc(db, 'words', id));
+}
+
+// ---------------- predictions league ----------------
+
+export async function savePrediction(
+  db: Firestore,
+  uid: string,
+  matchId: string,
+  townId: string,
+  homeScore: number,
+  awayScore: number,
+  existing: boolean,
+): Promise<void> {
+  const ref = doc(db, 'matches', matchId, 'predictions', uid);
+  if (existing) await updateDoc(ref, { homeScore, awayScore, updatedAt: serverTimestamp() });
+  else await setDoc(ref, { homeScore, awayScore, townId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }

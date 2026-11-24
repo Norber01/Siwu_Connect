@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { townName, townShortName } from '@siwu/shared';
@@ -79,10 +80,13 @@ export function Feed({ feed, emptyTitle, emptyText }: { feed: FeedSpec; emptyTit
         <PostCard key={`pin-${p.id}`} post={p} liked={pinned.data!.liked.get(p.id) ?? null} />
       ))}
       {rows.map(({ post, liked }) => (
-        <PostCard key={post.id} post={post} liked={liked} />
+        <PostCard key={`${post.id}:${liked ?? ''}`} post={post} liked={liked} />
       ))}
-      {posts.hasNextPage ? (
+      {posts.isPlaceholderData ? (
+        <p className="py-4 text-center text-sm text-gray-500">Getting the latest posts…</p>
+      ) : posts.hasNextPage ? (
         <div className="flex justify-center py-2">
+          <AutoLoad key={posts.data.pages.length} onVisible={() => !posts.isFetchingNextPage && !posts.isFetchNextPageError && posts.fetchNextPage()} />
           <Button variant="secondary" busy={posts.isFetchingNextPage} onClick={() => posts.fetchNextPage()}>
             Load more posts
           </Button>
@@ -93,6 +97,21 @@ export function Feed({ feed, emptyTitle, emptyText }: { feed: FeedSpec; emptyTit
       {posts.isFetchNextPageError && <p className="text-center text-sm text-red-700">{friendlyError(posts.error)}</p>}
     </div>
   );
+}
+
+/** Loads the next page shortly before you reach the end of the feed. */
+function AutoLoad({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const cb = useRef(onVisible);
+  cb.current = onVisible;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => e?.isIntersecting && cb.current(), { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return <span ref={ref} aria-hidden="true" />;
 }
 
 export function CreatePostPrompt({ townId }: { townId?: string }) {

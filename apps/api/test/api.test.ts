@@ -399,6 +399,21 @@ describe('video uploads', () => {
     expect((await upload('alice', mp4(), 'application/pdf')).status).toBe(415);
     expect((await upload('nobody', mp4())).status).toBe(403);
   });
+
+  it('stores voice notes and streams them', async () => {
+    const webm = new Uint8Array(500);
+    webm.set([0x1a, 0x45, 0xdf, 0xa3]);
+    const send = (body: Uint8Array, type: string) =>
+      app.request('/uploads/audio', { method: 'POST', headers: { authorization: `Bearer ${token('alice')}`, 'content-type': type }, body }, env());
+    const res = await send(webm, 'audio/webm;codecs=opus');
+    expect(res.status).toBe(200);
+    const { url } = (await res.json()) as { url: string };
+    expect(url).toMatch(/\/audio\/alice\/[A-Za-z0-9]+\.webm$/);
+    const part = await app.request(new URL(url).pathname, { headers: { range: 'bytes=0-3' } }, env());
+    expect(part.status).toBe(206);
+    expect((await send(new Uint8Array(500), 'audio/webm')).status).toBe(415); // not really WebM
+    expect((await send(webm, 'audio/wav')).status).toBe(415);
+  });
 });
 
 describe('approvals', () => {

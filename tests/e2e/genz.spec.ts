@@ -30,6 +30,7 @@ test('Gen Z features', async ({ page }) => {
   await page.getByPlaceholder('Option 2').fill('Sunday');
   await page.getByRole('button', { name: 'Post', exact: true }).click();
   await expect(page.getByText('Your post is live.')).toBeVisible();
+  const postedAt = Date.now();
   await page.getByRole('button', { name: 'Saturday' }).click();
   await expect(page.getByText('1 vote')).toBeVisible();
   await expect(page.getByRole('link', { name: `#${tag}` })).toBeVisible();
@@ -62,6 +63,22 @@ test('Gen Z features', async ({ page }) => {
   await page.getByRole('button', { name: 'View story' }).first().click();
   await expect(page.getByRole('dialog', { name: 'Story' }).getByText('Good morning Akpafu ☀️')).toBeVisible();
   await page.getByRole('button', { name: 'Close story' }).click();
+
+  // Predictions league: predict the score of an upcoming match; the league shows sample points.
+  await page.goto('/sports/m2');
+  await page.getByRole('button', { name: 'Todzi one more' }).click();
+  await page.getByRole('button', { name: 'Save prediction' }).click();
+  await expect(page.getByText('Prediction saved: Todzi 1 – 0 Adokor')).toBeVisible();
+  await page.goto('/sports?tab=predictions');
+  await expect(page.getByText('Top predictors')).toBeVisible();
+  await expect(page.getByText(/You: #1 with 3 points/)).toBeVisible();
+
+  // Repost (posting has a short cool-down after the poll above).
+  await page.waitForTimeout(Math.max(0, 21_000 - (Date.now() - postedAt)));
+  await page.goto('/?town=all');
+  await page.getByRole('button', { name: 'Repost' }).first().click();
+  await page.getByRole('menuitem', { name: 'Repost' }).click();
+  await expect(page.getByText('Reposted 🔁')).toBeVisible();
 
   // Bio + dark mode.
   await page.goto('/settings');

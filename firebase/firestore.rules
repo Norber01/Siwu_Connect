@@ -175,7 +175,8 @@ service cloud.firestore {
         && url.matches('^https?://[^/]+(/[^/]+)*/videos/' + uid + '/[A-Za-z0-9_-]+[.](mp4|mov|webm)$');
     }
     function mediaItemOk(i, uid) {
-      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl', 'width', 'height'])
+      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl', 'width', 'height', 'lowUrl'])
+        && (!('lowUrl' in i) || (i.type == 'video' && videoOk(i.lowUrl, uid)))
         && (!('width' in i) || (i.width is int && i.width > 0 && i.width <= 10000))
         && (!('height' in i) || (i.height is int && i.height > 0 && i.height <= 10000))
         && ((i.type == 'image' && i.url != null && imageOk(i.url, uid))
@@ -194,7 +195,13 @@ service cloud.firestore {
       return str(p.text, 0, 2000)
         && imageOk(p.get('imageUrl', null), me())
         && mediaOk(p.get('media', []), me())
-        && (p.text.size() > 0 || p.get('imageUrl', null) != null || p.get('media', []).size() > 0);
+        && (p.text.size() > 0 || p.get('imageUrl', null) != null || p.get('media', []).size() > 0
+            || p.get('quoteOf', null) != null);
+    }
+    // Repost / quote: the original must be a published post (not itself a plain repost of nothing).
+    function quoteOk(p) {
+      return p.get('quoteOf', null) == null
+        || (p.quoteOf is string && exists(postPath(p.quoteOf)) && get(postPath(p.quoteOf)).data.status == 'published');
     }
 
     function emojiCountOk(before, after, t, n) {
@@ -239,7 +246,8 @@ service cloud.firestore {
         && validPoll(d().get('poll', null)) && freshPoll(d().get('poll', null))
         && tagsOk(d())
         && d().get('reactions', {}) == {}
-        && d().keys().hasOnly(['authorId', 'townId', 'text', 'imageUrl', 'media', 'poll', 'tags', 'mentions', 'reactions', 'visibility',
+        && quoteOk(d())
+        && d().keys().hasOnly(['authorId', 'townId', 'text', 'imageUrl', 'media', 'poll', 'tags', 'mentions', 'reactions', 'quoteOf', 'visibility',
                       'status', 'pinned', 'reactionCount', 'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
         && d().keys().hasAll(['authorId', 'townId', 'text', 'imageUrl', 'media', 'visibility', 'status', 'pinned', 'reactionCount',
                               'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
@@ -391,6 +399,12 @@ service cloud.firestore {
               && !exists(postPath(d().postId))
               && getAfter(postPath(d().postId)).data.authorId == me()
               && uid in getAfter(postPath(d().postId)).data.get('mentions', []))
+            // Repost or quote of the member's post, in a brand-new post by the caller.
+            || (d().type == 'repost' && nid == 'repost_' + d().postId && d().commentId == null
+              && !exists(postPath(d().postId))
+              && getAfter(postPath(d().postId)).data.authorId == me()
+              && getAfter(postPath(d().postId)).data.get('quoteOf', null) != null
+              && get(postPath(getAfter(postPath(d().postId)).data.quoteOf)).data.authorId == uid)
             // Friend request sent by the caller, or the caller accepting the person's request.
             || (d().type == 'friend_request' && nid == 'friend_' + me() && d().postId == null && d().commentId == null
               && !exists(friendPath(me(), uid))
@@ -595,6 +609,21 @@ service cloud.firestore {
           && voteCountersOk(get(matchPath(matchId)).data, getAfter(matchPath(matchId)).data, d().pick);
         allow update, delete: if false;
       }
+
+      // Score predictions (predictions league): made or changed only before kick-off.
+      match /predictions/{uid} {
+        allow read: if signedIn();
+        allow create, update: if isActive() && uid == me()
+          && exactKeys(['homeScore', 'awayScore', 'townId', 'createdAt', 'updatedAt'])
+          && d().homeScore is int && d().homeScore >= 0 && d().homeScore <= 20
+          && d().awayScore is int && d().awayScore >= 0 && d().awayScore <= 20
+          && d().townId == get(userPath(me())).data.hometownId
+          && d().updatedAt == request.time
+          && (resource == null ? d().createdAt == request.time : d().createdAt == resource.data.createdAt)
+          && get(matchPath(matchId)).data.status == 'scheduled'
+          && request.time < get(matchPath(matchId)).data.kickoffAt;
+        allow delete: if false;
+      }
     }
 
     // ---------- friends ----------
@@ -641,6 +670,11 @@ service cloud.firestore {
     // sorted) can only be read and written by their two members — not even admins can read them.
     function chatPath(id) { return /databases/$(database)/documents/chats/$(id); }
     function msgPath(chatId, mid) { return /databases/$(database)/documents/chats/$(chatId)/messages/$(mid); }
+    // Voice notes uploaded by the sender through the API.
+    function audioOk(url, uid) {
+      return url == null
+        || (str(url, 10, 300) && url.matches('^https?://[^/]+(/[^/]+)*/audio/' + uid + '/[A-Za-z0-9_-]+[.](webm|m4a|ogg)$'));
+    }
     function canUseChat(c) { return c.type == 'room' || me() in c.members; }
     function dmOther(c) { return c.members[0] == me() ? c.members[1] : c.members[0]; }
     function notBlockedDm(c) {
@@ -682,18 +716,21 @@ service cloud.firestore {
           && canUseChat(get(chatPath(chatId)).data)
           && notBlockedDm(get(chatPath(chatId)).data)
           && (get(chatPath(chatId)).data.type == 'room' || areFriends(dmOther(get(chatPath(chatId)).data)))
-          && exactKeys(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
+          && d().keys().hasAll(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
+          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds'])
           && d().senderId == me()
           && str(d().text, 0, 2000)
           && imageOk(d().imageUrl, me())
-          && (d().text.size() > 0 || d().imageUrl != null)
+          && audioOk(d().get('audioUrl', null), me())
+          && (!('audioSeconds' in d()) || (d().audioSeconds is int && d().audioSeconds >= 0 && d().audioSeconds <= 130))
+          && (d().text.size() > 0 || d().imageUrl != null || d().get('audioUrl', null) != null)
           && d().status == 'sent'
           && d().createdAt == request.time
           && rateOk('lastMessageAt', 1);
         // Senders can delete their own messages.
         allow update: if signedIn() && resource.data.senderId == me() && resource.data.status == 'sent'
-          && changed().hasOnly(['status', 'text', 'imageUrl'])
-          && d().status == 'deleted' && d().text == '' && d().imageUrl == null;
+          && changed().hasOnly(['status', 'text', 'imageUrl', 'audioUrl'])
+          && d().status == 'deleted' && d().text == '' && d().imageUrl == null && d().get('audioUrl', null) == null;
         allow delete: if false;
       }
     }
@@ -742,6 +779,23 @@ service cloud.firestore {
           && exactKeys(['viewedAt']) && d().viewedAt == request.time;
         allow update, delete: if false;
       }
+    }
+
+    // ---------- Siwu word of the day (added by admins) ----------
+    function validWord(w) {
+      return str(w.word, 1, 60) && str(w.meaning, 1, 300) && str(w.example, 0, 300)
+        && audioOk(w.audioUrl, me());
+    }
+    match /words/{id} {
+      allow read: if signedIn();
+      allow create: if isActive() && isStaff()
+        && exactKeys(['word', 'meaning', 'example', 'audioUrl', 'createdBy', 'createdAt'])
+        && validWord(d()) && d().createdBy == me() && d().createdAt == request.time;
+      allow update: if isActive() && isStaff()
+        && changed().hasOnly(['word', 'meaning', 'example', 'audioUrl'])
+        && str(d().word, 1, 60) && str(d().meaning, 1, 300) && str(d().example, 0, 300)
+        && (d().audioUrl == resource.data.audioUrl || audioOk(d().audioUrl, me()));
+      allow delete: if isActive() && isStaff();
     }
 
     // ---------- businesses & opportunities directory ----------

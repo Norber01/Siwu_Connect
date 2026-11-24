@@ -23,7 +23,9 @@ export interface Post {
   townId: string;
   text: string;
   /** Photos and videos (older posts' single imageUrl is folded in here). */
-  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null; width?: number; height?: number }>;
+  /** Id of the post this one reposts or quotes. */
+  quoteOf: string | null;
+  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null; width?: number; height?: number; lowUrl?: string }>;
   poll: { options: string[]; counts: number[] } | null;
   tags: string[];
   reactions: Record<string, number>;
@@ -113,6 +115,7 @@ export function toPost(s: DocumentSnapshot): Post {
     authorId: d.authorId,
     townId: d.townId,
     text: d.text,
+    quoteOf: d.quoteOf ?? null,
     media: [
       ...(d.imageUrl ? [{ type: 'image' as const, url: d.imageUrl as string, posterUrl: null }] : []),
       ...((d.media ?? []) as Post['media']),
@@ -247,7 +250,7 @@ export interface MatchUpdate {
 
 export interface AppNotification {
   id: string;
-  type: 'like' | 'comment' | 'mention' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
+  type: 'like' | 'comment' | 'mention' | 'repost' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
   actorId: string;
   postId: string | null;
   commentId: string | null;

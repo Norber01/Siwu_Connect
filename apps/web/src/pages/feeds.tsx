@@ -5,6 +5,7 @@ import { Announcements, CreatePostPrompt, Feed, UpcomingEvents } from '../compon
 import { TownChips } from '../components/TownChips';
 import { Landscape } from '../components/Brand';
 import { NewMembers } from '../components/extras';
+import { WordOfTheDay } from '../components/WordOfTheDay';
 import { Icon } from '../components/Icon';
 import { EmptyState, ErrorState, PageHeader, PageSpinner } from '../components/ui';
 import { PostCard } from '../components/PostCard';
@@ -30,6 +31,7 @@ export function HomePage() {
       <StoriesBar />
       <CreatePostPrompt townId={selected === 'all' ? undefined : selected} />
       <Announcements townId={selected === 'all' ? null : selected} />
+      <WordOfTheDay />
       <UpcomingEvents townId={selected === 'all' ? null : selected} />
       <NewMembers />
       {selected === 'all' ? (

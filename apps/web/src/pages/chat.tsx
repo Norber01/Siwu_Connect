@@ -10,6 +10,7 @@ import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
 import { deleteMessage, markChatRead, openDm, sendMessage } from '../lib/ops';
 import { useFriendships } from '../lib/friends';
+import { VoicePlayer, VoiceRecorder, canRecordVoice } from '../components/voice';
 import { FriendActions } from '../components/FriendButton';
 import { searchPeople } from '../lib/queries';
 import { friendlyError, preparePhoto, timeAgo } from '../lib/util';
@@ -34,6 +35,8 @@ interface Message {
   senderId: string;
   text: string;
   imageUrl: string | null;
+  audioUrl?: string | null;
+  audioSeconds?: number;
   status: 'sent' | 'deleted' | 'removed';
   createdAt: Date | null;
 }
@@ -381,7 +384,7 @@ export function ChatRoomPage() {
               showSender={chat.type === 'room' && arr[i - 1]?.senderId !== m.senderId}
               items={[
                 ...(m.senderId === user.uid && m.status === 'sent'
-                  ? [{ label: 'Delete message', icon: 'trash' as const, danger: true, onSelect: () => void deleteMessage(db, chatId, m.id).catch((e) => toast(friendlyError(e), 'error')) }]
+                  ? [{ label: 'Delete message', icon: 'trash' as const, danger: true, onSelect: () => void deleteMessage(db, chatId, m.id, !!m.audioUrl).catch((e) => toast(friendlyError(e), 'error')) }]
                   : []),
                 ...(chat.type === 'room' && m.senderId !== user.uid && m.status === 'sent'
                   ? [{ label: 'Report message', icon: 'flag' as const, onSelect: () => setReporting(m) }]
@@ -441,14 +444,22 @@ export function ChatRoomPage() {
               placeholder={uploading ? 'Sending photo…' : 'Message'}
               className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl bg-sand-100 px-4 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-200"
             />
-            <button
-              type="submit"
-              disabled={sending || !text.trim()}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-600 text-white disabled:opacity-40"
-              aria-label="Send"
-            >
-              <Icon name="share" className="h-5 w-5" />
-            </button>
+            {!text.trim() && canRecordVoice() ? (
+              <VoiceRecorder
+                disabled={sending || uploading}
+                onError={(msg) => toast(msg, 'error')}
+                onSend={(audio) => sendMessage(db, user.uid, chatId, '', null, audio)}
+              />
+            ) : (
+              <button
+                type="submit"
+                disabled={sending || !text.trim()}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-600 text-white disabled:opacity-40"
+                aria-label="Send"
+              >
+                <Icon name="share" className="h-5 w-5" />
+              </button>
+            )}
           </form>
         ) : (
           <p className="py-2 text-center text-sm text-gray-600">
@@ -505,6 +516,7 @@ function Bubble({ m, mine, showSender, items }: { m: Message; mine: boolean; sho
                     <img src={m.imageUrl} alt="" className="mb-1 max-h-64 rounded-xl" loading="lazy" />
                   </a>
                 )}
+                {m.audioUrl && <VoicePlayer url={m.audioUrl} seconds={m.audioSeconds} light={mine} />}
                 {m.text && (mine ? <p className="whitespace-pre-wrap break-words">{m.text}</p> : <RichText text={m.text} />)}
               </>
             )}

@@ -16,7 +16,7 @@ export const LIMITS = {
   postCooldownSeconds: 20,
   /** Minimum seconds between two comments by the same user (enforced in rules). */
   commentCooldownSeconds: 5,
-  feedPageSize: 20,
+  feedPageSize: 10,
 } as const;
 
 /**
@@ -160,6 +160,9 @@ export const EXTRA_LIMITS = {
   videoMaxBytes: 50 * 1024 * 1024,
   videoMaxSeconds: 180,
   videosPerMember: 30,
+  audioMaxBytes: 3 * 1024 * 1024,
+  audioMaxSeconds: 120,
+  audioPerMember: 500,
   mediaPerPost: 4,
   imageMaxPixels: 1280,
   /** Seconds between two events / listings by the same user. */

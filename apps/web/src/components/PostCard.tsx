@@ -6,8 +6,8 @@ import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useInvalidatePosts, useProfileById } from '../lib/hooks';
-import { REACTIONS, type Reaction, deletePost, setReaction, votePoll } from '../lib/ops';
-import { fetchMyPollVote } from '../lib/queries';
+import { REACTIONS, type Reaction, createPost, deletePost, setReaction, votePoll } from '../lib/ops';
+import { fetchLastPostAt, fetchMyPollVote, fetchPost } from '../lib/queries';
 import { useQuery } from '@tanstack/react-query';
 import type { Post } from '../lib/types';
 import { friendlyError, fullDate, linkify, timeAgo } from '../lib/util';
@@ -199,6 +199,44 @@ function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string
   );
 }
 
+/** The original post inside a repost or quote. */
+export function QuotedPost({ id }: { id: string }) {
+  const q = useQuery({ queryKey: ['post', id], queryFn: () => fetchPost(id), staleTime: 5 * 60_000 });
+  const p = q.data;
+  const { data: author } = useProfileById(p?.authorId);
+  if (q.isPending) return <div className="mt-2 h-20 animate-pulse rounded-2xl border border-sand-200 bg-sand-100" />;
+  if (!p || p.status !== 'published')
+    return <div className="mt-2 rounded-2xl border border-sand-200 px-3 py-3 text-sm text-gray-600">This post is no longer available.</div>;
+  const thumb = p.media[0];
+  return (
+    <Link to={`/p/${p.id}`} className="mt-2 block overflow-hidden rounded-2xl border border-sand-200 hover:bg-sand-100/50">
+      <div className="px-3 pt-2.5">
+        <div className="flex min-w-0 items-center gap-1.5 text-[14px]">
+          <Avatar url={author?.photoUrl} name={author?.displayName ?? '…'} size={20} />
+          <span className="truncate font-bold text-gray-900">{author?.displayName ?? '…'}</span>
+          {author?.verified && <VerifiedBadge className="h-3.5 w-3.5" />}
+          <span className="truncate text-gray-600">@{author?.username} · {shortAgo(p.createdAt)}</span>
+        </div>
+        {p.text && <p className="mt-1 line-clamp-4 whitespace-pre-wrap break-words pb-2.5 text-[15px] text-gray-900">{p.text}</p>}
+        {!p.text && !thumb && <div className="pb-2.5" />}
+      </div>
+      {thumb &&
+        (thumb.type === 'image' ? (
+          <img src={thumb.url} alt="" loading="lazy" className="max-h-56 w-full object-cover" />
+        ) : (
+          <div className="relative">
+            {thumb.posterUrl ? <img src={thumb.posterUrl} alt="" loading="lazy" className="max-h-56 w-full object-cover" /> : <div className="h-32 bg-black" />}
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="rounded-full bg-black/60 p-3 text-white">
+                <Icon name="play" filled className="h-5 w-5" />
+              </span>
+            </span>
+          </div>
+        ))}
+    </Link>
+  );
+}
+
 /** Opens the phone's share sheet (WhatsApp etc.), or copies the link on desktop. */
 async function sharePost(post: Post, toast: (m: string, k?: 'success' | 'error') => void) {
   const url = `${window.location.origin}/p/${post.id}`;
@@ -214,6 +252,67 @@ async function sharePost(post: Post, toast: (m: string, k?: 'success' | 'error')
     if (e instanceof DOMException && e.name === 'AbortError') return; // user closed the share sheet
     toast('Could not share this post on this device.', 'error');
   }
+}
+
+/** Repost straight away, or open the composer to quote with your own words. */
+function RepostButton({ post, disabled }: { post: Post; disabled: boolean }) {
+  const { user } = useMe();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const invalidate = useInvalidatePosts();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // Reposting a repost shares the original.
+  const target = post.quoteOf && !post.text && !post.media.length ? post.quoteOf : post.id;
+  const repost = async () => {
+    setOpen(false);
+    setBusy(true);
+    try {
+      const last = await fetchLastPostAt(user.uid);
+      if (last && Date.now() - last.getTime() < 20_000) throw new Error("You're posting quickly. Please wait a few seconds and try again.");
+      const original = target === post.id ? post : await fetchPost(target);
+      if (!original) throw new Error('This post is no longer available.');
+      await createPost(db, user.uid, { townId: original.townId as never, text: '', visibility: 'akpafu' }, [], {
+        quoteOf: { id: original.id, authorId: original.authorId },
+      });
+      invalidate();
+      toast('Reposted 🔁');
+    } catch (e) {
+      toast(e instanceof Error && !('code' in e) ? e.message : friendlyError(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled || busy}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Repost"
+        className="group inline-flex min-h-[40px] items-center rounded-full px-2 hover:text-emerald-600 disabled:opacity-50"
+      >
+        <span className="rounded-full p-1.5 group-hover:bg-emerald-50">
+          <Icon name="repeat" className="h-[18px] w-[18px]" />
+        </span>
+      </button>
+      {open && (
+        <div role="menu" className="absolute bottom-full left-1/2 z-20 mb-1 w-44 -translate-x-1/2 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-sand-200">
+          <button role="menuitem" onClick={repost} className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold text-gray-900 hover:bg-sand-100">
+            <Icon name="repeat" className="h-4 w-4" /> Repost
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => navigate(`/new?quote=${target}`)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold text-gray-900 hover:bg-sand-100"
+          >
+            <Icon name="edit" className="h-4 w-4" /> Quote
+          </button>
+        </div>
+      )}
+    </span>
+  );
 }
 
 export function PostCard({ post, liked: initialReaction, linkToDetail = true }: { post: Post; liked: string | null; linkToDetail?: boolean }) {
@@ -306,6 +405,11 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
 
   return (
     <article className="-mx-4 border-b border-sand-200 px-4 pb-1 pt-3 transition-colors hover:bg-sand-100/40" aria-label="Post">
+      {post.quoteOf && !post.text && !post.media.length && (
+        <div className="mb-1 ml-8 flex items-center gap-1 text-[13px] font-bold text-gray-600">
+          <Icon name="repeat" className="h-3.5 w-3.5" /> Reposted
+        </div>
+      )}
       {post.pinned && (
         <div className="mb-1 ml-8 flex items-center gap-1 text-[13px] font-bold text-gray-600">
           <Icon name="pin" className="h-3.5 w-3.5" /> Pinned
@@ -329,6 +433,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
               <RichText text={post.text} />
             )}
             <MediaGallery media={post.media} />
+            {post.quoteOf && <QuotedPost id={post.quoteOf} />}
             {post.poll && <PollView post={post} />}
             {post.visibility === 'town' && <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>}
           </div>
@@ -395,6 +500,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
                 😊
               </button>
             </span>
+            <RepostButton post={post} disabled={!active} />
             <button
               onClick={() => sharePost(post, toast)}
               className="group inline-flex min-h-[40px] items-center rounded-full px-2 hover:text-brand-600"

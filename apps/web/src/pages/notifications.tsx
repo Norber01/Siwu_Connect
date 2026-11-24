@@ -68,22 +68,44 @@ function NotificationRow({ n }: { n: AppNotification }) {
   const { data: actor } = useProfileById(n.actorId);
   const name = actor?.displayName ?? 'Someone';
   const approval = n.type === 'approved' || n.type === 'rejected';
-  const icon = n.type === 'verified' ? 'check' : n.type === 'like' ? 'thumb' : n.type.startsWith('friend') ? 'user' : approval ? (n.type === 'approved' ? 'check' : 'close') : 'comment';
-  const color = n.type === 'like' || n.type === 'approved' ? 'bg-brand-600' : n.type === 'rejected' ? 'bg-red-600' : n.type.startsWith('friend') ? 'bg-blue-600' : 'bg-gold-600';
+  const icon =
+    n.type === 'repost'
+      ? 'repeat'
+      : n.type === 'verified'
+        ? 'check'
+        : n.type === 'like'
+          ? 'thumb'
+          : n.type.startsWith('friend')
+            ? 'user'
+            : approval
+              ? n.type === 'approved'
+                ? 'check'
+                : 'close'
+              : 'comment';
+  const color =
+    n.type === 'like' || n.type === 'approved'
+      ? 'bg-brand-600'
+      : n.type === 'rejected'
+        ? 'bg-red-600'
+        : n.type.startsWith('friend')
+          ? 'bg-blue-600'
+          : 'bg-gold-600';
   const text =
     n.type === 'like'
       ? 'reacted to your post'
       : n.type === 'mention'
         ? 'mentioned you in a post'
-        : n.type === 'friend_request'
-          ? 'sent you a friend request. Accept it to chat and see each other\'s stories.'
-          : n.type === 'friend_accepted'
-            ? 'accepted your friend request. You can now chat 🎉'
-            : n.type === 'comment'
-              ? 'commented on your post'
-              : n.type === 'verified'
-                ? 'verified your account. Everyone now sees the blue tick next to your name ✔'
-                : '';
+        : n.type === 'repost'
+          ? 'reposted your post 🔁'
+          : n.type === 'friend_request'
+            ? "sent you a friend request. Accept it to chat and see each other's stories."
+            : n.type === 'friend_accepted'
+              ? 'accepted your friend request. You can now chat 🎉'
+              : n.type === 'comment'
+                ? 'commented on your post'
+                : n.type === 'verified'
+                  ? 'verified your account. Everyone now sees the blue tick next to your name ✔'
+                  : '';
   return (
     <li>
       <Link

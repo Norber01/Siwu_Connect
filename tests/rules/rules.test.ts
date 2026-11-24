@@ -581,6 +581,19 @@ describe('sports centre', () => {
     await seedRole('rep', 'reporter', []);
   });
 
+  it('predictions: own, before kick-off only, with your hometown', async () => {
+    const id = await ops.createMatch(db('rep'), 'rep', match());
+    await assertSucceeds(ops.savePrediction(db('alice'), 'alice', id, 'odomi', 2, 1, false));
+    await assertSucceeds(ops.savePrediction(db('alice'), 'alice', id, 'odomi', 3, 1, true));
+    await assertFails(ops.savePrediction(db('bob'), 'bob', id, 'todzi', 1, 1, false)); // not bob's hometown
+    await assertFails(setDoc(doc(db('bob'), 'matches', id, 'predictions', 'alice'), { homeScore: 0, awayScore: 0, townId: 'odomi', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await assertFails(ops.savePrediction(db('bob'), 'bob', id, 'odomi', 99, 1, false));
+    expect((await getDocs(collection(db('bob'), 'matches', id, 'predictions'))).size).toBe(1);
+    // After kick-off predictions are closed.
+    const past = await ops.createMatch(db('rep'), 'rep', { ...match(), kickoffAt: new Date(Date.now() - 60_000) });
+    await assertFails(ops.savePrediction(db('bob'), 'bob', past, 'odomi', 1, 0, false));
+  });
+
   it('only reporters/admins create matches and post live updates', async () => {
     await assertFails(ops.createMatch(db('alice'), 'alice', match()));
     const id = await ops.createMatch(db('rep'), 'rep', match());
@@ -696,6 +709,14 @@ describe('chat', () => {
     await assertFails(ops.sendMessage(db('bob'), 'bob', 'room_odomi', 'pic', 'https://x.example/images/alice/a.webp'));
   });
 
+  it('voice notes: own recordings only', async () => {
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', 'room_odomi', '', null, { url: 'https://x.example/audio/alice/v1.webm', seconds: 4 }));
+    await new Promise((r) => setTimeout(r, 1100));
+    await assertFails(ops.sendMessage(db('bob'), 'bob', 'room_odomi', '', null, { url: 'https://x.example/audio/alice/v1.webm', seconds: 4 }));
+    const msgs = await getDocs(collection(db('alice'), 'chats', 'room_odomi', 'messages'));
+    await assertSucceeds(ops.deleteMessage(db('alice'), 'room_odomi', msgs.docs[0]!.id, true));
+  });
+
   it('read markers are private', async () => {
     await assertSucceeds(ops.markChatRead(db('alice'), 'alice', 'room_odomi'));
     await assertFails(getDoc(doc(db('bob'), 'users', 'alice', 'chatState', 'room_odomi')));
@@ -764,6 +785,28 @@ describe('Gen Z features', () => {
     await assertFails(getDocs(collection(db('alice'), 'stories', id, 'views')));
     await assertFails(ops.deleteStory(db('alice'), id));
     await assertSucceeds(ops.deleteStory(db('bob'), id));
+  });
+
+  it('reposts and quotes: original must be published; the author is notified', async () => {
+    const id = await ops.createPost(db('bob'), 'bob', { townId: 'odomi', text: '', visibility: 'akpafu' }, [], { quoteOf: { id: 'p1', authorId: 'alice' } });
+    const d = (await getDoc(doc(db('alice'), 'posts', id))).data()!;
+    expect(d.quoteOf).toBe('p1');
+    expect((await getDoc(doc(db('alice'), 'users', 'alice', 'notifications', `repost_${id}`))).data()?.type).toBe('repost');
+    await new Promise((r) => setTimeout(r, 0));
+    await assertFails(ops.createPost(db('carol'), 'carol', { townId: 'odomi', text: '', visibility: 'akpafu' }, [], { quoteOf: { id: 'nope', authorId: 'alice' } }));
+    await assertFails(ops.createPost(db('carol'), 'carol', { townId: 'odomi', text: '', visibility: 'akpafu' }, [])); // empty post
+  });
+
+  it('Siwu words: admins add and delete; members only read', async () => {
+    await seedRole('carol', 'moderator', ['odomi']);
+    const w = { word: 'Test word', meaning: 'A test meaning', example: '', audioUrl: null };
+    await assertFails(ops.addWord(db('bob'), 'bob', w));
+    await assertSucceeds(ops.addWord(db('carol'), 'carol', w));
+    await assertFails(ops.addWord(db('carol'), 'carol', { ...w, audioUrl: 'https://x.example/audio/bob/a.webm' })); // someone else's recording
+    const list = await getDocs(collection(db('bob'), 'words'));
+    expect(list.size).toBe(1);
+    await assertFails(ops.deleteWord(db('bob'), list.docs[0]!.id));
+    await assertSucceeds(ops.deleteWord(db('carol'), list.docs[0]!.id));
   });
 
   it('profile bio and vibe', async () => {

@@ -34,14 +34,16 @@ import { TeamCrest } from '../components/extras';
 import { computeStandings } from '../lib/standings';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toast';
+import { PredictionCard, PredictionLeague } from '../components/Predictions';
 import { Alert, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextField } from '../components/ui';
 
-type Tab = 'live' | 'fixtures' | 'results' | 'standings';
+type Tab = 'live' | 'fixtures' | 'results' | 'standings' | 'predictions';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'live', label: 'Live' },
   { id: 'fixtures', label: 'Fixtures' },
   { id: 'results', label: 'Results' },
   { id: 'standings', label: 'Standings' },
+  { id: 'predictions', label: '🔮 League' },
 ];
 
 /** Re-renders every `ms` so the match clock ticks. */
@@ -115,7 +117,9 @@ export function SportsPage() {
         </div>
       </div>
 
-      {tab === 'live' || tab === 'fixtures' ? (
+      {tab === 'predictions' ? (
+        <PredictionLeague />
+      ) : tab === 'live' || tab === 'fixtures' ? (
         active.error ? (
           <ErrorState message={friendlyError(active.error)} />
         ) : !active.data ? (
@@ -371,6 +375,8 @@ export function MatchDetailPage() {
       </section>
 
       {reporter && <ReporterPanel match={m} clock={clock} />}
+
+      <PredictionCard match={m} />
 
       <section className="rounded-2xl border border-sand-200 bg-white p-4 shadow-sm">
         <h2 className="mb-3 flex items-center gap-2 font-bold text-gray-900">

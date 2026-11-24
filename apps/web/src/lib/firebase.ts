@@ -1,6 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth } from 'firebase/auth';
-import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
+import {
+  type Firestore,
+  connectFirestoreEmulator,
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -15,7 +22,19 @@ if (!config.apiKey || !config.projectId) {
 
 export const app = initializeApp(config);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+/**
+ * Posts, profiles and chats are kept on the phone (IndexedDB), so the app opens instantly with what
+ * was seen last time and works on a weak connection; fresh data loads in behind it.
+ * Falls back to memory only where storage is unavailable (e.g. some private browsing modes).
+ */
+function makeDb(): Firestore {
+  try {
+    return initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  } catch {
+    return initializeFirestore(app, { localCache: memoryLocalCache() });
+  }
+}
+export const db = makeDb();
 
 export const usingEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 if (usingEmulators) {

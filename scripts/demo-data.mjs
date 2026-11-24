@@ -97,6 +97,9 @@ const mt = [
 ];
 for (const [id, h, a, status, hs, as, min, ko, vh, vd, va] of mt)
   writes.push(set(`matches/${id}`, { competition: 'Akpafu Community Cup', home: team(h), away: team(a), venue: `${team(h).name} Park`, kickoffAt: ko, durationMinutes: 90, breakMinutes: 5, actualKickoffAt: null, secondHalfStartAt: null, status, homeScore: hs, awayScore: as, minute: min, votesHome: vh, votesDraw: vd, votesAway: va, createdBy: uids.demo_admin, createdAt: ago(5000), updatedAt: ago(1) }));
+// Sample predictions for the predictions league (Adokor 0 - 1 Odomi, three days ago).
+for (const [who, town, h, aw] of [['ama_serwaa', 'mempeasem', 0, 1], ['kofi_mensah', 'todzi', 1, 1], ['efua_adokor', 'adokor', 1, 2]])
+  writes.push(set(`matches/m5/predictions/${uids[who]}`, { homeScore: h, awayScore: aw, townId: town, createdAt: days(-4, 12), updatedAt: days(-4, 12) }));
 writes.push(set('matches/m1/updates/u1', { type: 'chance', team: 'home', minute: 15, text: 'Great chance for Odomi!', createdBy: uids.demo_admin, createdAt: ago(17) }));
 writes.push(set('matches/m1/updates/u2', { type: 'yellow', team: 'away', minute: 28, text: '', createdBy: uids.demo_admin, createdAt: ago(4) }));
 writes.push(set('matches/m1/updates/u3', { type: 'goal', team: 'home', minute: 32, text: 'Odomi takes the lead!', createdBy: uids.demo_admin, createdAt: ago(1) }));

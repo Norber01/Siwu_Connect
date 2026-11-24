@@ -9,6 +9,7 @@ import {
   getCountFromServer,
   getDoc,
   getDocs,
+  getDocsFromCache,
   limit,
   orderBy,
   query,
@@ -53,7 +54,7 @@ function feedConstraints(feed: Feed): QueryConstraint[] {
   return [where('authorId', '==', feed.uid)];
 }
 
-export async function fetchFeedPage(feed: Feed, cursor: DocumentSnapshot | null): Promise<Page<Post>> {
+export async function fetchFeedPage(feed: Feed, cursor: DocumentSnapshot | null, fromCache = false): Promise<Page<Post>> {
   const constraints = [
     ...feedConstraints(feed),
     where('status', '==', 'published'),
@@ -61,7 +62,8 @@ export async function fetchFeedPage(feed: Feed, cursor: DocumentSnapshot | null)
     limit(LIMITS.feedPageSize),
   ];
   if (cursor) constraints.push(startAfter(cursor));
-  const snap = await getDocs(query(collection(db, 'posts'), ...constraints));
+  const q = query(collection(db, 'posts'), ...constraints);
+  const snap = fromCache ? await getDocsFromCache(q) : await getDocs(q);
   return {
     items: snap.docs.map(toPost),
     cursor: snap.docs.length === LIMITS.feedPageSize ? snap.docs[snap.docs.length - 1]! : null,
@@ -136,14 +138,13 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 
 /** Which of these posts has the user liked? One query instead of one read per post. */
 /** The caller's reaction (emoji type) per post, for a page of posts. */
-export async function fetchMyLikes(uid: string, postIds: string[]): Promise<Map<string, string>> {
+export async function fetchMyLikes(uid: string, postIds: string[], fromCache = false): Promise<Map<string, string>> {
   const liked = new Map<string, string>();
   for (let i = 0; i < postIds.length; i += 30) {
     const chunk = postIds.slice(i, i + 30);
     if (!chunk.length) continue;
-    const snap = await getDocs(
-      query(collectionGroup(db, 'reactions'), where('userId', '==', uid), where('postId', 'in', chunk)),
-    );
+    const q = query(collectionGroup(db, 'reactions'), where('userId', '==', uid), where('postId', 'in', chunk));
+    const snap = fromCache ? await getDocsFromCache(q) : await getDocs(q);
     snap.docs.forEach((d) => liked.set(d.data().postId as string, d.data().type as string));
   }
   return liked;
@@ -383,4 +384,93 @@ export async function fetchTownActivity(): Promise<Array<{ townId: string; posts
 export async function resolveMentions(usernames: string[]): Promise<string[]> {
   const found = await Promise.all(usernames.map((u) => getDoc(doc(db, 'usernames', u)).then((d) => (d.exists() ? (d.data().uid as string) : null)).catch(() => null)));
   return found.filter((x): x is string => !!x);
+}
+
+// ---------------- Siwu words ----------------
+
+export interface SiwuWord {
+  id: string;
+  word: string;
+  meaning: string;
+  example: string;
+  audioUrl: string | null;
+  createdAt: Date | null;
+}
+
+export async function fetchWords(): Promise<SiwuWord[]> {
+  const snap = await getDocs(query(collection(db, 'words'), orderBy('createdAt', 'asc'), limit(1000)));
+  return snap.docs.map((d) => {
+    const x = d.data();
+    return {
+      id: d.id,
+      word: x.word,
+      meaning: x.meaning,
+      example: x.example ?? '',
+      audioUrl: x.audioUrl ?? null,
+      createdAt: x.createdAt?.toDate?.() ?? null,
+    };
+  });
+}
+
+/** The same word for everyone all day; moves on at midnight (Ghana time = UTC). */
+export function wordOfTheDay(words: SiwuWord[], now = new Date()): SiwuWord | null {
+  if (!words.length) return null;
+  const day = Math.floor(now.getTime() / 86_400_000);
+  return words[day % words.length]!;
+}
+
+// ---------------- predictions league ----------------
+
+export interface Prediction {
+  uid: string;
+  homeScore: number;
+  awayScore: number;
+  townId: string;
+}
+
+export async function fetchMyPrediction(matchId: string, uid: string): Promise<Prediction | null> {
+  const s = await getDoc(doc(db, 'matches', matchId, 'predictions', uid));
+  return s.exists() ? { uid, ...(s.data() as Omit<Prediction, 'uid'>) } : null;
+}
+
+/** 3 points for the exact score, 1 for the right result (win/draw/loss). */
+export function predictionPoints(p: { homeScore: number; awayScore: number }, m: { homeScore: number; awayScore: number }): number {
+  if (p.homeScore === m.homeScore && p.awayScore === m.awayScore) return 3;
+  return Math.sign(p.homeScore - p.awayScore) === Math.sign(m.homeScore - m.awayScore) ? 1 : 0;
+}
+
+export interface LeagueTable {
+  members: { uid: string; townId: string; points: number; exact: number; played: number }[];
+  towns: { townId: string; points: number; players: number }[];
+  matches: number;
+}
+
+/** Points from matches finished in the last 7 days. */
+export async function fetchPredictionLeague(days = 7): Promise<LeagueTable> {
+  const since = Date.now() - days * 86_400_000;
+  const finished = (await getDocs(query(collection(db, 'matches'), where('status', '==', 'finished'), orderBy('kickoffAt', 'desc'), limit(40)))).docs
+    .map(toMatch)
+    .filter((m) => m.kickoffAt.getTime() >= since);
+  const members = new Map<string, { uid: string; townId: string; points: number; exact: number; played: number }>();
+  for (const m of finished) {
+    const preds = await getDocs(query(collection(db, 'matches', m.id, 'predictions'), limit(2000)));
+    for (const d of preds.docs) {
+      const p = d.data() as Omit<Prediction, 'uid'>;
+      const pts = predictionPoints(p, m);
+      const row = members.get(d.id) ?? { uid: d.id, townId: p.townId, points: 0, exact: 0, played: 0 };
+      row.points += pts;
+      row.exact += pts === 3 ? 1 : 0;
+      row.played += 1;
+      members.set(d.id, row);
+    }
+  }
+  const list = [...members.values()].sort((a, b) => b.points - a.points || b.exact - a.exact);
+  const towns = new Map<string, { townId: string; points: number; players: number }>();
+  for (const r of list) {
+    const t = towns.get(r.townId) ?? { townId: r.townId, points: 0, players: 0 };
+    t.points += r.points;
+    t.players += 1;
+    towns.set(r.townId, t);
+  }
+  return { members: list, towns: [...towns.values()].sort((a, b) => b.points - a.points), matches: finished.length };
 }

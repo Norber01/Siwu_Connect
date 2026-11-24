@@ -22,7 +22,7 @@ import { resolveMentions } from '../lib/queries';
 import { fetchComments, fetchLastPostAt, fetchMyLikes, fetchPost } from '../lib/queries';
 import type { Comment, Post } from '../lib/types';
 import { friendlyError, isPermissionDenied, timeAgo } from '../lib/util';
-import { PostCard, RichText } from '../components/PostCard';
+import { PostCard, QuotedPost, RichText } from '../components/PostCard';
 import { MediaPicker } from '../components/media';
 import { Menu, type MenuItem } from '../components/Menu';
 import { ReportDialog } from '../components/ReportDialog';
@@ -61,6 +61,8 @@ export function NewPostPage() {
   const invalidate = useInvalidatePosts();
   const toast = useToast();
   const initialTown = params.get('town');
+  const quoteId = params.get('quote');
+  const quoted = useQuery({ queryKey: ['post', quoteId], queryFn: () => fetchPost(quoteId!), enabled: !!quoteId });
   const [townId, setTownId] = useState<TownId>(isTownId(initialTown) ? initialTown : (profile.hometownId as TownId));
   const [text, setText] = useState('');
   const [visibility, setVisibility] = useState<PostVisibility>('akpafu');
@@ -85,7 +87,7 @@ export function NewPostPage() {
       setError(parsed.error.issues[0]!.message);
       return;
     }
-    if (!parsed.data.text && !media.length) {
+    if (!parsed.data.text && !media.length && !quoteId) {
       setError('Write something or add a photo or video.');
       return;
     }
@@ -108,7 +110,16 @@ export function NewPostPage() {
         return;
       }
       const mentions = await resolveMentions(extractMentions(parsed.data.text));
-      const id = await createPost(db, user.uid, parsed.data, media, { poll: options, mentions });
+      const q = quoted.data;
+      if (quoteId && (!q || q.status !== 'published')) {
+        setError('The post you are quoting is no longer available.');
+        return;
+      }
+      const id = await createPost(db, user.uid, parsed.data, media, {
+        poll: options,
+        mentions,
+        quoteOf: q ? { id: q.id, authorId: q.authorId } : null,
+      });
       invalidate();
       toast('Your post is live.');
       navigate(`/p/${id}`, { replace: true });
@@ -142,6 +153,7 @@ export function NewPostPage() {
           hint={`${text.length}/${LIMITS.postMaxChars}`}
           autoFocus
         />
+        {quoteId && <QuotedPost id={quoteId} />}
         <p className="-mt-3 text-xs text-gray-600">Tip: use #hashtags to join a topic and @username to mention someone.</p>
         <MediaPicker value={media} onChange={setMedia} onBusyChange={setUploading} />
         {poll ? (

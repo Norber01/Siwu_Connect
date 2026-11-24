@@ -226,6 +226,15 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByText(/⏱ [23]:\d\d/)).toBeVisible();
   await expect(page.getByText('20 min, 5-min break')).toBeVisible();
 
+  // Siwu word of the day: added by an admin, shown on the home feed.
+  await page.goto('/admin/words');
+  await page.getByLabel('Siwu word or proverb').fill(`Sample word ${tag}`);
+  await page.getByLabel('Meaning in English').fill('Placeholder meaning for the test');
+  await page.getByRole('button', { name: 'Add word' }).click();
+  await expect(page.getByText('Word added ✔')).toBeVisible();
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Siwu word of the day' })).toBeVisible();
+
   await page.goto('/admin/feedback');
   await expect(page.getByText(`The sports centre is brilliant ${tag}`)).toBeVisible();
 });
