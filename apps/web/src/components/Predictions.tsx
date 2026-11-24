@@ -33,6 +33,26 @@ function ScoreInput({ label, value, onChange }: { label: string; value: number; 
   );
 }
 
+/** On fixture cards: "Predict the score", or your prediction once made. */
+export function PredictChip({ match: m }: { match: Match }) {
+  const { user } = useMe();
+  const mine = useQuery({ queryKey: ['prediction', m.id, user.uid], queryFn: () => fetchMyPrediction(m.id, user.uid), staleTime: 60_000 });
+  if (mine.isPending) return <div className="mt-3 h-9" />;
+  return (
+    <div className="mt-3 flex justify-center">
+      {mine.data ? (
+        <span className="rounded-full bg-gold-100 px-3 py-1.5 text-xs font-bold text-gold-800">
+          🔮 Your prediction: {mine.data.homeScore} – {mine.data.awayScore} · tap to change
+        </span>
+      ) : (
+        <span className="rounded-full bg-gradient-to-b from-gold-400 to-gold-600 px-4 py-1.5 text-sm font-bold text-white shadow-sm">
+          🔮 Predict the score
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Predict the final score before kick-off; after the match, shows the points earned. */
 export function PredictionCard({ match: m }: { match: Match }) {
   const { user, profile } = useMe();

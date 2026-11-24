@@ -305,7 +305,7 @@ export function MediaPicker({
         aria-label="Choose photos or videos"
         onChange={(e) => pick(e.target.files)}
       />
-      <p className="mt-1 text-xs text-gray-600">Up to 4. Photos are made smaller on your phone; videos up to 3 minutes / 50 MB.</p>
+      <p className="mt-1 text-xs text-gray-600">Up to 4 photos or videos (videos up to 3 minutes).</p>
       {error && <p className="mt-1 text-sm text-red-700">{error}</p>}
     </div>
   );

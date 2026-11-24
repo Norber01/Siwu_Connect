@@ -17,7 +17,19 @@ import { AuthorLine, RichText } from '../components/PostCard';
 import { ReportDialog } from '../components/ReportDialog';
 import { TownChips } from '../components/TownChips';
 import { useToast } from '../components/Toast';
-import { Alert, Button, Card, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextArea, TextField } from '../components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Modal,
+  PageHeader,
+  PageSpinner,
+  SelectField,
+  TextArea,
+  TextField,
+} from '../components/ui';
 
 // ---------------- Explore ----------------
 
@@ -27,7 +39,9 @@ export function ExplorePage() {
   const navigate = useNavigate();
   const [term, setTerm] = useState('');
   const trending = useQuery({ queryKey: ['trending'], queryFn: fetchTrendingTags, staleTime: 10 * 60_000 });
-  const towns = useQuery({ queryKey: ['townActivity'], queryFn: fetchTownActivity, staleTime: 10 * 60_000 });
+  const { role } = useMe();
+  const admin = hasAdminAccess(role);
+  const towns = useQuery({ queryKey: ['townActivity'], queryFn: fetchTownActivity, staleTime: 10 * 60_000, enabled: admin });
   const board = [...(towns.data ?? [])].sort((a, b) => b.posts - a.posts || b.members - a.members);
   const top = board[0]?.posts ?? 0;
 
@@ -42,7 +56,14 @@ export function ExplorePage() {
         }}
         className="flex gap-2"
       >
-        <TextField label="Search" className="flex-1 [&_label]:sr-only" type="search" placeholder="Search posts and people" value={term} onChange={(e) => setTerm(e.target.value)} />
+        <TextField
+          label="Search"
+          className="flex-1 [&_label]:sr-only"
+          type="search"
+          placeholder="Search posts and people"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+        />
         <Button type="submit" icon="search" aria-label="Search" />
       </form>
       <PeopleSuggest text={term} />
@@ -57,7 +78,10 @@ export function ExplorePage() {
           <ul className="flex flex-wrap gap-2">
             {trending.data!.map((t) => (
               <li key={t.tag}>
-                <Link to={`/tag/${t.tag}`} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1.5 text-sm font-bold text-brand-800 hover:bg-brand-100">
+                <Link
+                  to={`/tag/${t.tag}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1.5 text-sm font-bold text-brand-800 hover:bg-brand-100"
+                >
                   #{t.tag} <span className="text-xs font-semibold text-brand-600">{t.count}</span>
                 </Link>
               </li>
@@ -66,36 +90,41 @@ export function ExplorePage() {
         )}
       </Card>
 
-      <Card className="p-4">
-        <h2 className="font-bold text-gray-900">🏆 Town spirit this week</h2>
-        <p className="mb-3 text-xs text-gray-600">Which town posts the most? Get your town to the top!</p>
-        {towns.isPending ? (
-          <PageSpinner />
-        ) : towns.isError ? (
-          <ErrorState message={friendlyError(towns.error)} />
-        ) : (
-          <ol className="space-y-2">
-            {board.map((t, i) => (
-              <li key={t.townId}>
-                <Link to={`/towns/${t.townId}`} className="flex items-center gap-3">
-                  <span className="w-7 text-center text-xl">{MEDALS[i]}</span>
-                  <span className="flex-1">
-                    <span className="flex justify-between text-sm font-semibold">
-                      <span>{townName(t.townId)}</span>
-                      <span className="tabular-nums text-gray-600">
-                        {t.posts} posts · {t.members} members
+      {admin && (
+        <Card className="p-4">
+          <h2 className="font-bold text-gray-900">🏆 Town spirit this week</h2>
+          <p className="mb-3 text-xs text-gray-600">Which town posts the most? (Only admins can see this.)</p>
+          {towns.isPending ? (
+            <PageSpinner />
+          ) : towns.isError ? (
+            <ErrorState message={friendlyError(towns.error)} />
+          ) : (
+            <ol className="space-y-2">
+              {board.map((t, i) => (
+                <li key={t.townId}>
+                  <Link to={`/towns/${t.townId}`} className="flex items-center gap-3">
+                    <span className="w-7 text-center text-xl">{MEDALS[i]}</span>
+                    <span className="flex-1">
+                      <span className="flex justify-between text-sm font-semibold">
+                        <span>{townName(t.townId)}</span>
+                        <span className="tabular-nums text-gray-600">
+                          {t.posts} posts · {t.members} members
+                        </span>
+                      </span>
+                      <span className="mt-1 block h-2 overflow-hidden rounded-full bg-sand-200">
+                        <span
+                          className="block h-full rounded-full bg-gradient-to-r from-brand-500 to-gold-400"
+                          style={{ width: `${top ? (t.posts / top) * 100 : 0}%` }}
+                        />
                       </span>
                     </span>
-                    <span className="mt-1 block h-2 overflow-hidden rounded-full bg-sand-200">
-                      <span className="block h-full rounded-full bg-gradient-to-r from-brand-500 to-gold-400" style={{ width: `${top ? (t.posts / top) * 100 : 0}%` }} />
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Card>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         {(
@@ -106,7 +135,11 @@ export function ExplorePage() {
             ['training', '🛠️', 'Training', 'Apprenticeships & courses'],
           ] as const
         ).map(([kind, emoji, title, text]) => (
-          <Link key={kind} to={`/directory?kind=${kind}`} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sand-200 hover:ring-brand-300">
+          <Link
+            key={kind}
+            to={`/directory?kind=${kind}`}
+            className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sand-200 hover:ring-brand-300"
+          >
             <span className="text-3xl">{emoji}</span>
             <span className="mt-1 block font-bold text-gray-900">{title}</span>
             <span className="block text-xs text-gray-600">{text}</span>
@@ -151,7 +184,13 @@ export function DirectoryPage() {
   const q = useQuery({
     queryKey: ['directory', kind, town],
     queryFn: async () => {
-      const c = [where('kind', '==', kind), ...(town !== 'all' ? [where('townId', '==', town)] : []), where('status', '==', 'active'), orderBy('createdAt', 'desc'), limit(60)];
+      const c = [
+        where('kind', '==', kind),
+        ...(town !== 'all' ? [where('townId', '==', town)] : []),
+        where('status', '==', 'active'),
+        orderBy('createdAt', 'desc'),
+        limit(60),
+      ];
       return (await getDocs(query(collection(db, 'directory'), ...c))).docs.map((d) => toEntry(d.id, d.data()));
     },
   });
@@ -162,7 +201,10 @@ export function DirectoryPage() {
         title={`${k.emoji} ${k.title}`}
         back
         actions={
-          <Link to={`/directory/new?kind=${kind}`} className="inline-flex min-h-[40px] items-center gap-1 rounded-xl bg-brand-600 px-3 text-sm font-semibold text-white">
+          <Link
+            to={`/directory/new?kind=${kind}`}
+            className="inline-flex min-h-[40px] items-center gap-1 rounded-xl bg-brand-600 px-3 text-sm font-semibold text-white"
+          >
             <Icon name="plus" className="h-4 w-4" /> Add
           </Link>
         }
@@ -191,7 +233,10 @@ export function DirectoryPage() {
         <ul className="space-y-2">
           {q.data.map((e) => (
             <li key={e.id}>
-              <Link to={`/directory/${e.id}`} className="flex gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-sand-200 hover:ring-brand-300">
+              <Link
+                to={`/directory/${e.id}`}
+                className="flex gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-sand-200 hover:ring-brand-300"
+              >
                 {e.imageUrl ? (
                   <img src={e.imageUrl} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
                 ) : (
@@ -202,7 +247,11 @@ export function DirectoryPage() {
                   <span className="block text-xs font-semibold text-brand-700">
                     {e.category || k.one} · {townShortName(e.townId)}
                   </span>
-                  {e.deadline && <span className="block text-xs text-red-700">Deadline {e.deadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+                  {e.deadline && (
+                    <span className="block text-xs text-red-700">
+                      Deadline {e.deadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
                   <span className="line-clamp-1 text-sm text-gray-600">{e.description}</span>
                 </span>
               </Link>
@@ -220,10 +269,13 @@ export function EntryDetailPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['entry', entryId], queryFn: async () => {
-    const s = await getDoc(doc(db, 'directory', entryId));
-    return s.exists() ? toEntry(s.id, s.data()) : null;
-  } });
+  const q = useQuery({
+    queryKey: ['entry', entryId],
+    queryFn: async () => {
+      const s = await getDoc(doc(db, 'directory', entryId));
+      return s.exists() ? toEntry(s.id, s.data()) : null;
+    },
+  });
   const [reporting, setReporting] = useState(false);
   const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
   if (q.isPending) return <PageSpinner />;
@@ -244,12 +296,16 @@ export function EntryDetailPage() {
     items.push({
       label: e.status === 'closed' ? 'Reopen' : e.kind === 'business' ? 'Mark as closed' : 'Mark as filled / closed',
       icon: 'check',
-      onSelect: () => void setEntryStatus(db, e.id, e.status === 'closed' ? 'active' : 'closed').then(refresh).catch((x) => toast(friendlyError(x), 'error')),
+      onSelect: () =>
+        void setEntryStatus(db, e.id, e.status === 'closed' ? 'active' : 'closed')
+          .then(refresh)
+          .catch((x) => toast(friendlyError(x), 'error')),
     });
   }
   if (mine) items.push({ label: 'Delete', icon: 'trash', danger: true, onSelect: () => setConfirm('delete') });
   if (!mine && profile.status === 'active') items.push({ label: 'Report', icon: 'flag', onSelect: () => setReporting(true) });
-  if (!mine && e.status !== 'removed' && canModerate(role, e.townId)) items.push({ label: 'Remove (moderator)', icon: 'shield', danger: true, onSelect: () => setConfirm('remove') });
+  if (!mine && e.status !== 'removed' && canModerate(role, e.townId))
+    items.push({ label: 'Remove (moderator)', icon: 'shield', danger: true, onSelect: () => setConfirm('remove') });
 
   const run = async () => {
     try {
@@ -267,8 +323,12 @@ export function EntryDetailPage() {
     <div className="space-y-4">
       <PageHeader title={`${k.emoji} ${k.title}`} back actions={<Menu items={items} label="Actions" />} />
       {e.status === 'pending' && <Alert kind="info">⏳ Waiting for a moderator to approve this. Only you can see it for now.</Alert>}
-      {e.status === 'rejected' && <Alert kind="warning">A moderator did not approve this. Edit it to fix the problem and send it again.</Alert>}
-      {e.status === 'closed' && <Alert kind="warning">{e.kind === 'business' ? 'This business is marked as closed.' : 'This opportunity is closed.'}</Alert>}
+      {e.status === 'rejected' && (
+        <Alert kind="warning">A moderator did not approve this. Edit it to fix the problem and send it again.</Alert>
+      )}
+      {e.status === 'closed' && (
+        <Alert kind="warning">{e.kind === 'business' ? 'This business is marked as closed.' : 'This opportunity is closed.'}</Alert>
+      )}
       <article className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-sand-200">
         {e.imageUrl && <img src={e.imageUrl} alt="" className="max-h-72 w-full object-cover" />}
         <div className="space-y-3 p-4">
@@ -277,7 +337,11 @@ export function EntryDetailPage() {
               {e.category || k.one} · Akpafu {townShortName(e.townId)}
             </p>
             <h1 className="text-xl font-bold text-gray-900">{e.title}</h1>
-            {e.deadline && <p className="text-sm font-semibold text-red-700">Deadline: {e.deadline.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}</p>}
+            {e.deadline && (
+              <p className="text-sm font-semibold text-red-700">
+                Deadline: {e.deadline.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            )}
           </div>
           {e.description && <RichText text={e.description} />}
           <div className="border-t border-sand-200 pt-3">
@@ -289,25 +353,52 @@ export function EntryDetailPage() {
           <div className="grid gap-2 border-t border-sand-200 p-3 sm:grid-cols-2">
             {e.contactPhone && (
               <>
-                <a href={whatsappLink(e.contactPhone, `Hello, I saw "${e.title}" on Siwu Connect.`)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-brand-600 font-bold text-white">
+                <a
+                  href={whatsappLink(e.contactPhone, `Hello, I saw "${e.title}" on Siwu Connect.`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-brand-600 font-bold text-white"
+                >
                   <Icon name="message" /> WhatsApp
                 </a>
-                <a href={`tel:${e.contactPhone}`} className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-brand-600 font-bold text-brand-700">
+                <a
+                  href={`tel:${e.contactPhone}`}
+                  className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-brand-600 font-bold text-brand-700"
+                >
                   <Icon name="phone" /> Call
                 </a>
               </>
             )}
             {e.link && (
-              <a href={e.link} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-sand-200 font-bold text-gray-800 sm:col-span-2">
+              <a
+                href={e.link}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-sand-200 font-bold text-gray-800 sm:col-span-2"
+              >
                 <Icon name="globe" /> {e.kind === 'business' ? 'Website' : 'How to apply'}
               </a>
             )}
           </div>
         )}
       </article>
-      {reporting && <ReportDialog open onClose={() => setReporting(false)} target={{ targetType: 'directory', targetId: e.id, targetPath: `directory/${e.id}`, townId: e.townId }} />}
-      <Modal open={!!confirm} onClose={() => setConfirm(null)} title={confirm === 'delete' ? 'Delete this listing?' : 'Remove this listing?'}>
-        <p className="text-sm text-gray-700">{confirm === 'delete' ? 'It will disappear from Siwu Connect.' : 'It will be hidden from everyone. This is recorded in the audit log.'}</p>
+      {reporting && (
+        <ReportDialog
+          open
+          onClose={() => setReporting(false)}
+          target={{ targetType: 'directory', targetId: e.id, targetPath: `directory/${e.id}`, townId: e.townId }}
+        />
+      )}
+      <Modal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        title={confirm === 'delete' ? 'Delete this listing?' : 'Remove this listing?'}
+      >
+        <p className="text-sm text-gray-700">
+          {confirm === 'delete'
+            ? 'It will disappear from Siwu Connect.'
+            : 'It will be hidden from everyone. This is recorded in the audit log.'}
+        </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirm(null)}>
             Keep it
@@ -417,9 +508,20 @@ export function EntryFormPage() {
             ))}
           </SelectField>
         )}
-        <TextField label={kind === 'business' ? 'Business name' : 'Title'} maxLength={100} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <TextField
+          label={kind === 'business' ? 'Business name' : 'Title'}
+          maxLength={100}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
         <div className="grid grid-cols-2 gap-3">
-          <TextField label="Category" maxLength={40} value={category} onChange={(e) => setCategory(e.target.value)} placeholder={k.categoryHint} />
+          <TextField
+            label="Category"
+            maxLength={40}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder={k.categoryHint}
+          />
           <SelectField label="Town" value={townId} onChange={(e) => setTownId(e.target.value)}>
             {TOWNS.map((t) => (
               <option key={t.id} value={t.id}>
@@ -428,10 +530,31 @@ export function EntryFormPage() {
             ))}
           </SelectField>
         </div>
-        <TextArea label={kind === 'business' ? 'What you offer, opening hours, location' : 'Details and requirements'} rows={5} maxLength={EXTRA_LIMITS.listingDescriptionMax} value={description} onChange={(e) => setDescription(e.target.value)} />
-        {kind !== 'business' && <TextField label="Deadline (optional)" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />}
-        <TextField label="Phone / WhatsApp (optional)" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+233 24 123 4567" hint="Visible to signed-in members." />
-        <TextField label={kind === 'business' ? 'Website (optional)' : 'Link to apply (optional)'} type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" />
+        <TextArea
+          label={kind === 'business' ? 'What you offer, opening hours, location' : 'Details and requirements'}
+          rows={5}
+          maxLength={EXTRA_LIMITS.listingDescriptionMax}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        {kind !== 'business' && (
+          <TextField label="Deadline (optional)" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+        )}
+        <TextField
+          label="Phone / WhatsApp (optional)"
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+233 24 123 4567"
+          hint="Visible to signed-in members."
+        />
+        <TextField
+          label={kind === 'business' ? 'Website (optional)' : 'Link to apply (optional)'}
+          type="url"
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          placeholder="https://…"
+        />
         <PhotoField url={imageUrl} onChange={setImageUrl} label="Photo or logo (optional)" />
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">

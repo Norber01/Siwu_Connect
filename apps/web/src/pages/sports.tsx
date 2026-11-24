@@ -34,7 +34,7 @@ import { TeamCrest } from '../components/extras';
 import { computeStandings } from '../lib/standings';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toast';
-import { PredictionCard, PredictionLeague } from '../components/Predictions';
+import { PredictChip, PredictionCard, PredictionLeague } from '../components/Predictions';
 import { Alert, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextField } from '../components/ui';
 
 type Tab = 'live' | 'fixtures' | 'results' | 'standings' | 'predictions';
@@ -195,6 +195,7 @@ function MatchCard({ match: m, now }: { match: Match; now: Date }) {
         </div>
         <TeamBlock team={m.away} />
       </div>
+      {m.status === 'scheduled' && !started && <PredictChip match={m} />}
     </Link>
   );
 }

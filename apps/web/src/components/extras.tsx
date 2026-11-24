@@ -60,7 +60,6 @@ export function PhotoField({ url, onChange, label = 'Photo (optional)' }: { url:
         </button>
       )}
       <input ref={input} type="file" accept="image/*" className="sr-only" aria-label="Choose photo" onChange={(e) => pick(e.target.files?.[0])} />
-      <p className="mt-1 text-xs text-gray-600">Photos are made smaller on your phone to save data.</p>
       {error && <p className="mt-1 text-sm text-red-700">{error}</p>}
     </div>
   );

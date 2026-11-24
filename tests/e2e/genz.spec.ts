@@ -45,7 +45,7 @@ test('Gen Z features', async ({ page }) => {
   await expect(page.getByRole('heading', { name: `#${tag}` })).toBeVisible();
   await page.getByRole('link', { name: 'Explore', exact: true }).click();
   await expect(page.getByRole('link', { name: new RegExp(`#${tag}`) })).toBeVisible();
-  await expect(page.getByText('Town spirit this week')).toBeVisible();
+  await expect(page.getByText('Town spirit this week')).toHaveCount(0); // admins only
 
   // People search suggests members while typing part of a name (the surname here).
   await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('mens');
@@ -69,10 +69,14 @@ test('Gen Z features', async ({ page }) => {
   await page.getByRole('button', { name: 'Close story' }).click();
 
   // Predictions league: predict the score of an upcoming match; the league shows sample points.
+  await page.goto('/sports?tab=fixtures');
+  await expect(page.getByText('🔮 Predict the score').first()).toBeVisible();
   await page.goto('/sports/m2');
   await page.getByRole('button', { name: 'Todzi one more' }).click();
   await page.getByRole('button', { name: 'Save prediction' }).click();
   await expect(page.getByText('Prediction saved: Todzi 1 – 0 Adokor')).toBeVisible();
+  await page.goto('/sports?tab=fixtures');
+  await expect(page.getByText('🔮 Your prediction: 1 – 0')).toBeVisible();
   await page.goto('/sports?tab=predictions');
   await expect(page.getByText('Top predictors')).toBeVisible();
   await expect(page.getByText(/You: #1 with 3 points/)).toBeVisible();

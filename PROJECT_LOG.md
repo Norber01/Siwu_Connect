@@ -142,6 +142,13 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   Admin/Moderator). These stories show first in the stories row with a gold ring and a 📢 badge, and an
   "All towns"/town label, for announcements and promotions. Enforced in the security rules: members cannot
   post to everyone, and nobody can see another town's stories by faking their hometown. Needs **Run setup again**.
+- 2026-11-24 — **Founder fixes:**
+  - The town and All-Akpafu feeds are mixed instead of strictly newest first. Each batch of 20 recent posts is
+    ordered by freshness, liveliness (reactions, comments) and a shuffle that changes each time the app is
+    opened. Your own post from the last 15 minutes stays on top. Pinned posts stay first; profiles stay newest first.
+  - "Town spirit this week" on Explore is now for admins only.
+  - Removed the "Photos are made smaller on your phone" sentences.
+  - Fixtures show a gold "🔮 Predict the score" button (or "Your prediction: 2 – 1") on upcoming matches.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

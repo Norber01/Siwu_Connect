@@ -44,6 +44,12 @@ export function useFeed(feed: Feed) {
     initialPageParam: null as Awaited<ReturnType<typeof fetchFeedPage>>['cursor'],
     queryFn: async ({ pageParam }) => {
       const page = await fetchFeedPage(feed, pageParam);
+      // Your own post from the last 15 minutes stays on top, so you can see it after posting.
+      if (user && !pageParam) {
+        const recentMine = (p: (typeof page.items)[number]) =>
+          p.authorId === user.uid && Date.now() - (p.createdAt?.getTime() ?? Date.now()) < 15 * 60_000;
+        page.items = [...page.items.filter(recentMine), ...page.items.filter((p) => !recentMine(p))];
+      }
       const liked = user ? await fetchMyLikes(user.uid, page.items.map((p) => p.id)) : new Map<string, string>();
       return { ...page, liked };
     },

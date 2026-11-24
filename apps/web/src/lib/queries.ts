@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { LIMITS, normalize, searchTokens } from '@siwu/shared';
 import { db } from './firebase';
+import { mixPosts } from './mix';
 import {
   toEvent,
   toFeedback,
@@ -54,19 +55,21 @@ function feedConstraints(feed: Feed): QueryConstraint[] {
   return [where('authorId', '==', feed.uid)];
 }
 
+/** Town and All-Akpafu feeds read this many recent posts at a time and mix them. */
+const MIX_PAGE = 20;
+
 export async function fetchFeedPage(feed: Feed, cursor: DocumentSnapshot | null, fromCache = false): Promise<Page<Post>> {
-  const constraints = [
-    ...feedConstraints(feed),
-    where('status', '==', 'published'),
-    orderBy('createdAt', 'desc'),
-    limit(LIMITS.feedPageSize),
-  ];
+  const mixed = feed.kind !== 'author'; // a member's profile stays newest first
+  const size = mixed ? MIX_PAGE : LIMITS.feedPageSize;
+  const constraints = [...feedConstraints(feed), where('status', '==', 'published'), orderBy('createdAt', 'desc'), limit(size)];
   if (cursor) constraints.push(startAfter(cursor));
   const q = query(collection(db, 'posts'), ...constraints);
   const snap = fromCache ? await getDocsFromCache(q) : await getDocs(q);
+  const items = snap.docs.map(toPost);
   return {
-    items: snap.docs.map(toPost),
-    cursor: snap.docs.length === LIMITS.feedPageSize ? snap.docs[snap.docs.length - 1]! : null,
+    items: mixed ? mixPosts(items) : items,
+    // The next page continues after the oldest post read, whatever order they are shown in.
+    cursor: snap.docs.length === size ? snap.docs[snap.docs.length - 1]! : null,
   };
 }
 
