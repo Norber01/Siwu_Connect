@@ -646,8 +646,21 @@ export async function markChatRead(db: Firestore, uid: string, chatId: string): 
 // friendships/{dmId}: someone sends a request, the other person accepts. Friends can chat
 // privately and see each other's stories.
 
-export async function sendFriendRequest(db: Firestore, uid: string, otherUid: string): Promise<void> {
+/**
+ * Sends a friend request — or, if the other person already sent one, accepts it.
+ * Returns what happened so the screen can say so.
+ */
+export async function sendFriendRequest(db: Firestore, uid: string, otherUid: string): Promise<'sent' | 'accepted' | 'already'> {
   const id = dmId(uid, otherUid);
+  const existing = await getDoc(doc(db, 'friendships', id));
+  if (existing.exists()) {
+    const d = existing.data() as { status: string; requesterId: string };
+    if (d.status === 'pending' && d.requesterId === otherUid) {
+      await acceptFriendRequest(db, uid, otherUid);
+      return 'accepted';
+    }
+    return 'already';
+  }
   const b = writeBatch(db);
   b.set(doc(db, 'friendships', id), {
     members: [uid, otherUid].sort(),
@@ -666,6 +679,7 @@ export async function sendFriendRequest(db: Firestore, uid: string, otherUid: st
   });
   b.set(doc(db, 'rate_limits', uid), { lastFriendAt: serverTimestamp() }, { merge: true });
   await b.commit();
+  return 'sent';
 }
 
 export async function acceptFriendRequest(db: Firestore, uid: string, otherUid: string): Promise<void> {

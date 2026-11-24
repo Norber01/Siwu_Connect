@@ -4,7 +4,7 @@ import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { useFriendships } from '../lib/friends';
 import { acceptFriendRequest, openDm, removeFriendship, sendFriendRequest } from '../lib/ops';
-import { friendlyError } from '../lib/util';
+import { friendlyError, isPermissionDenied } from '../lib/util';
 import { useToast } from './Toast';
 import { Button, Modal } from './ui';
 
@@ -28,7 +28,12 @@ export function FriendActions({ uid, name, small = true }: { uid: string; name: 
       await fn();
       if (done) toast(done);
     } catch (e) {
-      toast(friendlyError(e), 'error');
+      toast(
+        isPermissionDenied(e)
+          ? `Could not do that right now. If ${first} blocked you or you blocked them, requests are not possible; otherwise wait a moment and try again.`
+          : friendlyError(e),
+        'error',
+      );
     } finally {
       setBusy(false);
     }
@@ -39,7 +44,18 @@ export function FriendActions({ uid, name, small = true }: { uid: string; name: 
 
   if (!rel)
     return (
-      <Button small={small} icon="plus" busy={busy} disabled={!active} onClick={() => act(() => sendFriendRequest(db, user.uid, uid), `Friend request sent to ${first}.`)}>
+      <Button
+        small={small}
+        icon="plus"
+        busy={busy}
+        disabled={!active}
+        onClick={() =>
+          act(async () => {
+            const r = await sendFriendRequest(db, user.uid, uid);
+            toast(r === 'accepted' ? `${first} had already asked — you are now friends 🎉` : r === 'already' ? 'You already sent a request.' : `Friend request sent to ${first}.`);
+          })
+        }
+      >
         Add friend
       </Button>
     );
