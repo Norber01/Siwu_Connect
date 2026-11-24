@@ -1,3 +1,5 @@
+import type { KVLike } from './kv-bucket';
+
 export interface Env {
   /** Firebase project id, e.g. "siwu-connect-prod". */
   FIREBASE_PROJECT_ID: string;
@@ -15,8 +17,10 @@ export interface Env {
   /** Local development only — never set in production. */
   FIRESTORE_EMULATOR_HOST?: string;
   FIREBASE_AUTH_EMULATOR_HOST?: string;
-  /** R2 bucket for profile photos. */
+  /** Photo storage (profile, event and marketplace photos). Set from R2 or from PHOTOS_KV in index.ts. */
   AVATARS: R2BucketLike;
+  /** Workers KV namespace used for photos when no R2 bucket is bound (free plan, no card needed). */
+  PHOTOS_KV?: KVLike;
 }
 
 /** The subset of the R2 binding we use (lets tests provide an in-memory fake). */

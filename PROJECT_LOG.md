@@ -71,6 +71,9 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 "Real test environment" (a deployed staging project) is still outstanding — needs accounts.
 
 ## Decisions made
+- 2026-11-24 — **Photos stored in Cloudflare Workers KV** for now (R2 needs a payment card, which the founder
+  doesn't have yet). KV free plan: ~1 GB (≈5,000–7,000 photos), 1,000 uploads/day. Switch to R2 later by binding
+  `AVATARS` to a bucket — no app changes; existing photos would need copying across.
 - 2026-11-23 — **Fifth town added: Akpafu Sokpo** (founder correction; it was missing from the brief). ID `sokpo`.
   Tagline updated to "Five Towns. One Community." Added to rules, shared code, chips, sign-up, welcome banner,
   admin CLI and tests. Existing databases need `npm run admin -- seed-towns` re-run to add the town record.
