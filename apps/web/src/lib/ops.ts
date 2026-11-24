@@ -11,6 +11,7 @@ import {
   increment,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
@@ -77,10 +78,38 @@ export interface MediaItem {
   posterUrl: string | null;
 }
 
-export async function createPost(db: Firestore, uid: string, input: PostInput, media: MediaItem[] = []): Promise<string> {
+export interface PostExtras {
+  poll?: string[] | null;
+  /** uids of mentioned members (resolved from @usernames). */
+  mentions?: string[];
+}
+
+/** #hashtags in a text, lowercase, without "#". */
+export function extractTags(text: string): string[] {
+  return [...new Set([...text.matchAll(/(?:^|\s)#([\p{L}\p{N}_]{2,30})/gu)].map((m) => m[1]!.toLowerCase()))].slice(0, 10);
+}
+
+/** @usernames in a text. */
+export function extractMentions(text: string): string[] {
+  return [...new Set([...text.matchAll(/(?:^|\s)@([a-z0-9_]{3,20})/gi)].map((m) => m[1]!.toLowerCase()))].slice(0, 10);
+}
+
+export async function createPost(
+  db: Firestore,
+  uid: string,
+  input: PostInput,
+  media: MediaItem[] = [],
+  extras: PostExtras = {},
+): Promise<string> {
   const ref = doc(collection(db, 'posts'));
   const batch = writeBatch(db);
+  const mentions = (extras.mentions ?? []).filter((m) => m !== uid).slice(0, 10);
+  const poll = extras.poll && extras.poll.length >= 2 ? { options: extras.poll.slice(0, 4), counts: extras.poll.slice(0, 4).map(() => 0) } : null;
   batch.set(ref, {
+    poll,
+    tags: extractTags(input.text),
+    mentions,
+    reactions: {},
     authorId: uid,
     townId: input.townId,
     text: input.text,
@@ -98,8 +127,29 @@ export async function createPost(db: Firestore, uid: string, input: PostInput, m
     editedAt: null,
   });
   batch.set(doc(db, 'rate_limits', uid), { lastPostAt: serverTimestamp() }, { merge: true });
+  for (const m of mentions) {
+    batch.set(doc(db, 'users', m, 'notifications', `mention_${ref.id}`), {
+      type: 'mention',
+      actorId: uid,
+      postId: ref.id,
+      commentId: null,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  }
   await batch.commit();
   return ref.id;
+}
+
+export async function votePoll(db: Firestore, uid: string, post: { id: string; poll: { counts: number[] } }, option: number): Promise<void> {
+  const b = writeBatch(db);
+  b.set(doc(db, 'posts', post.id, 'pollVotes', uid), { option, createdAt: serverTimestamp() });
+  const counts = [...post.poll.counts];
+  counts[option] = (counts[option] ?? 0) + 1;
+  // Firestore cannot increment inside an array, so the new counts are written; the rules check
+  // that exactly the chosen option went up by one compared with what is stored.
+  b.update(doc(db, 'posts', post.id), { 'poll.counts': counts });
+  await b.commit();
 }
 
 export async function editPost(
@@ -112,6 +162,7 @@ export async function editPost(
     text: input.text,
     imageUrl: null,
     media,
+    tags: extractTags(input.text),
     visibility: input.visibility,
     searchTokens: searchTokens(input.text),
     updatedAt: serverTimestamp(),
@@ -131,28 +182,56 @@ export async function deletePost(db: Firestore, postId: string): Promise<void> {
   });
 }
 
-export async function setLike(
+export const REACTIONS = [
+  { id: 'like', emoji: '👍' },
+  { id: 'love', emoji: '❤️' },
+  { id: 'haha', emoji: '😂' },
+  { id: 'fire', emoji: '🔥' },
+  { id: 'wow', emoji: '😮' },
+  { id: 'sad', emoji: '😢' },
+] as const;
+export type Reaction = (typeof REACTIONS)[number]['id'];
+
+/**
+ * Sets, changes or removes the caller's reaction. Each step moves the total and the
+ * per-emoji count by exactly one (switching emoji = remove, then add).
+ */
+export async function setReaction(
   db: Firestore,
   uid: string,
   post: { id: string; authorId: string },
-  like: boolean,
+  current: Reaction | null,
+  next: Reaction | null,
 ): Promise<void> {
-  const batch = writeBatch(db);
+  if (current === next) return;
   const reaction = doc(db, 'posts', post.id, 'reactions', uid);
-  if (like) batch.set(reaction, { type: 'like', userId: uid, postId: post.id, createdAt: serverTimestamp() });
-  else batch.delete(reaction);
-  batch.update(doc(db, 'posts', post.id), { reactionCount: increment(like ? 1 : -1) });
-  if (like && post.authorId !== uid) {
-    batch.set(doc(db, 'users', post.authorId, 'notifications', `like_${post.id}_${uid}`), {
-      type: 'like',
-      actorId: uid,
-      postId: post.id,
-      commentId: null,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+  if (current) {
+    const b = writeBatch(db);
+    b.delete(reaction);
+    b.update(doc(db, 'posts', post.id), { reactionCount: increment(-1), [`reactions.${current}`]: increment(-1) });
+    await b.commit();
   }
-  await batch.commit();
+  if (next) {
+    const b = writeBatch(db);
+    b.set(reaction, { type: next, userId: uid, postId: post.id, createdAt: serverTimestamp() });
+    b.update(doc(db, 'posts', post.id), { reactionCount: increment(1), [`reactions.${next}`]: increment(1) });
+    if (post.authorId !== uid) {
+      b.set(doc(db, 'users', post.authorId, 'notifications', `like_${post.id}_${uid}`), {
+        type: 'like',
+        actorId: uid,
+        postId: post.id,
+        commentId: null,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+    await b.commit();
+  }
+}
+
+/** Simple like/unlike (👍). */
+export async function setLike(db: Firestore, uid: string, post: { id: string; authorId: string }, like: boolean): Promise<void> {
+  await setReaction(db, uid, post, like ? null : 'like', like ? 'like' : null);
 }
 
 export async function addComment(
@@ -518,4 +597,72 @@ export async function deleteMessage(db: Firestore, chatId: string, messageId: st
 
 export async function markChatRead(db: Firestore, uid: string, chatId: string): Promise<void> {
   await setDoc(doc(db, 'users', uid, 'chatState', chatId), { lastReadAt: serverTimestamp() });
+}
+
+// ---------------- profile extras ----------------
+
+export async function updateBio(db: Firestore, uid: string, bio: string, vibe: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { bio: bio.trim().slice(0, 160), vibe: vibe.trim().slice(0, 16), updatedAt: serverTimestamp() });
+}
+
+// ---------------- stories ----------------
+
+export type StoryBg = 'green' | 'gold' | 'night' | 'sunset' | 'ocean';
+
+export async function createStory(
+  db: Firestore,
+  uid: string,
+  townId: string,
+  story: { type: 'image' | 'video' | 'text'; url: string | null; posterUrl: string | null; text: string; bg: StoryBg },
+): Promise<void> {
+  const b = writeBatch(db);
+  const now = Timestamp.now();
+  b.set(doc(collection(db, 'stories')), {
+    authorId: uid,
+    townId,
+    ...story,
+    status: 'active',
+    createdAt: serverTimestamp(),
+    // The server checks this is about 24 hours from now.
+    expiresAt: Timestamp.fromMillis(now.toMillis() + 24 * 3600_000),
+  });
+  b.set(doc(db, 'rate_limits', uid), { lastStoryAt: serverTimestamp() }, { merge: true });
+  await b.commit();
+}
+
+export async function deleteStory(db: Firestore, id: string): Promise<void> {
+  await updateDoc(doc(db, 'stories', id), { status: 'deleted' });
+}
+
+// ---------------- directory: businesses & opportunities ----------------
+
+export type EntryKind = 'business' | 'job' | 'scholarship' | 'training';
+export interface EntryInput {
+  kind: EntryKind;
+  townId: string;
+  title: string;
+  description: string;
+  category: string;
+  contactPhone: string | null;
+  link: string | null;
+  deadline: Date | null;
+}
+
+export async function saveEntry(db: Firestore, uid: string, e: EntryInput, imageUrl: string | null, id?: string): Promise<string> {
+  if (id) {
+    const { kind: _kind, ...rest } = e;
+    void _kind;
+    await updateDoc(doc(db, 'directory', id), { ...rest, imageUrl, updatedAt: serverTimestamp() });
+    return id;
+  }
+  const ref = doc(collection(db, 'directory'));
+  const b = writeBatch(db);
+  b.set(ref, { ...e, ownerId: uid, imageUrl, status: 'active', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  b.set(doc(db, 'rate_limits', uid), { lastListingAt: serverTimestamp() }, { merge: true });
+  await b.commit();
+  return ref.id;
+}
+
+export async function setEntryStatus(db: Firestore, id: string, status: 'active' | 'closed' | 'deleted'): Promise<void> {
+  await updateDoc(doc(db, 'directory', id), { status, updatedAt: serverTimestamp() });
 }

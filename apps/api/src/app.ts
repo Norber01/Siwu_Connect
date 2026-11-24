@@ -89,17 +89,20 @@ interface ContentDoc {
   authorId?: string;
   sellerId?: string;
   senderId?: string;
+  ownerId?: string;
   townId: string;
   status: string;
 }
 
 /** Which statuses count as "visible" for each kind of content, and what a restore returns to. */
-function contentKind(path: string): { kind: 'post' | 'comment' | 'event' | 'listing' | 'message'; visible: string[]; restoreTo: string } {
+function contentKind(path: string): { kind: 'post' | 'comment' | 'event' | 'listing' | 'message' | 'story' | 'directory'; visible: string[]; restoreTo: string } {
   const p = path.split('/');
   if (p.length === 2 && p[0] === 'posts') return { kind: 'post', visible: ['published'], restoreTo: 'published' };
   if (p.length === 4 && p[0] === 'posts' && p[2] === 'comments') return { kind: 'comment', visible: ['published'], restoreTo: 'published' };
   if (p.length === 2 && p[0] === 'events') return { kind: 'event', visible: ['published', 'cancelled'], restoreTo: 'published' };
   if (p.length === 2 && p[0] === 'listings') return { kind: 'listing', visible: ['available', 'sold'], restoreTo: 'available' };
+  if (p.length === 2 && p[0] === 'stories') return { kind: 'story', visible: ['active'], restoreTo: 'active' };
+  if (p.length === 2 && p[0] === 'directory') return { kind: 'directory', visible: ['active', 'closed'], restoreTo: 'active' };
   if (p.length === 4 && p[0] === 'chats' && p[1]!.startsWith('room_') && p[2] === 'messages')
     return { kind: 'message', visible: ['sent'], restoreTo: 'sent' };
   return fail(400, 'Unsupported target');
@@ -130,7 +133,7 @@ async function contentStatusWrites(
   }
   // Room messages carry no town: it comes from the room id (room_all → 'all').
   const townId = kind === 'message' ? targetPath.split('/')[1]!.slice(5) : target!.data.townId;
-  return { writes, townId, authorId: (target!.data.authorId ?? target!.data.sellerId ?? target!.data.senderId)! };
+  return { writes, townId, authorId: (target!.data.authorId ?? target!.data.sellerId ?? target!.data.senderId ?? target!.data.ownerId)! };
 }
 
 export function createApp() {
@@ -408,14 +411,15 @@ export function createApp() {
 
   // Remove / restore a post.
   for (const route of ['remove', 'restore'] as const) {
-    for (const collection of ['events', 'listings'] as const) {
+    for (const collection of ['events', 'listings', 'stories', 'directory'] as const) {
       admin.post(`/${collection}/:id/${route}`, async (c) => {
         const { note } = await body(c.req.raw, moderationNoteSchema);
         const fs = c.get('fs');
         const path = `${collection}/${c.req.param('id')}`;
         const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, route, note);
         if (!canModerate(c.get('role'), townId)) fail(403, 'You cannot moderate this town');
-        writes.push(audit(fs, c.get('uid'), `${collection.slice(0, -1)}.${route}`, path, townId, { note }));
+        const noun = ({ events: 'event', listings: 'listing', stories: 'story', directory: 'directory' } as const)[collection];
+        writes.push(audit(fs, c.get('uid'), `${noun}.${route}`, path, townId, { note }));
         await fs.commit(writes);
         return c.json({ ok: true });
       });
@@ -497,7 +501,7 @@ export function createApp() {
       const target = await fs.get<ContentDoc>(r.targetPath);
       if (target) {
         townId = contentKind(r.targetPath).kind === 'message' ? r.targetPath.split('/')[1]!.slice(5) : target.data.townId;
-        authorId = (target.data.authorId ?? target.data.sellerId ?? target.data.senderId) ?? null;
+        authorId = (target.data.authorId ?? target.data.sellerId ?? target.data.senderId ?? target.data.ownerId) ?? null;
         if (input.action !== 'dismiss' && contentKind(r.targetPath).visible.includes(target.data.status)) {
           const removal = await contentStatusWrites(fs, uid, r.targetPath, 'remove', input.note);
           writes.push(...removal.writes);

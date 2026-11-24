@@ -90,14 +90,18 @@ service cloud.firestore {
         && (p.countryCode == null || str(p.countryCode, 2, 5))
         && (p.photoUrl == null
             || (str(p.photoUrl, 10, 300)
-                && p.photoUrl.matches('^https?://[^/]+(/[^/]+)*/avatars/' + uid + '/[A-Za-z0-9_-]+[.](webp|jpg)$')));
+                && p.photoUrl.matches('^https?://[^/]+(/[^/]+)*/avatars/' + uid + '/[A-Za-z0-9_-]+[.](webp|jpg)$')))
+        && str(p.get('bio', ''), 0, 160)
+        && str(p.get('vibe', ''), 0, 16);
     }
 
     match /users/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && uid == me()
-        && exactKeys(['displayName', 'displayNameLower', 'username', 'photoUrl', 'hometownId',
-                      'residence', 'countryCode', 'status', 'createdAt', 'updatedAt'])
+        && d().keys().hasAll(['displayName', 'displayNameLower', 'username', 'photoUrl', 'hometownId',
+                              'residence', 'countryCode', 'status', 'createdAt', 'updatedAt'])
+        && d().keys().hasOnly(['displayName', 'displayNameLower', 'username', 'photoUrl', 'hometownId',
+                               'residence', 'countryCode', 'status', 'createdAt', 'updatedAt', 'bio', 'vibe'])
         && validProfile(d(), uid)
         && d().username is string
         && getAfter(/databases/$(database)/documents/usernames/$(d().username)).data.uid == uid
@@ -107,7 +111,7 @@ service cloud.firestore {
       // Username, status and createdAt are immutable from the client.
       allow update: if isActive() && uid == me()
         && changed().hasOnly(['displayName', 'displayNameLower', 'photoUrl', 'hometownId',
-                              'residence', 'countryCode', 'updatedAt'])
+                              'residence', 'countryCode', 'bio', 'vibe', 'updatedAt'])
         && validProfile(d(), uid)
         && d().updatedAt == request.time;
       allow delete: if false;
@@ -185,6 +189,38 @@ service cloud.firestore {
         && (p.text.size() > 0 || p.get('imageUrl', null) != null || p.get('media', []).size() > 0);
     }
 
+    function emojiCountOk(before, after, t, n) {
+      return after.get('reactions', {}).get(t, 0) == before.get('reactions', {}).get(t, 0) + n
+        && after.get('reactions', {}).diff(before.get('reactions', {})).affectedKeys().hasOnly([t]);
+    }
+    function pollVotePath(postId) { return /databases/$(database)/documents/posts/$(postId)/pollVotes/$(me()); }
+    function validPoll(p) {
+      return p == null
+        || (p is map && p.keys().hasOnly(['options', 'counts'])
+            && p.options is list && p.options.size() >= 2 && p.options.size() <= 4
+            && p.counts is list && p.counts.size() == p.options.size()
+            && str(p.options[0], 1, 60) && str(p.options[1], 1, 60)
+            && (p.options.size() < 3 || str(p.options[2], 1, 60))
+            && (p.options.size() < 4 || str(p.options[3], 1, 60)));
+    }
+    function freshPoll(p) {
+      return p == null || (p.counts[0] == 0 && p.counts[1] == 0
+        && (p.counts.size() < 3 || p.counts[2] == 0) && (p.counts.size() < 4 || p.counts[3] == 0));
+    }
+    function countStep(b, a, i, chosen) { return i >= a.counts.size() || a.counts[i] == b.counts[i] + (i == chosen ? 1 : 0); }
+    function pollVoteOk(b, a, postId) {
+      return b != null && a.options == b.options
+        && !exists(pollVotePath(postId)) && existsAfter(pollVotePath(postId))
+        && countStep(b, a, 0, getAfter(pollVotePath(postId)).data.option)
+        && countStep(b, a, 1, getAfter(pollVotePath(postId)).data.option)
+        && countStep(b, a, 2, getAfter(pollVotePath(postId)).data.option)
+        && countStep(b, a, 3, getAfter(pollVotePath(postId)).data.option);
+    }
+    function tagsOk(p) {
+      return p.get('tags', []) is list && p.get('tags', []).size() <= 10
+        && p.get('mentions', []) is list && p.get('mentions', []).size() <= 10;
+    }
+
     match /posts/{postId} {
       allow read: if signedIn()
         && (resource.data.status == 'published'
@@ -192,8 +228,13 @@ service cloud.firestore {
             || canModerate(resource.data.townId));
 
       allow create: if isActive()
-        && exactKeys(['authorId', 'townId', 'text', 'imageUrl', 'media', 'visibility', 'status', 'pinned', 'reactionCount',
-                      'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
+        && validPoll(d().get('poll', null)) && freshPoll(d().get('poll', null))
+        && tagsOk(d())
+        && d().get('reactions', {}) == {}
+        && d().keys().hasOnly(['authorId', 'townId', 'text', 'imageUrl', 'media', 'poll', 'tags', 'mentions', 'reactions', 'visibility',
+                      'status', 'pinned', 'reactionCount', 'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
+        && d().keys().hasAll(['authorId', 'townId', 'text', 'imageUrl', 'media', 'visibility', 'status', 'pinned', 'reactionCount',
+                              'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
         && d().authorId == me()
         && isTown(d().townId)
         && postBodyOk(d())
@@ -212,7 +253,8 @@ service cloud.firestore {
       allow update: if
         // 1. Author edits their own published post.
         (isActive() && resource.data.authorId == me() && resource.data.status == 'published'
-          && changed().hasOnly(['text', 'imageUrl', 'media', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
+          && changed().hasOnly(['text', 'imageUrl', 'media', 'tags', 'mentions', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
+          && tagsOk(d())
           && postBodyOk(d())
           && d().visibility in ['akpafu', 'town']
           && d().searchTokens is list && d().searchTokens.size() <= 50
@@ -225,12 +267,19 @@ service cloud.firestore {
           && d().get('media', []).size() == 0 && d().searchTokens.size() == 0
           && d().updatedAt == request.time)
         // 3. Reaction counter moves by exactly one, together with the caller's reaction doc.
+        //    The per-emoji count (reactions.<type>) moves with it.
         || (signedIn() && resource.data.status == 'published'
-          && changed().hasOnly(['reactionCount'])
+          && changed().hasOnly(['reactionCount', 'reactions'])
           && ((d().reactionCount == resource.data.reactionCount + 1
-                && !exists(reactionPath(postId, me())) && existsAfter(reactionPath(postId, me())))
+                && !exists(reactionPath(postId, me())) && existsAfter(reactionPath(postId, me()))
+                && emojiCountOk(resource.data, d(), getAfter(reactionPath(postId, me())).data.type, 1))
               || (d().reactionCount == resource.data.reactionCount - 1
-                && exists(reactionPath(postId, me())) && !existsAfter(reactionPath(postId, me())))))
+                && exists(reactionPath(postId, me())) && !existsAfter(reactionPath(postId, me()))
+                && emojiCountOk(resource.data, d(), get(reactionPath(postId, me())).data.type, -1))))
+        // 5. Poll vote: exactly one option goes up by one, together with the caller's vote doc.
+        || (isActive() && resource.data.status == 'published'
+          && changed().hasOnly(['poll'])
+          && pollVoteOk(resource.data.poll, d().poll, postId))
         // 4. Comment counter moves by exactly one, together with the named comment.
         || (signedIn() && resource.data.status == 'published'
           && changed().hasOnly(['commentCount', 'lastCommentOp'])
@@ -246,12 +295,26 @@ service cloud.firestore {
 
       allow delete: if false;
 
+      // One poll vote per member: the document id is the member's uid.
+      match /pollVotes/{rid} {
+        allow read: if signedIn() && rid == me();
+        allow create: if isActive() && rid == me()
+          && exactKeys(['option', 'createdAt'])
+          && d().option is int && d().option >= 0
+          && get(postPath(postId)).data.status == 'published'
+          && get(postPath(postId)).data.get('poll', null) != null
+          && d().option < get(postPath(postId)).data.poll.options.size()
+          && d().createdAt == request.time
+          && getAfter(postPath(postId)).data.poll.counts[d().option] == get(postPath(postId)).data.poll.counts[d().option] + 1;
+        allow update, delete: if false;
+      }
+
       // One reaction per user per post: the document id is the user's uid.
       match /reactions/{rid} {
         allow read: if signedIn();
         allow create: if isActive() && rid == me()
           && exactKeys(['type', 'userId', 'postId', 'createdAt'])
-          && d().type == 'like'
+          && d().type in ['like', 'love', 'haha', 'wow', 'sad', 'fire']
           && d().userId == me()
           && d().postId == postId
           && d().createdAt == request.time
@@ -308,12 +371,18 @@ service cloud.firestore {
         && d().actorId == me()
         && d().read == false
         && d().createdAt == request.time
-        && get(postPath(d().postId)).data.authorId == uid
         && ((d().type == 'like' && nid == 'like_' + d().postId + '_' + me() && d().commentId == null
+              && get(postPath(d().postId)).data.authorId == uid
               && existsAfter(reactionPath(d().postId, me())))
             || (d().type == 'comment' && nid == 'comment_' + d().commentId
+              && get(postPath(d().postId)).data.authorId == uid
               && !exists(commentPath(d().postId, d().commentId))
-              && getAfter(commentPath(d().postId, d().commentId)).data.authorId == me()));
+              && getAfter(commentPath(d().postId, d().commentId)).data.authorId == me())
+            // @mention in a brand-new post written by the caller.
+            || (d().type == 'mention' && nid == 'mention_' + d().postId && d().commentId == null
+              && !exists(postPath(d().postId))
+              && getAfter(postPath(d().postId)).data.authorId == me()
+              && uid in getAfter(postPath(d().postId)).data.get('mentions', [])));
     }
     match /users/{uid}/notifications/{nid} {
       allow read, delete: if signedIn() && uid == me();
@@ -573,6 +642,60 @@ service cloud.firestore {
         && exactKeys(['lastReadAt']) && d().lastReadAt == request.time;
     }
 
+    // ---------- stories (disappear after 24 hours) ----------
+    match /stories/{id} {
+      allow read: if signedIn();
+      allow create: if isActive()
+        && exactKeys(['authorId', 'townId', 'type', 'url', 'posterUrl', 'text', 'bg', 'status', 'createdAt', 'expiresAt'])
+        && d().authorId == me()
+        && isTown(d().townId)
+        && ((d().type == 'image' && imageOk(d().url, me()) && d().url != null)
+            || (d().type == 'video' && videoOk(d().url, me()))
+            || (d().type == 'text' && d().url == null && str(d().text, 1, 200)))
+        && imageOk(d().posterUrl, me())
+        && str(d().text, 0, 200)
+        && d().bg in ['green', 'gold', 'night', 'sunset', 'ocean']
+        && d().status == 'active'
+        && d().createdAt == request.time
+        // About 24 hours from now (the phone's clock may be a little off).
+        && d().expiresAt > request.time + duration.value(23, 'h')
+        && d().expiresAt < request.time + duration.value(25, 'h')
+        && rateOk('lastStoryAt', 10);
+      allow update: if signedIn() && resource.data.authorId == me() && resource.data.status == 'active'
+        && changed().hasOnly(['status']) && d().status == 'deleted';
+      allow delete: if false;
+    }
+
+    // ---------- businesses & opportunities directory ----------
+    function validEntry(e, uid) {
+      return e.kind in ['business', 'job', 'scholarship', 'training']
+        && isTown(e.townId)
+        && str(e.title, 3, 100)
+        && str(e.description, 0, 1500)
+        && str(e.category, 0, 40)
+        && (e.contactPhone == null || (e.contactPhone is string && e.contactPhone.matches('^[+]?[0-9]{9,15}$')))
+        && (e.link == null || (str(e.link, 10, 300) && e.link.matches('^https://.+')))
+        && (e.deadline == null || e.deadline is timestamp)
+        && imageOk(e.imageUrl, uid);
+    }
+    match /directory/{id} {
+      allow read: if signedIn()
+        && (resource.data.status in ['active', 'closed'] || resource.data.ownerId == me() || canModerate(resource.data.townId));
+      allow create: if isActive()
+        && exactKeys(['kind', 'ownerId', 'townId', 'title', 'description', 'category', 'contactPhone', 'link', 'deadline',
+                      'imageUrl', 'status', 'createdAt', 'updatedAt'])
+        && d().ownerId == me() && validEntry(d(), me())
+        && d().status == 'active' && d().createdAt == request.time && d().updatedAt == request.time
+        && rateOk('lastListingAt', 60);
+      allow update: if
+        (isActive() && resource.data.ownerId == me() && resource.data.status in ['active', 'closed']
+          && changed().hasOnly(['townId', 'title', 'description', 'category', 'contactPhone', 'link', 'deadline', 'imageUrl', 'status', 'updatedAt'])
+          && d().status in ['active', 'closed'] && validEntry(d(), me()) && d().kind == resource.data.kind && d().updatedAt == request.time)
+        || (signedIn() && resource.data.ownerId == me() && resource.data.status != 'deleted'
+          && changed().hasOnly(['status', 'updatedAt']) && d().status == 'deleted' && d().updatedAt == request.time);
+      allow delete: if false;
+    }
+
     // ---------- tester feedback ----------
     match /feedback/{id} {
       allow create: if signedIn()
@@ -592,7 +715,7 @@ service cloud.firestore {
         && exactKeys(['reporterId', 'targetType', 'targetId', 'targetPath', 'townId', 'reason', 'details',
                       'status', 'createdAt', 'resolvedBy', 'resolvedAt', 'resolution'])
         && d().reporterId == me()
-        && d().targetType in ['post', 'comment', 'user', 'event', 'listing', 'message']
+        && d().targetType in ['post', 'comment', 'user', 'event', 'listing', 'message', 'story', 'directory']
         && str(d().targetId, 1, 128)
         && reportId == me() + '_' + d().targetType + '_' + d().targetId
         && ((d().targetType == 'post' && d().targetPath == 'posts/' + d().targetId)
@@ -600,7 +723,9 @@ service cloud.firestore {
             || (d().targetType == 'user' && d().targetPath == 'users/' + d().targetId && d().targetId != me())
             || (d().targetType == 'event' && d().targetPath == 'events/' + d().targetId)
             || (d().targetType == 'listing' && d().targetPath == 'listings/' + d().targetId)
-            || (d().targetType == 'message' && d().targetPath.matches('^chats/room_[a-z]+/messages/' + d().targetId + '$')))
+            || (d().targetType == 'message' && d().targetPath.matches('^chats/room_[a-z]+/messages/' + d().targetId + '$'))
+            || (d().targetType == 'story' && d().targetPath == 'stories/' + d().targetId)
+            || (d().targetType == 'directory' && d().targetPath == 'directory/' + d().targetId))
         && (isTown(d().townId) || (d().targetType == 'message' && d().townId == 'all'))
         && d().reason in ['harassment', 'threat', 'impersonation', 'spam', 'misinformation', 'defamation', 'fraud', 'other']
         && str(d().details, 0, 500)

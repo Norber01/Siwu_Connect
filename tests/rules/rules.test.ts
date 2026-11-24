@@ -653,3 +653,65 @@ describe('chat', () => {
     await assertFails(getDoc(doc(db('bob'), 'users', 'alice', 'chatState', 'room_odomi')));
   });
 });
+
+describe('Gen Z features', () => {
+  beforeEach(async () => {
+    await seedUser('alice');
+    await seedUser('bob');
+    await seedUser('carol');
+    await seedPost('p1', 'alice');
+  });
+
+  it('emoji reactions keep total and per-emoji counts exact; switching works', async () => {
+    await assertSucceeds(ops.setReaction(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, null, 'fire'));
+    await assertSucceeds(ops.setReaction(db('carol'), 'carol', { id: 'p1', authorId: 'alice' }, null, 'fire'));
+    await assertSucceeds(ops.setReaction(db('bob'), 'bob', { id: 'p1', authorId: 'alice' }, 'fire', 'haha'));
+    const d = (await getDoc(doc(db('bob'), 'posts', 'p1'))).data()!;
+    expect(d.reactionCount).toBe(2);
+    expect(d.reactions).toEqual({ fire: 1, haha: 1 });
+    await assertFails(updateDoc(doc(db('bob'), 'posts', 'p1'), { 'reactions.love': increment(5) }));
+  });
+
+  it('polls: one vote per member, only +1 on the chosen option', async () => {
+    const id = await ops.createPost(db('alice'), 'alice', { townId: 'odomi', text: 'Best festival food?', visibility: 'akpafu' }, [], { poll: ['Fufu', 'Banku', 'Akple'] });
+    const post = async () => (await getDoc(doc(db('bob'), 'posts', id))).data()!;
+    await assertSucceeds(ops.votePoll(db('bob'), 'bob', { id, poll: (await post()).poll }, 2));
+    expect((await post()).poll.counts).toEqual([0, 0, 1]);
+    await assertFails(ops.votePoll(db('bob'), 'bob', { id, poll: (await post()).poll }, 1)); // second vote
+    await assertFails(updateDoc(doc(db('carol'), 'posts', id), { 'poll.counts': [9, 0, 1] })); // no vote doc
+  });
+
+  it('@mentions notify the mentioned member; cannot fake mentions', async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    const id = await ops.createPost(db('bob'), 'bob', { townId: 'odomi', text: 'Thanks @carol!', visibility: 'akpafu' }, [], { mentions: ['carol'] });
+    const n = await getDoc(doc(db('carol'), 'users', 'carol', 'notifications', `mention_${id}`));
+    expect(n.data()?.type).toBe('mention');
+    await assertFails(
+      setDoc(doc(db('bob'), 'users', 'alice', 'notifications', 'mention_p1'), { type: 'mention', actorId: 'bob', postId: 'p1', commentId: null, read: false, createdAt: serverTimestamp() }),
+    );
+  });
+
+  it('stories: own media only, expire in ~24h, author deletes', async () => {
+    await assertSucceeds(ops.createStory(db('bob'), 'bob', 'odomi', { type: 'text', url: null, posterUrl: null, text: 'Good morning Akpafu ☀️', bg: 'sunset' }));
+    await assertFails(
+      ops.createStory(db('carol'), 'carol', 'odomi', { type: 'image', url: 'https://x.example/images/bob/a.webp', posterUrl: null, text: '', bg: 'green' }),
+    );
+    const s = await getDocs(collection(db('alice'), 'stories'));
+    expect(s.size).toBe(1);
+    await assertFails(ops.deleteStory(db('alice'), s.docs[0]!.id));
+    await assertSucceeds(ops.deleteStory(db('bob'), s.docs[0]!.id));
+  });
+
+  it('profile bio and vibe', async () => {
+    await assertSucceeds(ops.updateBio(db('bob'), 'bob', 'Footballer from Todzi ⚽', '🔥'));
+    await assertFails(updateDoc(doc(db('bob'), 'users', 'bob'), { bio: 'x'.repeat(200), updatedAt: serverTimestamp() }));
+  });
+
+  it('directory entries: owners manage their own', async () => {
+    const e = { kind: 'job' as const, townId: 'todzi', title: 'Teaching assistant', description: 'Primary school, Todzi.', category: 'Education', contactPhone: '+233241234567', link: null, deadline: new Date(Date.now() + 7 * 86400_000) };
+    const id = await ops.saveEntry(db('bob'), 'bob', e, null);
+    await assertFails(ops.setEntryStatus(db('carol'), id, 'closed'));
+    await assertSucceeds(ops.setEntryStatus(db('bob'), id, 'closed'));
+    await assertFails(ops.saveEntry(db('carol'), 'carol', { ...e, link: 'http://insecure.example' }, null));
+  });
+});

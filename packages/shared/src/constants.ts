@@ -53,7 +53,7 @@ export const REPORT_REASONS = [
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number]['id'];
 
-export const REPORT_TARGET_TYPES = ['post', 'comment', 'user', 'event', 'listing', 'message'] as const;
+export const REPORT_TARGET_TYPES = ['post', 'comment', 'user', 'event', 'listing', 'message', 'story', 'directory'] as const;
 export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
 
 export const ROLES = ['super_admin', 'town_admin', 'moderator', 'reporter'] as const;
