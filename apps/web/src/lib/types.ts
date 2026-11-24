@@ -15,6 +15,8 @@ export interface Profile {
   vibe: string;
   /** Verified by a Siwu Connect admin (blue tick). */
   verified: boolean;
+  /** Chosen by an admin for the pilot group. */
+  tester: boolean;
   /** Last time the app was open (null when the member hides it). */
   lastActiveAt: Date | null;
   /** "MM-DD" when the member shares their birthday. */
@@ -112,6 +114,7 @@ export function toProfile(s: DocumentSnapshot): Profile {
     bio: d.bio ?? '',
     vibe: d.vibe ?? '',
     verified: d.verified === true,
+    tester: d.tester === true,
     lastActiveAt: date(d.lastActiveAt),
     birthdayKey: d.birthdayKey ?? null,
     homeVisitTown: d.homeVisitTown ?? null,
@@ -261,7 +264,7 @@ export interface MatchUpdate {
 
 export interface AppNotification {
   id: string;
-  type: 'like' | 'comment' | 'mention' | 'repost' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
+  type: 'like' | 'comment' | 'mention' | 'repost' | 'tester' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
   actorId: string;
   postId: string | null;
   commentId: string | null;

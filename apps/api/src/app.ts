@@ -443,6 +443,16 @@ export function createApp() {
     return c.json({ ok: true });
   });
 
+  // ---------- sports reporters (public list: who covers which town) ----------
+  app.get('/sports/reporters', async (c) => {
+    const rows = await c.get('fs').query<{ role: string; townIds?: string[] }>({
+      collection: 'admin_roles',
+      where: [['role', 'EQUAL', 'reporter']],
+      limit: 100,
+    });
+    return c.json({ reporters: rows.map((r) => ({ uid: r.id, townIds: r.data.townIds ?? [] })) });
+  });
+
   // ---------- group chats made by members (only with their friends) ----------
   const GROUP_MAX = 50;
   const groupName = (v: unknown) => {
@@ -872,6 +882,32 @@ export function createApp() {
           kind: 'create',
           path: `${path}/notifications/${fs.newId()}`,
           data: { type: 'verified', actorId: uid, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
+        });
+      await fs.commit(writes);
+      return c.json({ ok: true });
+    });
+  }
+
+  // Pilot testers: Super Admins (anyone) and Town Admins (members from their towns) choose them.
+  for (const route of ['tester', 'untester'] as const) {
+    admin.post(`/users/:uid/${route}`, async (c) => {
+      const fs = c.get('fs');
+      const uid = c.get('uid');
+      const path = `users/${c.req.param('uid')}`;
+      const user = await fs.get<UserDoc & { tester?: boolean }>(path);
+      if (!user) fail(404, 'User not found');
+      if (!canSuspend(c.get('role'), user!.data.hometownId)) fail(403, 'You cannot manage testers from this town');
+      const on = route === 'tester';
+      if (!!user!.data.tester === on) fail(409, on ? 'Already a pilot tester' : 'Not a pilot tester');
+      const writes: Write[] = [
+        { kind: 'update', path, data: { tester: on } },
+        audit(fs, uid, `user.${route}`, path, user!.data.hometownId, {}),
+      ];
+      if (on)
+        writes.push({
+          kind: 'create',
+          path: `${path}/notifications/${fs.newId()}`,
+          data: { type: 'tester', actorId: uid, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
         });
       await fs.commit(writes);
       return c.json({ ok: true });

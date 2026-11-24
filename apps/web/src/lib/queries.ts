@@ -532,3 +532,8 @@ export async function fetchVisitingHome(): Promise<Profile[]> {
   const snap = await getDocs(query(collection(db, 'users'), where('homeVisitUntil', '>', new Date()), orderBy('homeVisitUntil', 'asc'), limit(30)));
   return snap.docs.map(toProfile).filter((p) => p.status === 'active');
 }
+
+export async function fetchTesters(): Promise<Profile[]> {
+  const snap = await getDocs(query(collection(db, 'users'), where('tester', '==', true), limit(200)));
+  return snap.docs.map(toProfile);
+}

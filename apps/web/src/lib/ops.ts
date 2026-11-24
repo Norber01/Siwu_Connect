@@ -613,7 +613,11 @@ export async function sendMessage(
   text: string,
   imageUrl: string | null,
   audio?: { url: string; seconds: number } | null,
-  extra: { replyTo?: { id: string; senderId: string; text: string } | null; story?: { id: string; text: string; url: string | null } | null } = {},
+  extra: {
+    replyTo?: { id: string; senderId: string; text: string } | null;
+    story?: { id: string; text: string; url: string | null } | null;
+    post?: { id: string; authorId: string; text: string; imageUrl: string | null } | null;
+  } = {},
 ): Promise<void> {
   const ref = doc(collection(db, 'chats', chatId, 'messages'));
   const batch = writeBatch(db);
@@ -626,8 +630,9 @@ export async function sendMessage(
     ...(audio ? { audioUrl: audio.url, audioSeconds: Math.round(audio.seconds) } : {}),
     ...(extra.replyTo ? { replyTo: { ...extra.replyTo, text: extra.replyTo.text.slice(0, 120) } } : {}),
     ...(extra.story ? { story: { ...extra.story, text: extra.story.text.slice(0, 120) } } : {}),
+    ...(extra.post ? { post: { ...extra.post, text: extra.post.text.slice(0, 120) } } : {}),
   });
-  const preview = text ? text.slice(0, 120) : audio ? '🎤 Voice note' : '📷 Photo';
+  const preview = text ? text.slice(0, 120) : audio ? '🎤 Voice note' : extra.post ? '📝 Shared a post' : '📷 Photo';
   batch.update(doc(db, 'chats', chatId), {
     lastMessage: { id: ref.id, senderId: uid, text: preview, at: serverTimestamp() },
     updatedAt: serverTimestamp(),

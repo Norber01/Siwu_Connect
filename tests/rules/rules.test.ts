@@ -609,6 +609,17 @@ describe('sports centre', () => {
     await assertFails(ops.savePrediction(db('bob'), 'bob', past, 'odomi', 1, 0, false));
   });
 
+  it('town reporters manage only matches involving their towns; all-towns reporters any', async () => {
+    await seedUser('trep');
+    await seedRole('trep', 'reporter', ['sokpo']);
+    await assertFails(ops.createMatch(db('trep'), 'trep', match())); // Odomi v Mempeasem
+    const own = await ops.createMatch(db('trep'), 'trep', { ...match(), away: { name: 'Sokpo', townId: 'sokpo' as const } });
+    await assertSucceeds(ops.addMatchUpdate(db('trep'), 'trep', { id: own, homeScore: 0, awayScore: 0, status: 'scheduled' as const }, { type: 'note', team: null, minute: null, text: 'Kick-off soon' }));
+    const other = await ops.createMatch(db('rep'), 'rep', match()); // 'rep' covers all towns
+    await assertFails(ops.addMatchUpdate(db('trep'), 'trep', { id: other, homeScore: 0, awayScore: 0, status: 'scheduled' as const }, { type: 'goal', team: 'home', minute: 3, text: '' }));
+    await assertFails(updateDoc(doc(db('trep'), 'matches', other), { homeScore: 3, updatedAt: serverTimestamp() }));
+  });
+
   it('only reporters/admins create matches and post live updates', async () => {
     await assertFails(ops.createMatch(db('alice'), 'alice', match()));
     const id = await ops.createMatch(db('rep'), 'rep', match());
@@ -774,6 +785,14 @@ describe('chat', () => {
     );
     const mine = await getDocs(query(collection(db('alice'), 'chats'), where('members', 'array-contains', 'alice')));
     expect(mine.docs.map((d) => d.id)).toContain('grp_1');
+  });
+
+  it('posts can be shared into a chat as a preview', async () => {
+    await befriend('alice', 'bob');
+    const id = await ops.openDm(db('alice'), 'alice', 'bob');
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', id, '', null, null, { post: { id: 'p1', authorId: 'carol', text: 'Look at this', imageUrl: null } }));
+    const m = (await getDocs(collection(db('bob'), 'chats', id, 'messages'))).docs[0]!.data();
+    expect(m.post.id).toBe('p1');
   });
 
   it('read markers are private', async () => {

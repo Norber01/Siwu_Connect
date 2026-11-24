@@ -12,9 +12,13 @@ import {
   matchSchema,
   matchUpdateSchema,
   townName,
+  canReportMatch,
+  townShortName,
 } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
+import { api } from '../lib/api';
+import { useProfileById } from '../lib/hooks';
 import {
   type MatchPick,
   addMatchUpdate,
@@ -35,7 +39,7 @@ import { computeStandings } from '../lib/standings';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toast';
 import { PredictChip, PredictionCard, PredictionLeague } from '../components/Predictions';
-import { Alert, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextField } from '../components/ui';
+import { Alert, Avatar, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextField } from '../components/ui';
 
 type Tab = 'live' | 'fixtures' | 'results' | 'standings' | 'predictions';
 const TABS: { id: Tab; label: string }[] = [
@@ -152,7 +156,43 @@ export function SportsPage() {
       ) : (
         <MatchList matches={list!.data!} now={now} />
       )}
+      {tab !== 'predictions' && <Reporters />}
     </div>
+  );
+}
+
+/** Who reports matches for each town (Super Admins choose them in Admin → Roles). */
+function Reporters() {
+  const q = useQuery({
+    queryKey: ['sportsReporters'],
+    queryFn: () => api<{ reporters: { uid: string; townIds: string[] }[] }>('/sports/reporters', { method: 'GET' }),
+    staleTime: 10 * 60_000,
+  });
+  const reporters = q.data?.reporters ?? [];
+  if (!reporters.length) return null;
+  const byTown = TOWNS.map((t) => ({ town: t, uids: reporters.filter((r) => r.townIds.length === 0 || r.townIds.includes(t.id)).map((r) => r.uid) }));
+  return (
+    <section aria-label="Match reporters" className="rounded-2xl border border-sand-200 bg-white p-4 shadow-sm">
+      <h2 className="mb-2 font-bold text-gray-900">📣 Match reporters</h2>
+      <ul className="space-y-2">
+        {byTown.map(({ town, uids }) => (
+          <li key={town.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="w-24 shrink-0 font-semibold text-gray-800">{town.shortName}</span>
+            {uids.length ? uids.map((u) => <ReporterChip key={u} uid={u} />) : <span className="text-gray-500">No reporter yet</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ReporterChip({ uid }: { uid: string }) {
+  const { data: p } = useProfileById(uid);
+  if (!p) return null;
+  return (
+    <Link to={`/u/${p.username}`} className="flex items-center gap-1.5 rounded-full bg-sand-100 py-0.5 pl-0.5 pr-2.5 font-semibold text-gray-800 hover:bg-sand-200">
+      <Avatar url={p.photoUrl} name={p.displayName} size={22} /> {p.displayName.split(' ')[0]}
+    </Link>
   );
 }
 
@@ -328,7 +368,7 @@ export function MatchDetailPage() {
   if (match === undefined) return <PageSpinner />;
   if (match === null) return <EmptyState title="Match not found" icon="ball" />;
   const m = match;
-  const reporter = canReportSports(role);
+  const reporter = canReportMatch(role, m);
   const totalVotes = m.votesHome + m.votesDraw + m.votesAway;
   const clock = clockOf(m, now);
   const votingOpen = m.status === 'scheduled' || m.status === 'live' || m.status === 'halftime';
@@ -711,6 +751,10 @@ export function MatchFormPage() {
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]!.message);
+      return;
+    }
+    if (!canReportMatch(role, parsed.data)) {
+      setError(`You report for ${role!.townIds.map(townShortName).join(', ')}: one of the teams must be from your town.`);
       return;
     }
     setBusy(true);

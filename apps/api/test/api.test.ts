@@ -425,6 +425,25 @@ describe('group chats', () => {
   });
 });
 
+describe('pilot testers and reporters', () => {
+  it('admins choose pilot testers from their towns; the member is told', async () => {
+    const t = (who: string, uid: string, route: string) => call('POST', `/admin/users/${uid}/${route}`, who, {});
+    expect((await t('townadmin', 'bob', 'tester')).status).toBe(403); // bob is from Todzi
+    expect((await t('boss', 'bob', 'tester')).status).toBe(200);
+    expect((await fs().get<{ tester: boolean }>('users/bob'))!.data.tester).toBe(true);
+    const n = await fs().query<{ type: string }>({ collection: 'notifications', parent: 'users/bob' });
+    expect(n.map((x) => x.data.type)).toContain('tester');
+    expect((await t('alice', 'bob', 'untester')).status).toBe(403); // not an admin
+    expect((await t('boss', 'bob', 'untester')).status).toBe(200);
+  });
+
+  it('anyone signed in can see who reports for each town', async () => {
+    await seedRole('alice', 'reporter', ['odomi']);
+    const res = await call('GET', '/sports/reporters', 'bob');
+    expect(((await res.json()) as { reporters: { uid: string; townIds: string[] }[] }).reporters).toEqual([{ uid: 'alice', townIds: ['odomi'] }]);
+  });
+});
+
 describe('verified badge', () => {
   it('admins verify members of their towns; members cannot verify themselves', async () => {
     const v = (who: string, uid: string, route: string) => call('POST', `/admin/users/${uid}/${route}`, who, {});

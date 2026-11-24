@@ -20,10 +20,13 @@ export const LIMITS = {
 } as const;
 
 /**
- * PROVISIONAL — minimum sign-up age is an open founder/legal decision (D9).
+ * Minimum sign-up age — decided by the founder (2026-11-24): 13.
  * Shown as a self-declared confirmation at registration.
  */
 export const MIN_AGE = 13;
+
+/** Pilot: how many testers we want from each town. */
+export const PILOT_TESTERS_PER_TOWN = 5;
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 

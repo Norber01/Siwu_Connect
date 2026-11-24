@@ -19,6 +19,7 @@ import { useToast } from './Toast';
 import { Avatar, Button, Modal } from './ui';
 import { MediaGallery } from './media';
 import { CommentsSheet } from './Comments';
+import { SendToChatDialog } from '../pages/chat';
 import { townShortName } from '@siwu/shared';
 
 /** Plain text with safe links, #hashtags (→ tag page) and @mentions (→ profile). Never renders HTML. */
@@ -254,6 +255,60 @@ async function sharePost(post: Post, toast: (m: string, k?: 'success' | 'error')
     if (e instanceof DOMException && e.name === 'AbortError') return; // user closed the share sheet
     toast('Could not share this post on this device.', 'error');
   }
+}
+
+/** Share: send to friends in chat, or out to WhatsApp and other apps. */
+function ShareButton({ post }: { post: Post }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const first = post.media.find((m) => m.type === 'image');
+  return (
+    <span className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Share"
+        className="group inline-flex min-h-[40px] items-center rounded-full px-2 hover:text-brand-600"
+      >
+        <span className="rounded-full p-1.5 group-hover:bg-brand-50">
+          <Icon name="share" className="h-[18px] w-[18px]" />
+        </span>
+      </button>
+      {open && (
+        <div role="menu" className="absolute bottom-full right-0 z-20 mb-1 w-52 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-sand-200">
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setSending(true);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold text-gray-900 hover:bg-sand-100"
+          >
+            <Icon name="message" className="h-4 w-4" /> Send in chat
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              void sharePost(post, toast);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold text-gray-900 hover:bg-sand-100"
+          >
+            <Icon name="share" className="h-4 w-4" /> Share outside (WhatsApp…)
+          </button>
+        </div>
+      )}
+      {sending && (
+        <SendToChatDialog
+          open
+          onClose={() => setSending(false)}
+          post={{ id: post.id, authorId: post.authorId, text: post.text, imageUrl: first ? (first.thumbUrl ?? first.url) : (post.media[0]?.posterUrl ?? null) }}
+        />
+      )}
+    </span>
+  );
 }
 
 /** Repost straight away, or open the composer to quote with your own words. */
@@ -523,15 +578,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
               </button>
             </span>
             <RepostButton post={post} disabled={!active} />
-            <button
-              onClick={() => sharePost(post, toast)}
-              className="group inline-flex min-h-[40px] items-center rounded-full px-2 hover:text-brand-600"
-              aria-label="Share"
-            >
-              <span className="rounded-full p-1.5 group-hover:bg-brand-50">
-                <Icon name="share" className="h-[18px] w-[18px]" />
-              </span>
-            </button>
+            <ShareButton post={post} />
           </div>
         </div>
       </div>

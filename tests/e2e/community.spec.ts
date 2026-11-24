@@ -52,6 +52,7 @@ async function signOut(page: Page) {
 }
 
 test('events, marketplace, sports, notifications and feedback', async ({ page }) => {
+  test.setTimeout(180_000); // a long journey across five accounts
   for (const url of ['http://127.0.0.1:8080', 'http://127.0.0.1:9099']) {
     await expect.poll(() => fetch(url).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
   }
@@ -192,12 +193,21 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByLabel('Message', { exact: true }).fill(`Akwaaba Ama ${tag}`);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText(`Akwaaba Ama ${tag}`)).toBeVisible();
+  // Share a post to Ama in chat.
+  await page.goto('/?town=all');
+  await page.getByRole('button', { name: 'Share' }).first().click();
+  await page.getByRole('menuitem', { name: 'Send in chat' }).click();
+  await page.getByRole('dialog', { name: 'Send in chat' }).getByRole('button', { name: /Ama/ }).click();
+  await page.getByRole('dialog', { name: 'Send in chat' }).getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Sent 💬')).toBeVisible();
   await signOut(page);
 
   // --- Ama sees the approval and the unread chat.
   await signIn(page, 'ama_serwaa');
   await page.getByRole('link', { name: /^Chat, 1 unread/ }).click();
+  await page.getByText('📝 Shared a post').click();
   await expect(page.getByText(`Akwaaba Ama ${tag}`)).toBeVisible();
+  await expect(page.getByText('📝 Tap to open the post')).toBeVisible();
   await page.goto('/notifications');
   await expect(page.getByText('Approved and now live')).toBeVisible();
   await page.goto(listingUrl);

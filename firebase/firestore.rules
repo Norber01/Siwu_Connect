@@ -45,6 +45,14 @@ service cloud.firestore {
     }
     // Sports reporters and every admin role may manage matches.
     function canReportSports() { return hasRole(); }
+    // Sports reporters can be limited to some towns: then they manage only matches involving those towns.
+    function canReportMatch(m) {
+      return hasRole()
+        && (get(rolePath()).data.role != 'reporter'
+            || get(rolePath()).data.get('townIds', []).size() == 0
+            || m.home.townId in get(rolePath()).data.townIds
+            || m.away.townId in get(rolePath()).data.townIds);
+    }
     function imageOk(url, uid) {
       return url == null
         || (str(url, 10, 300)
@@ -600,7 +608,7 @@ service cloud.firestore {
 
     match /matches/{matchId} {
       allow read: if signedIn();
-      allow create: if canReportSports()
+      allow create: if canReportMatch(d())
         && exactKeys(['competition', 'home', 'away', 'venue', 'kickoffAt', 'durationMinutes', 'breakMinutes',
                       'actualKickoffAt', 'secondHalfStartAt', 'status', 'homeScore', 'awayScore', 'minute',
                       'votesHome', 'votesDraw', 'votesAway', 'createdBy', 'createdAt', 'updatedAt'])
@@ -611,7 +619,7 @@ service cloud.firestore {
         && d().createdBy == me()
         && d().createdAt == request.time && d().updatedAt == request.time;
       allow update: if
-        (canReportSports()
+        (canReportMatch(resource.data) && canReportMatch(d())
           && changed().hasOnly(['competition', 'home', 'away', 'venue', 'kickoffAt', 'durationMinutes', 'breakMinutes',
                                 'actualKickoffAt', 'secondHalfStartAt', 'status', 'homeScore', 'awayScore',
                                 'minute', 'updatedAt'])
@@ -620,18 +628,18 @@ service cloud.firestore {
           && changed().hasOnly(['votesHome', 'votesDraw', 'votesAway'])
           && !exists(votePath(matchId)) && existsAfter(votePath(matchId))
           && voteCountersOk(resource.data, d(), getAfter(votePath(matchId)).data.pick));
-      allow delete: if canReportSports();
+      allow delete: if canReportMatch(resource.data);
 
       match /updates/{updateId} {
         allow read: if signedIn();
-        allow create: if canReportSports()
+        allow create: if canReportMatch(get(matchPath(matchId)).data)
           && exactKeys(['type', 'team', 'minute', 'text', 'createdBy', 'createdAt'])
           && d().type in ['goal', 'yellow', 'red', 'sub', 'chance', 'note']
           && (d().team == null || d().team in ['home', 'away'])
           && (d().minute == null || (d().minute is int && d().minute >= 0 && d().minute <= 130))
           && str(d().text, 0, 200)
           && d().createdBy == me() && d().createdAt == request.time;
-        allow delete: if canReportSports();
+        allow delete: if canReportMatch(get(matchPath(matchId)).data);
         allow update: if false;
       }
 
@@ -755,7 +763,11 @@ service cloud.firestore {
           && notBlockedDm(get(chatPath(chatId)).data)
           && (get(chatPath(chatId)).data.type != 'dm' || areFriends(dmOther(get(chatPath(chatId)).data)))
           && d().keys().hasAll(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
-          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds', 'replyTo', 'story'])
+          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds', 'replyTo', 'story', 'post'])
+          // A post shared into the chat (a small preview; the post itself keeps its own visibility rules).
+          && (!('post' in d()) || (d().post is map && d().post.keys().hasOnly(['id', 'authorId', 'text', 'imageUrl'])
+              && str(d().post.id, 1, 40) && str(d().post.authorId, 1, 128) && str(d().post.text, 0, 120)
+              && (d().post.imageUrl == null || str(d().post.imageUrl, 10, 300))))
           // Reply to an earlier message (a short quote of it) or to someone's story.
           && (!('replyTo' in d()) || (d().replyTo is map && d().replyTo.keys().hasOnly(['id', 'senderId', 'text'])
               && str(d().replyTo.id, 1, 40) && str(d().replyTo.senderId, 1, 128) && str(d().replyTo.text, 0, 120)))
@@ -767,7 +779,7 @@ service cloud.firestore {
           && imageOk(d().imageUrl, me())
           && audioOk(d().get('audioUrl', null), me())
           && (!('audioSeconds' in d()) || (d().audioSeconds is int && d().audioSeconds >= 0 && d().audioSeconds <= 130))
-          && (d().text.size() > 0 || d().imageUrl != null || d().get('audioUrl', null) != null)
+          && (d().text.size() > 0 || d().imageUrl != null || d().get('audioUrl', null) != null || 'post' in d())
           && d().status == 'sent'
           && d().createdAt == request.time
           && rateOk('lastMessageAt', 1);

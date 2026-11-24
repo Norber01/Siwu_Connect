@@ -3,6 +3,7 @@ import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LIMITS,
+  PILOT_TESTERS_PER_TOWN,
   REPORT_REASONS,
   ROLES,
   ROLE_LABELS,
@@ -30,6 +31,7 @@ import {
   searchPeople,
   fetchTargetDoc,
   fetchWords,
+  fetchTesters,
   wordOfTheDay,
 } from '../../lib/queries';
 import { API_URL, auth, db } from '../../lib/firebase';
@@ -70,7 +72,7 @@ export function AdminPage() {
     { to: 'reports', label: 'Reports' },
     { to: 'approvals', label: 'Approvals' },
     { to: 'words', label: 'Siwu words' },
-    ...(showUsers ? [{ to: 'users', label: 'Users' }] : []),
+    ...(showUsers ? [{ to: 'users', label: 'Users' }, { to: 'testers', label: 'Pilot testers' }] : []),
     ...(showAnnouncements ? [{ to: 'announcements', label: 'Announcements' }] : []),
     ...(superAdmin
       ? [
@@ -112,6 +114,7 @@ export function AdminPage() {
         <Route path="approvals" element={<ApprovalsTab />} />
         <Route path="words" element={<WordsTab />} />
         {showUsers && <Route path="users" element={<UsersTab />} />}
+        {showUsers && <Route path="testers" element={<TestersTab />} />}
         {showAnnouncements && <Route path="announcements" element={<AnnouncementsTab />} />}
         {superAdmin && <Route path="feedback" element={<FeedbackTab />} />}
         {superAdmin && <Route path="roles" element={<RolesTab />} />}
@@ -119,6 +122,107 @@ export function AdminPage() {
         {superAdmin && <Route path="backups" element={<BackupsTab />} />}
         <Route path="*" element={<Navigate to="/admin/reports" replace />} />
       </Routes>
+    </div>
+  );
+}
+
+// ---------------- Pilot testers ----------------
+
+function TestersTab() {
+  const { role } = useMe();
+  const toast = useToast();
+  const q = useQuery({ queryKey: ['admin', 'testers'], queryFn: fetchTesters });
+  const [search, setSearch] = useState('');
+  const found = useQuery({ queryKey: ['admin', 'testerSearch', search.trim()], queryFn: () => searchPeople(search), enabled: search.trim().length >= 2 });
+  const testers = q.data ?? [];
+  const set = async (p: Profile, on: boolean) => {
+    try {
+      await api(`/admin/users/${p.uid}/${on ? 'tester' : 'untester'}`, { json: {} });
+      toast(on ? `@${p.username} is now a pilot tester 🧪` : `@${p.username} removed from the pilot.`);
+      void q.refetch();
+      void found.refetch();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-700">
+        Choose about {PILOT_TESTERS_PER_TOWN} people from each town to try Siwu Connect first. They get a 🧪 badge, a short
+        "things to try" list on their home page, and a quick feedback button. Their feedback arrives under Feedback.
+      </p>
+      <Card className="p-4">
+        <h2 className="mb-3 font-bold text-gray-900">Testers per town (goal: {PILOT_TESTERS_PER_TOWN})</h2>
+        <ul className="space-y-2">
+          {TOWNS.map((t) => {
+            const n = testers.filter((p) => p.hometownId === t.id).length;
+            return (
+              <li key={t.id}>
+                <span className="flex justify-between text-sm font-semibold">
+                  <span>{t.name}</span>
+                  <span className={n >= PILOT_TESTERS_PER_TOWN ? 'text-brand-700' : 'text-gray-600'}>
+                    {n} / {PILOT_TESTERS_PER_TOWN} {n >= PILOT_TESTERS_PER_TOWN && '✓'}
+                  </span>
+                </span>
+                <span className="mt-1 block h-2 overflow-hidden rounded-full bg-sand-200">
+                  <span className="block h-full rounded-full bg-gradient-to-r from-brand-500 to-gold-400" style={{ width: `${Math.min(100, (n / PILOT_TESTERS_PER_TOWN) * 100)}%` }} />
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+      <Card className="p-4">
+        <h2 className="mb-2 font-bold text-gray-900">Add a tester</h2>
+        <TextField label="Search members" type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or @username" autoCapitalize="none" />
+        <ul className="mt-2 divide-y divide-sand-200">
+          {(found.data ?? []).map((p) => (
+            <li key={p.uid} className="flex items-center gap-3 py-2">
+              <Avatar url={p.photoUrl} name={p.displayName} size={36} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{p.displayName}</span>
+                <span className="block text-xs text-gray-600">
+                  @{p.username} · {townName(p.hometownId)}
+                </span>
+              </span>
+              {p.tester ? (
+                <span className="text-xs font-bold text-brand-700">🧪 Tester</span>
+              ) : canSuspend(role, p.hometownId) ? (
+                <Button small onClick={() => set(p, true)}>
+                  Add
+                </Button>
+              ) : (
+                <span className="text-xs text-gray-500">Not your town</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </Card>
+      <Card className="p-4">
+        <h2 className="mb-2 font-bold text-gray-900">Pilot testers ({testers.length})</h2>
+        {q.isPending ? (
+          <PageSpinner />
+        ) : testers.length === 0 ? (
+          <p className="text-sm text-gray-600">No testers yet. Search for members above and tap Add.</p>
+        ) : (
+          <ul className="divide-y divide-sand-200">
+            {testers.map((p) => (
+              <li key={p.uid} className="flex items-center gap-3 py-2">
+                <Avatar url={p.photoUrl} name={p.displayName} size={36} />
+                <Link to={`/u/${p.username}`} className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{p.displayName}</span>
+                  <span className="block text-xs text-gray-600">{townName(p.hometownId)}</span>
+                </Link>
+                {canSuspend(role, p.hometownId) && (
+                  <Button small variant="ghost" onClick={() => set(p, false)}>
+                    Remove
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }
@@ -800,7 +904,7 @@ function RolesTab() {
 
   const grant = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = grantRoleSchema.safeParse({ username: username.replace(/^@/, ''), role, townIds: role === 'super_admin' || role === 'reporter' ? [] : towns });
+    const parsed = grantRoleSchema.safeParse({ username: username.replace(/^@/, ''), role, townIds: role === 'super_admin' ? [] : towns });
     if (!parsed.success) {
       setError(parsed.error.issues[0]!.message);
       return;
@@ -842,9 +946,11 @@ function RolesTab() {
               </option>
             ))}
           </SelectField>
-          {role !== 'super_admin' && role !== 'reporter' && (
+          {role !== 'super_admin' && (
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-gray-800">Towns</legend>
+              <legend className="mb-2 text-sm font-medium text-gray-800">
+                Towns{role === 'reporter' && ' (the reporter covers matches involving these towns; leave empty for all towns)'}
+              </legend>
               <div className="grid grid-cols-2 gap-2">
                 {TOWNS.map((t) => (
                   <label key={t.id} className="flex min-h-[44px] items-center gap-2 rounded-xl border border-sand-200 bg-white px-3 text-sm">
@@ -862,7 +968,7 @@ function RolesTab() {
           )}
           <p className="text-xs text-gray-600">
             Super Admins can do everything in all towns. Town Admins moderate, announce, pin and suspend in their towns.
-            Moderators review reports and remove content in their towns. Sports reporters add matches and live scores.
+            Moderators review reports and remove content in their towns. Sports reporters add matches and live scores — for their towns, or for all towns if none are chosen.
           </p>
           {error && <Alert>{error}</Alert>}
           <Button type="submit" busy={busy}>

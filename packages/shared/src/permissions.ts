@@ -53,3 +53,10 @@ export const hasAdminAccess = (r: AdminRole | null | undefined): boolean => !!r 
 
 /** Create matches and post live updates in the Sports Centre: every role, including reporters. */
 export const canReportSports = (r: AdminRole | null | undefined): boolean => !!r;
+
+/** Reporters limited to some towns manage only matches involving those towns (no towns = all towns). */
+export function canReportMatch(r: AdminRole | null | undefined, m: { home: { townId: string | null }; away: { townId: string | null } }): boolean {
+  if (!r) return false;
+  if (r.role !== 'reporter' || r.townIds.length === 0) return true;
+  return (!!m.home.townId && r.townIds.includes(m.home.townId)) || (!!m.away.townId && r.townIds.includes(m.away.townId));
+}

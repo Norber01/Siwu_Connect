@@ -41,6 +41,7 @@ interface Message {
   audioSeconds?: number;
   replyTo?: { id: string; senderId: string; text: string };
   story?: { id: string; text: string; url: string | null };
+  post?: { id: string; authorId: string; text: string; imageUrl: string | null };
   reactions?: Record<string, string>;
   status: 'sent' | 'deleted' | 'removed';
   createdAt: Date | null;
@@ -944,6 +945,112 @@ export function ChatRoomPage() {
   );
 }
 
+function SharedPost({ post, mine }: { post: NonNullable<Message['post']>; mine: boolean }) {
+  const { data: author } = useProfileById(post.authorId);
+  return (
+    <Link to={`/p/${post.id}`} className={`mb-1.5 block w-60 max-w-full overflow-hidden rounded-xl ${mine ? 'bg-white/15' : 'bg-sand-100'}`}>
+      {post.imageUrl && <img src={post.imageUrl} alt="" loading="lazy" className="h-32 w-full object-cover" />}
+      <span className="block px-2.5 py-2">
+        <span className="flex items-center gap-1.5 text-xs font-bold">
+          <Avatar url={author?.photoUrl} name={author?.displayName ?? '…'} size={18} /> {author?.displayName ?? '…'}
+        </span>
+        {post.text && <span className="mt-0.5 line-clamp-3 block text-sm opacity-90">{post.text}</span>}
+        <span className="mt-1 block text-[11px] font-semibold opacity-75">📝 Tap to open the post</span>
+      </span>
+    </Link>
+  );
+}
+
+/** Send a post into one or more chats (friends, groups or town chats), with an optional note. */
+export function SendToChatDialog({
+  open,
+  onClose,
+  post,
+}: {
+  open: boolean;
+  onClose: () => void;
+  post: { id: string; authorId: string; text: string; imageUrl: string | null };
+}) {
+  const { user } = useMe();
+  const toast = useToast();
+  const { rooms, dms } = useChats();
+  const [picked, setPicked] = useState<string[]>([]);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const chats = [...(dms ?? []), ...[...(rooms ?? [])].sort((a, b) => ROOM_ORDER.indexOf(a.townId ?? '') - ROOM_ORDER.indexOf(b.townId ?? ''))];
+  const send = async () => {
+    setBusy(true);
+    let sent = 0;
+    try {
+      for (const id of picked) {
+        await sendMessage(db, user.uid, id, note.trim().slice(0, 500), null, null, { post });
+        sent++;
+        if (sent < picked.length) await new Promise((r) => setTimeout(r, 1100)); // one message per second
+      }
+      toast(sent === 1 ? 'Sent 💬' : `Sent to ${sent} chats 💬`);
+      setPicked([]);
+      setNote('');
+      onClose();
+    } catch (e) {
+      toast(sent ? `Sent to ${sent}, then: ${friendlyError(e)}` : friendlyError(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="Send in chat">
+      {chats.length === 0 ? (
+        <p className="text-sm text-gray-600">No chats yet. Add friends from their profile to chat with them.</p>
+      ) : (
+        <ul className="max-h-72 overflow-y-auto" aria-label="Choose chats">
+          {chats.map((c) => (
+            <ChatPickRow
+              key={c.id}
+              chat={c}
+              me={user.uid}
+              checked={picked.includes(c.id)}
+              onPick={() => setPicked((p) => (p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]))}
+            />
+          ))}
+        </ul>
+      )}
+      <TextField label="Add a message (optional)" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} className="mt-3" />
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button busy={busy} disabled={!picked.length} onClick={send}>
+          Send{picked.length > 1 ? ` (${picked.length})` : ''}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ChatPickRow({ chat, me, checked, onPick }: { chat: Chat; me: string; checked: boolean; onPick: () => void }) {
+  const other = chat.type === 'dm' ? chat.members.find((m) => m !== me) : null;
+  const { data: p } = useProfileById(other);
+  const name =
+    chat.type === 'dm' ? (p?.displayName ?? '…') : chat.type === 'group' ? (chat.name ?? 'Group') : chat.townId === 'all' ? 'All Akpafu' : `${townShortName(chat.townId ?? '')} town chat`;
+  return (
+    <li>
+      <button onClick={onPick} aria-pressed={checked} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-sand-100">
+        {chat.type === 'dm' ? (
+          <Avatar url={p?.photoUrl} name={name} size={40} />
+        ) : (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-black text-white">
+            {chat.type === 'group' ? name.slice(0, 2).toUpperCase() : chat.townId === 'all' ? '🌍' : '🏡'}
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate font-semibold">{name}</span>
+        <span className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-sand-200'}`}>
+          {checked && <Icon name="check" className="h-4 w-4" />}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 function Name({ uid, me }: { uid: string; me: string }) {
   const { data } = useProfileById(uid === me ? null : uid);
   return <>{uid === me ? 'You' : (data?.displayName.split(' ')[0] ?? '…')}</>;
@@ -1155,6 +1262,7 @@ function Bubble({
                     </span>
                   </div>
                 )}
+                {m.post && <SharedPost post={m.post} mine={mine} />}
                 {m.imageUrl && (
                   <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">
                     <img src={m.imageUrl} alt="" className="mb-1 max-h-64 rounded-xl" loading="lazy" />

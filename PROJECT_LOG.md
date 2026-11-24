@@ -169,6 +169,17 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     checks after each deploy, all passing). Fixed along the way: message menus could go off-screen or hide
     under the header, and all pop-up windows shared one title id (screen readers read the wrong title).
   - Needs **Run setup again** (new rules and an index for album photos).
+- 2026-11-24 — **Founder decisions and pilot tools:**
+  - Minimum age: **13** (final; no longer provisional).
+  - Sports reporters per town: when giving the Sports reporter role, choose their town(s). They then add and
+    update only matches involving those towns; with no towns chosen they cover all. This is enforced in the rules.
+    Sports shows "📣 Match reporters" for each town. The people are chosen by the founder in Admin → Roles.
+  - Pilot testers: Admin → Pilot testers (Super Admins and Town Admins) shows testers per town against a goal of
+    5, with search to add and an option to remove; there is also a "🧪 Make pilot tester" button on profiles.
+    Testers get a 🧪 badge, a notification, a "things to try" checklist on their home page and a feedback button.
+    The founder chooses the testers.
+  - Share a post in chat: Share → "Send in chat" (friends, groups or town chats, several at once, optional
+    note) or "Share outside (WhatsApp…)". The message shows a tappable preview of the post.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
@@ -224,7 +235,6 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 ## Open decisions (founder)
 - Who will be **Sports reporters** for the first tournaments (Admin → Roles → "Sports reporter").
 - Whether marketplace phone numbers should be visible to all members (current) or only after a buyer taps "show".
-- **D9 Minimum age** — the app currently shows **13** as a provisional value (`packages/shared/src/constants.ts`).
 - Community rules and privacy notice text — drafts are in the app, clearly marked "Draft"; need approval and a privacy contact.
 - Logo artwork: the app uses an SVG redraw of the mockup logo; supply the original logo file to use it exactly. Real town photos for the town cards. Domain, social handles.
 - People for Moderator roles.

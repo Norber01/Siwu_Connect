@@ -82,6 +82,16 @@ export function ProfilePage() {
     }
   };
 
+  const toggleTester = async () => {
+    try {
+      await api(`/admin/users/${p.uid}/${p.tester ? 'untester' : 'tester'}`, { json: {} });
+      toast(p.tester ? 'Removed from the pilot.' : `@${p.username} is now a pilot tester 🧪`);
+      await q.refetch();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+
   const toggleVerified = async () => {
     try {
       await api(`/admin/users/${p.uid}/${p.verified ? 'unverify' : 'verify'}`, { json: { note: '' } });
@@ -151,6 +161,7 @@ export function ProfilePage() {
                 🏡 Visiting {townShortName(p.homeVisitTown)} until {p.homeVisitUntil.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
               </span>
             )}
+            {p.tester && <span className="rounded-full bg-gold-400 px-3 py-1 text-xs font-bold text-[#0f2f41]">🧪 Pilot tester</span>}
             {p.birthdayKey && (
               <span className="rounded-full bg-gold-100 px-3 py-1 text-xs font-bold text-gold-800">
                 🎂 {MONTHS[Number(p.birthdayKey.slice(0, 2)) - 1]} {Number(p.birthdayKey.slice(3))}
@@ -178,9 +189,14 @@ export function ProfilePage() {
                 <Icon name="shield" className="h-4 w-4" /> Admin
               </span>
               {canSuspend(role, p.hometownId) ? (
-                <Button small variant={p.verified ? 'secondary' : 'primary'} onClick={toggleVerified}>
-                  {p.verified ? 'Remove verified badge' : '✔ Verify account'}
-                </Button>
+                <>
+                  <Button small variant={p.verified ? 'secondary' : 'primary'} onClick={toggleVerified}>
+                    {p.verified ? 'Remove verified badge' : '✔ Verify account'}
+                  </Button>
+                  <Button small variant="secondary" onClick={toggleTester}>
+                    {p.tester ? 'Remove from pilot' : '🧪 Make pilot tester'}
+                  </Button>
+                </>
               ) : (
                 <span className="text-xs text-gray-700">
                   Only a Super Admin{p.hometownId ? ` or the Town Admin for ${townName(p.hometownId)}` : ''} can verify this member. You are signed in as{' '}
