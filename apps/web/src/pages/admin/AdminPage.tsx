@@ -143,7 +143,9 @@ function ReportItem({ report, onDone }: { report: Report; onDone: () => void }) 
           ? t.profile.uid
           : t.kind === 'event'
             ? t.event.authorId
-            : t.listing.sellerId;
+            : t.kind === 'message'
+              ? t.message.senderId
+              : t.listing.sellerId;
   const { data: author } = useProfileById(authorId);
   const canSuspendAuthor = author ? canSuspend(role, author.hometownId) : false;
 
@@ -181,6 +183,17 @@ function ReportItem({ report, onDone }: { report: Report; onDone: () => void }) 
                 {target.data.profile.displayName} (@{target.data.profile.username})
               </Link>
             </p>
+          ) : target.data.kind === 'message' ? (
+            <>
+              <p className="mb-1 text-xs text-gray-600">
+                Chat message by {author ? <Link className="underline" to={`/u/${author.username}`}>@{author.username}</Link> : 'unknown'} · status:{' '}
+                {target.data.message.status}
+              </p>
+              <RichText text={target.data.message.text || '(no text)'} />
+              <Link to={`/chat/${target.data.message.chatId}`} className="mt-1 inline-block text-xs text-brand-800 underline">
+                Open chat room
+              </Link>
+            </>
           ) : target.data.kind === 'event' || target.data.kind === 'listing' ? (
             <>
               <p className="mb-1 text-xs text-gray-600">

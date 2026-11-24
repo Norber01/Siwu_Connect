@@ -5,7 +5,7 @@ import { COUNTRIES, RESIDENCE_OPTIONS, TOWNS, canSuspend, profileSchema, townNam
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
-import { blockUser, unblockUser, updateProfile } from '../lib/ops';
+import { blockUser, openDm, unblockUser, updateProfile } from '../lib/ops';
 import { fetchMyLikes, fetchProfile, fetchProfileByUsername, fetchSellerListings, searchPeople, searchPosts } from '../lib/queries';
 import { FeedbackDialog, InviteButton } from '../components/extras';
 import { formatPrice } from '../lib/util';
@@ -77,6 +77,14 @@ export function ProfilePage() {
     }
   };
 
+  const startChat = async () => {
+    try {
+      navigate(`/chat/${await openDm(db, user.uid, p.uid)}`);
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+
   const suspend = async () => {
     setBusy(true);
     try {
@@ -130,6 +138,13 @@ export function ProfilePage() {
           </div>
           {p.status === 'suspended' && (
             <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">This account is suspended.</p>
+          )}
+          {!isMe && !isBlocked && (
+            <div className="mt-4 flex gap-2">
+              <Button small icon="message" onClick={startChat}>
+                Message
+              </Button>
+            </div>
           )}
           {isMe && (
             <div className="mt-4 flex gap-2">

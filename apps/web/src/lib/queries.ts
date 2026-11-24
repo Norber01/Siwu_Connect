@@ -204,6 +204,10 @@ export async function fetchTargetDoc(path: string) {
   const snap = await getDoc(doc(db, path));
   if (!snap.exists()) return null;
   if (path.startsWith('users/')) return { kind: 'user' as const, profile: toProfile(snap) };
+  if (path.startsWith('chats/')) {
+    const d = snap.data();
+    return { kind: 'message' as const, message: { senderId: d.senderId as string, text: (d.text as string) ?? '', status: d.status as string, chatId: path.split('/')[1]! } };
+  }
   if (path.startsWith('events/')) return { kind: 'event' as const, event: toEvent(snap) };
   if (path.startsWith('listings/')) return { kind: 'listing' as const, listing: toListing(snap) };
   if (path.includes('/comments/')) return { kind: 'comment' as const, comment: toComment(snap) };

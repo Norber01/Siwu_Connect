@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { CreateSheet, FeedbackDialog } from './extras';
 import { NotificationBell } from '../pages/notifications';
+import { ChatNavBadge } from '../pages/chat';
 import { hasAdminAccess } from '@siwu/shared';
 import { useAuth } from '../auth/AuthProvider';
 import { Wordmark } from './Brand';
@@ -102,7 +103,10 @@ export function AppLayout() {
                     }`
                   }
                 >
-                  <Icon name={n.icon} className="h-6 w-6" />
+                  <span className="relative">
+                    <Icon name={n.icon} className="h-6 w-6" />
+                    {n.to === '/chat' && profile && <ChatNavBadge />}
+                  </span>
                   {n.label}
                 </NavLink>
               )}

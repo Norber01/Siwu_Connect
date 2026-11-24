@@ -79,7 +79,9 @@ console.log(`Project: ${project}${emulator ? ` (emulator ${emulator})` : ''}`);
 
 if (cmd === 'seed-towns') {
   await commit(TOWNS.map((t) => set(`towns/${t.id}`, { ...t, active: true })));
-  console.log(`Wrote ${TOWNS.length} town records.`);
+  await commit([{ id: 'all', name: 'All Akpafu' }, ...TOWNS].map((t) =>
+    set(`chats/room_${t.id}`, { type: 'room', townId: t.id, name: t.name, lastMessage: null }, ['createdAt', 'updatedAt'])));
+  console.log(`Wrote ${TOWNS.length} town records and chat rooms.`);
 } else if (cmd === 'grant-super-admin' && arg) {
   const username = arg.replace(/^@/, '').toLowerCase();
   const name = await call(`/usernames/${username}`);

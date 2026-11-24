@@ -14,6 +14,7 @@ import { EventDetailPage, EventFormPage, EventsPage } from './pages/events';
 import { ListingDetailPage, ListingFormPage, MarketPage } from './pages/market';
 import { MatchDetailPage, MatchFormPage, SportsPage } from './pages/sports';
 import { NotificationsPage } from './pages/notifications';
+import { ChatListPage, ChatRoomPage } from './pages/chat';
 
 const AdminPage = lazy(() => import('./pages/admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 
@@ -109,6 +110,8 @@ export function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/chat" element={<ChatListPage />} />
+          <Route path="/chat/:chatId" element={<ChatRoomPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/new" element={<EventFormPage />} />
           <Route path="/events/:eventId" element={<EventDetailPage />} />

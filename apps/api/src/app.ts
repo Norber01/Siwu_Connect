@@ -88,17 +88,20 @@ function moderation(uid: string, action: string, note: string): Data {
 interface ContentDoc {
   authorId?: string;
   sellerId?: string;
+  senderId?: string;
   townId: string;
   status: string;
 }
 
 /** Which statuses count as "visible" for each kind of content, and what a restore returns to. */
-function contentKind(path: string): { kind: 'post' | 'comment' | 'event' | 'listing'; visible: string[]; restoreTo: string } {
+function contentKind(path: string): { kind: 'post' | 'comment' | 'event' | 'listing' | 'message'; visible: string[]; restoreTo: string } {
   const p = path.split('/');
   if (p.length === 2 && p[0] === 'posts') return { kind: 'post', visible: ['published'], restoreTo: 'published' };
   if (p.length === 4 && p[0] === 'posts' && p[2] === 'comments') return { kind: 'comment', visible: ['published'], restoreTo: 'published' };
   if (p.length === 2 && p[0] === 'events') return { kind: 'event', visible: ['published', 'cancelled'], restoreTo: 'published' };
   if (p.length === 2 && p[0] === 'listings') return { kind: 'listing', visible: ['available', 'sold'], restoreTo: 'available' };
+  if (p.length === 4 && p[0] === 'chats' && p[1]!.startsWith('room_') && p[2] === 'messages')
+    return { kind: 'message', visible: ['sent'], restoreTo: 'sent' };
   return fail(400, 'Unsupported target');
 }
 
@@ -125,7 +128,9 @@ async function contentStatusWrites(
       writes.push({ kind: 'update', path: postPath, data: { commentCount: FieldValue.increment(action === 'remove' ? -1 : 1) } });
     }
   }
-  return { writes, townId: target!.data.townId, authorId: (target!.data.authorId ?? target!.data.sellerId)! };
+  // Room messages carry no town: it comes from the room id (room_all → 'all').
+  const townId = kind === 'message' ? targetPath.split('/')[1]!.slice(5) : target!.data.townId;
+  return { writes, townId, authorId: (target!.data.authorId ?? target!.data.sellerId ?? target!.data.senderId)! };
 }
 
 export function createApp() {
@@ -416,6 +421,19 @@ export function createApp() {
       });
     }
 
+    admin.post(`/chats/:chatId/messages/:mid/${route}`, async (c) => {
+      const { note } = await body(c.req.raw, moderationNoteSchema);
+      const fs = c.get('fs');
+      const chatId = c.req.param('chatId');
+      if (!/^room_[a-z]+$/.test(chatId)) fail(403, 'Private messages cannot be moderated');
+      const path = `chats/${chatId}/messages/${c.req.param('mid')}`;
+      const { writes, townId } = await contentStatusWrites(fs, c.get('uid'), path, route, note);
+      if (!canModerate(c.get('role'), townId)) fail(403, 'You cannot moderate this chat room');
+      writes.push(audit(fs, c.get('uid'), `message.${route}`, path, townId, { note }));
+      await fs.commit(writes);
+      return c.json({ ok: true });
+    });
+
     admin.post(`/posts/:postId/${route}`, async (c) => {
       const { note } = await body(c.req.raw, moderationNoteSchema);
       const fs = c.get('fs');
@@ -478,8 +496,8 @@ export function createApp() {
     } else {
       const target = await fs.get<ContentDoc>(r.targetPath);
       if (target) {
-        townId = target.data.townId;
-        authorId = (target.data.authorId ?? target.data.sellerId) ?? null;
+        townId = contentKind(r.targetPath).kind === 'message' ? r.targetPath.split('/')[1]!.slice(5) : target.data.townId;
+        authorId = (target.data.authorId ?? target.data.sellerId ?? target.data.senderId) ?? null;
         if (input.action !== 'dismiss' && contentKind(r.targetPath).visible.includes(target.data.status)) {
           const removal = await contentStatusWrites(fs, uid, r.targetPath, 'remove', input.note);
           writes.push(...removal.writes);

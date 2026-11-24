@@ -7,7 +7,7 @@ import { friendlyError, isPermissionDenied } from '../lib/util';
 import { useToast } from './Toast';
 import { Alert, Button, Modal, TextArea } from './ui';
 
-const nouns = { post: 'post', comment: 'comment', user: 'user', event: 'event', listing: 'listing' } as const;
+const nouns = { post: 'post', comment: 'comment', user: 'user', event: 'event', listing: 'listing', message: 'message' } as const;
 
 export function ReportDialog({ target, open, onClose }: { target: ReportTarget; open: boolean; onClose: () => void }) {
   const { user, profile } = useMe();

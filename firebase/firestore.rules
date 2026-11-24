@@ -136,13 +136,17 @@ service cloud.firestore {
     match /rate_limits/{uid} {
       allow read: if signedIn() && uid == me();
       allow create: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt'])
+        && d().get('lastMessageAt', request.time) == request.time
+        && d().get('lastStoryAt', request.time) == request.time
         && d().get('lastPostAt', request.time) == request.time
         && d().get('lastCommentAt', request.time) == request.time
         && d().get('lastEventAt', request.time) == request.time
         && d().get('lastListingAt', request.time) == request.time;
       allow update: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt'])
+        && (!('lastMessageAt' in changed()) || d().lastMessageAt == request.time)
+        && (!('lastStoryAt' in changed()) || d().lastStoryAt == request.time)
         && (!('lastPostAt' in changed()) || d().lastPostAt == request.time)
         && (!('lastCommentAt' in changed()) || d().lastCommentAt == request.time)
         && (!('lastEventAt' in changed()) || d().lastEventAt == request.time)
@@ -502,6 +506,73 @@ service cloud.firestore {
       }
     }
 
+    // ---------- chat ----------
+    // Town rooms (room_all, room_<town>) are open to every member. Direct messages (id "<uidA>_<uidB>",
+    // sorted) can only be read and written by their two members — not even admins can read them.
+    function chatPath(id) { return /databases/$(database)/documents/chats/$(id); }
+    function msgPath(chatId, mid) { return /databases/$(database)/documents/chats/$(chatId)/messages/$(mid); }
+    function canUseChat(c) { return c.type == 'room' || me() in c.members; }
+    function dmOther(c) { return c.members[0] == me() ? c.members[1] : c.members[0]; }
+    function notBlockedDm(c) {
+      return c.type == 'room'
+        || (!exists(/databases/$(database)/documents/users/$(dmOther(c))/blocks/$(me()))
+            && !exists(/databases/$(database)/documents/users/$(me())/blocks/$(dmOther(c))));
+    }
+
+    match /chats/{chatId} {
+      allow get: if signedIn() && (resource == null || canUseChat(resource.data));
+      allow list: if signedIn() && (resource.data.type == 'room' || me() in resource.data.members);
+      allow create: if isActive()
+        && exactKeys(['type', 'members', 'lastMessage', 'createdAt', 'updatedAt'])
+        && d().type == 'dm'
+        && d().members is list && d().members.size() == 2
+        && me() in d().members
+        && d().members[0] < d().members[1]
+        && chatId == d().members[0] + '_' + d().members[1]
+        && exists(userPath(d().members[0])) && exists(userPath(d().members[1]))
+        && notBlockedDm(d())
+        && d().lastMessage == null
+        && d().createdAt == request.time && d().updatedAt == request.time;
+      // The chat preview moves together with a new message the caller just sent.
+      allow update: if isActive() && canUseChat(resource.data)
+        && changed().hasOnly(['lastMessage', 'updatedAt'])
+        && d().updatedAt == request.time
+        && d().lastMessage.keys().hasOnly(['id', 'senderId', 'text', 'at'])
+        && d().lastMessage.senderId == me()
+        && d().lastMessage.at == request.time
+        && str(d().lastMessage.text, 0, 120)
+        && !exists(msgPath(chatId, d().lastMessage.id))
+        && getAfter(msgPath(chatId, d().lastMessage.id)).data.senderId == me();
+      allow delete: if false;
+
+      match /messages/{mid} {
+        allow read: if signedIn() && canUseChat(get(chatPath(chatId)).data);
+        allow create: if isActive()
+          && canUseChat(get(chatPath(chatId)).data)
+          && notBlockedDm(get(chatPath(chatId)).data)
+          && exactKeys(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
+          && d().senderId == me()
+          && str(d().text, 0, 2000)
+          && imageOk(d().imageUrl, me())
+          && (d().text.size() > 0 || d().imageUrl != null)
+          && d().status == 'sent'
+          && d().createdAt == request.time
+          && rateOk('lastMessageAt', 1);
+        // Senders can delete their own messages.
+        allow update: if signedIn() && resource.data.senderId == me() && resource.data.status == 'sent'
+          && changed().hasOnly(['status', 'text', 'imageUrl'])
+          && d().status == 'deleted' && d().text == '' && d().imageUrl == null;
+        allow delete: if false;
+      }
+    }
+
+    // Per-user read markers for unread badges.
+    match /users/{uid}/chatState/{chatId} {
+      allow read, delete: if signedIn() && uid == me();
+      allow create, update: if signedIn() && uid == me()
+        && exactKeys(['lastReadAt']) && d().lastReadAt == request.time;
+    }
+
     // ---------- tester feedback ----------
     match /feedback/{id} {
       allow create: if signedIn()
@@ -521,15 +592,16 @@ service cloud.firestore {
         && exactKeys(['reporterId', 'targetType', 'targetId', 'targetPath', 'townId', 'reason', 'details',
                       'status', 'createdAt', 'resolvedBy', 'resolvedAt', 'resolution'])
         && d().reporterId == me()
-        && d().targetType in ['post', 'comment', 'user', 'event', 'listing']
+        && d().targetType in ['post', 'comment', 'user', 'event', 'listing', 'message']
         && str(d().targetId, 1, 128)
         && reportId == me() + '_' + d().targetType + '_' + d().targetId
         && ((d().targetType == 'post' && d().targetPath == 'posts/' + d().targetId)
             || (d().targetType == 'comment' && d().targetPath.matches('^posts/[A-Za-z0-9]+/comments/' + d().targetId + '$'))
             || (d().targetType == 'user' && d().targetPath == 'users/' + d().targetId && d().targetId != me())
             || (d().targetType == 'event' && d().targetPath == 'events/' + d().targetId)
-            || (d().targetType == 'listing' && d().targetPath == 'listings/' + d().targetId))
-        && isTown(d().townId)
+            || (d().targetType == 'listing' && d().targetPath == 'listings/' + d().targetId)
+            || (d().targetType == 'message' && d().targetPath.matches('^chats/room_[a-z]+/messages/' + d().targetId + '$')))
+        && (isTown(d().townId) || (d().targetType == 'message' && d().townId == 'all'))
         && d().reason in ['harassment', 'threat', 'impersonation', 'spam', 'misinformation', 'defamation', 'fraud', 'other']
         && str(d().details, 0, 500)
         && d().status == 'open'

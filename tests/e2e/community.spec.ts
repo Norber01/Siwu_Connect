@@ -128,6 +128,19 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.goto('/?town=todzi');
   await page.getByRole('button', { name: 'Like', exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Unlike' }).first()).toBeVisible();
+  await page.waitForTimeout(1500); // let the like reach the server before the full page reload below
+
+  // Chat: Ama messages Kofi privately and says hi in the Todzi room.
+  await page.goto('/u/kofi_mensah');
+  await page.getByRole('button', { name: 'Message' }).click();
+  await page.getByLabel('Message', { exact: true }).fill(`Akwaaba Kofi ${tag}`);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText(`Akwaaba Kofi ${tag}`)).toBeVisible();
+  await page.goto('/chat');
+  await page.getByRole('link', { name: /Todzi/ }).first().click();
+  await page.getByLabel('Message', { exact: true }).fill(`Hello Todzi room ${tag}`);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText(`Hello Todzi room ${tag}`)).toBeVisible();
 
   // Tester feedback from the Beta badge.
   await page.getByRole('button', { name: 'Beta' }).click();
@@ -144,8 +157,12 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByRole('link', { name: 'Call seller' })).toHaveAttribute('href', 'tel:0241234567');
   await signOut(page);
 
-  // --- Kofi gets a notification for Ama's like.
+  // --- Kofi gets a notification for Ama's like, and an unread chat.
   await signIn(page, 'kofi_mensah');
+  await page.getByRole('link', { name: 'Chat' }).click();
+  await page.getByText(`Akwaaba Kofi ${tag}`).click();
+  await expect(page.getByText(`Akwaaba Kofi ${tag}`).first()).toBeVisible();
+  await page.goto('/');
   await expect(page.getByRole('link', { name: /Notifications, 1 unread/ })).toBeVisible();
   await page.getByRole('link', { name: /Notifications/ }).click();
   await expect(page.getByText('liked your post')).toBeVisible();

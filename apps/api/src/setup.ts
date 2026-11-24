@@ -137,7 +137,19 @@ async function authorizeDomains(env: Env): Promise<string> {
 
 async function seedTowns(fs: Firestore): Promise<string> {
   await fs.commit(TOWNS.map((t) => ({ kind: 'set' as const, path: `towns/${t.id}`, data: { ...t, active: true } })));
-  return `${TOWNS.length} towns ready: ${TOWNS.map((t) => t.shortName).join(', ')}.`;
+  // One group chat per town plus an Akpafu-wide room. Existing rooms keep their last message.
+  const rooms = [{ id: 'all', name: 'All Akpafu' }, ...TOWNS.map((t) => ({ id: t.id as string, name: t.name as string }))];
+  const writes = [];
+  for (const r of rooms) {
+    if (await fs.get(`chats/room_${r.id}`)) continue;
+    writes.push({
+      kind: 'create' as const,
+      path: `chats/room_${r.id}`,
+      data: { type: 'room', townId: r.id, name: r.name, lastMessage: null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+    });
+  }
+  if (writes.length) await fs.commit(writes);
+  return `${TOWNS.length} towns ready: ${TOWNS.map((t) => t.shortName).join(', ')}. Town chat rooms ready.`;
 }
 
 async function grantFounder(fs: Firestore, caller: Caller): Promise<string> {

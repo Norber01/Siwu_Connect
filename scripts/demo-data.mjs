@@ -50,6 +50,8 @@ for (const [username, name, town, residence] of people) {
 }
 const towns = [['odomi', 'Akpafu Odomi', 'Odomi', 1], ['mempeasem', 'Akpafu Mempeasem', 'Mempeasem', 2], ['todzi', 'Akpafu Todzi', 'Todzi', 3], ['adokor', 'Akpafu Adokor', 'Adokor', 4], ['sokpo', 'Akpafu Sokpo', 'Sokpo', 5]];
 await commit(towns.map(([id, name, shortName, order]) => set(`towns/${id}`, { id, name, shortName, order, active: true })));
+await commit([['all', 'All Akpafu'], ...towns.map(([id, name]) => [id, name])].map(([id, name]) =>
+  set(`chats/room_${id}`, { type: 'room', townId: id, name, lastMessage: null, createdAt: ago(9000), updatedAt: ago(9000) })));
 await commit([set('admin_roles/' + uids.demo_admin, { role: 'super_admin', townIds: [], username: 'demo_admin' })]);
 
 const posts = [

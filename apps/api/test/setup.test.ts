@@ -43,6 +43,7 @@ function fakeGoogle(opts: { indexStatus?: number; rulesFail?: boolean } = {}) {
     }
     if (url.endsWith(':runQuery')) return json([]);
     if (url.endsWith(':commit')) return json({});
+    if (url.includes('/documents/chats/')) return json({ error: { message: 'not found' } }, 404);
     return json({ error: { message: `unexpected ${url}` } }, 500);
   });
   return { calls, configPatch: () => configPatch };

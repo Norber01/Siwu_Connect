@@ -6,6 +6,7 @@ import {
   type Firestore,
   collection,
   deleteDoc,
+  getDoc,
   doc,
   increment,
   serverTimestamp,
@@ -474,4 +475,47 @@ export async function setMatchStatus(db: Firestore, id: string, status: MatchSta
 
 export async function setMatchScore(db: Firestore, id: string, homeScore: number, awayScore: number): Promise<void> {
   await updateDoc(doc(db, 'matches', id), { homeScore, awayScore, updatedAt: serverTimestamp() });
+}
+
+// ---------------- chat ----------------
+
+/** Direct-message chat id: the two user ids, sorted, joined with "_". */
+export function dmId(a: string, b: string): string {
+  return [a, b].sort().join('_');
+}
+
+/** Opens (creating if needed) the private chat between the caller and another member. */
+export async function openDm(db: Firestore, uid: string, otherUid: string): Promise<string> {
+  const id = dmId(uid, otherUid);
+  const ref = doc(db, 'chats', id);
+  if (!(await getDoc(ref)).exists()) {
+    await setDoc(ref, {
+      type: 'dm',
+      members: [uid, otherUid].sort(),
+      lastMessage: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+  return id;
+}
+
+export async function sendMessage(db: Firestore, uid: string, chatId: string, text: string, imageUrl: string | null): Promise<void> {
+  const ref = doc(collection(db, 'chats', chatId, 'messages'));
+  const batch = writeBatch(db);
+  batch.set(ref, { senderId: uid, text, imageUrl, status: 'sent', createdAt: serverTimestamp() });
+  batch.update(doc(db, 'chats', chatId), {
+    lastMessage: { id: ref.id, senderId: uid, text: text ? text.slice(0, 120) : '📷 Photo', at: serverTimestamp() },
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(doc(db, 'rate_limits', uid), { lastMessageAt: serverTimestamp() }, { merge: true });
+  await batch.commit();
+}
+
+export async function deleteMessage(db: Firestore, chatId: string, messageId: string): Promise<void> {
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), { status: 'deleted', text: '', imageUrl: null });
+}
+
+export async function markChatRead(db: Firestore, uid: string, chatId: string): Promise<void> {
+  await setDoc(doc(db, 'users', uid, 'chatState', chatId), { lastReadAt: serverTimestamp() });
 }

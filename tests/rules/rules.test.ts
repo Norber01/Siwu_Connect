@@ -606,3 +606,50 @@ describe('feedback', () => {
     await assertSucceeds(getDocs(collection(db('boss'), 'feedback')));
   });
 });
+
+describe('chat', () => {
+  beforeEach(async () => {
+    await seedUser('alice');
+    await seedUser('bob');
+    await seedUser('carol');
+    await seedUser('mod');
+    await seedRole('mod', 'moderator', ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']);
+    await seed((a) => setDoc(doc(a, 'chats', 'room_odomi'), { type: 'room', townId: 'odomi', name: 'Akpafu Odomi', lastMessage: null }));
+  });
+
+  it('direct messages are private to the two members — even from admins', async () => {
+    const id = await ops.openDm(db('alice'), 'alice', 'bob');
+    expect(id).toBe('alice_bob');
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', id, 'Hi Bob!', null));
+    await assertSucceeds(getDocs(collection(db('bob'), 'chats', id, 'messages')));
+    await assertFails(getDocs(collection(db('carol'), 'chats', id, 'messages')));
+    await assertFails(getDocs(collection(db('mod'), 'chats', id, 'messages')));
+    await assertFails(ops.sendMessage(db('carol'), 'carol', id, 'sneaky', null));
+    const mine = await getDocs(query(collection(db('bob'), 'chats'), where('members', 'array-contains', 'bob')));
+    expect(mine.size).toBe(1);
+  });
+
+  it('cannot fake a chat for others or message someone who blocked you', async () => {
+    await assertFails(
+      setDoc(doc(db('carol'), 'chats', 'alice_bob'), { type: 'dm', members: ['alice', 'bob'], lastMessage: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }),
+    );
+    await ops.blockUser(db('bob'), 'bob', 'carol');
+    await assertFails(ops.openDm(db('carol'), 'carol', 'bob'));
+  });
+
+  it('town rooms are open to members; senders delete their own messages; rate limited', async () => {
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', 'room_odomi', 'Hello Odomi!', null));
+    await assertFails(ops.sendMessage(db('alice'), 'alice', 'room_odomi', 'too fast', null));
+    const msgs = await getDocs(collection(db('carol'), 'chats', 'room_odomi', 'messages'));
+    expect(msgs.size).toBe(1);
+    const mid = msgs.docs[0]!.id;
+    await assertFails(ops.deleteMessage(db('carol'), 'room_odomi', mid));
+    await assertSucceeds(ops.deleteMessage(db('alice'), 'room_odomi', mid));
+    await assertFails(ops.sendMessage(db('bob'), 'bob', 'room_odomi', 'pic', 'https://x.example/images/alice/a.webp'));
+  });
+
+  it('read markers are private', async () => {
+    await assertSucceeds(ops.markChatRead(db('alice'), 'alice', 'room_odomi'));
+    await assertFails(getDoc(doc(db('bob'), 'users', 'alice', 'chatState', 'room_odomi')));
+  });
+});
