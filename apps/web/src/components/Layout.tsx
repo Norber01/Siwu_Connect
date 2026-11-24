@@ -209,7 +209,7 @@ function SideNav({ onCreate, onFeedback, badges }: { onCreate: () => void; onFee
                 to={n.to}
                 end={n.end}
                 title={n.label}
-                aria-label={n.badge ? `${n.label}, ${n.badge} unread` : (n.aria ?? n.label)}
+                aria-label={n.badge ? `${n.label}, ${n.badge} unread` : n.aria}
                 className={({ isActive }) =>
                   `flex h-12 items-center justify-center gap-4 rounded-full px-3 text-xl hover:bg-sand-100 xl:justify-start ${isActive ? 'font-bold text-gray-900' : 'text-gray-800'}`
                 }

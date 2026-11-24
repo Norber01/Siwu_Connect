@@ -76,7 +76,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByRole('button', { name: /^Event/ }).click();
   await page.getByLabel('Event name').fill(`Todzi town meeting ${tag}`);
   await page.getByLabel('Type').selectOption('meeting');
-  await page.getByLabel('Town').selectOption('todzi');
+  await page.getByLabel('Town', { exact: true }).selectOption('todzi');
   const start = new Date(Date.now() + 2 * 86400_000);
   start.setHours(17, 0, 0, 0);
   const local = new Date(start.getTime() - start.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
