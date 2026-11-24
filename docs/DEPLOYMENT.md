@@ -1,5 +1,34 @@
 # Deploying Siwu Connect
 
+## Live setup (2026-11-24)
+
+| Part | Where |
+|---|---|
+| Website | Cloudflare Worker `siwu-connect` → https://siwu-connect.fnorxx.workers.dev (built app embedded by `scripts/gen-site.mjs`) |
+| API | Cloudflare Worker `siwu-connect-api` → https://siwu-connect-api.fnorxx.workers.dev |
+| Photos | Cloudflare R2 bucket `siwu-photos` |
+| Accounts & database | Firebase project `siwu-connect-cadd9` (Spark/free plan, Firestore in europe-west1) |
+
+Redeploy after changes (needs a Cloudflare API token in `CLOUDFLARE_API_TOKEN`):
+
+```bash
+npm run deploy:site   # build web app, embed it, deploy the site Worker
+npm run deploy:api    # deploy the API Worker
+npm run gen:assets    # after changing firestore.rules/indexes, then deploy:api and tap "Run setup again" on /setup
+```
+
+Secrets on the API Worker (Cloudflare dashboard → Workers & Pages → siwu-connect-api → Settings →
+Variables and Secrets): `GOOGLE_SERVICE_ACCOUNT_JSON` (Firebase private key) and `FOUNDER_EMAIL`.
+First-time setup is done from the phone at `/setup` (rules, indexes, towns, sign-in domain, Super Admin).
+
+Note: Cloudflare Pages was not used because its separate asset-upload step could not run from the
+deployment environment; serving the built files from a Worker is equivalent for users.
+
+---
+
+## Original manual guide (reference)
+
+
 Nothing here creates a paid service. Every step uses a free tier; the cost notes in
 `docs/PHASE1_PLAN.md` §7 still apply. Recommended: create a **staging** setup first (a second Firebase
 project + Worker), test with a small group, then repeat for **production**.

@@ -14,13 +14,17 @@ PUBLIC_API_URL = "http://localhost:8787"
 binding = "AVATARS"
 bucket_name = "siwu-avatars-dev"
 
-# --- staging / production: fill in real values before deploying ---
+# --- production (founder's Cloudflare account) ---
+# Secrets (never committed): GOOGLE_SERVICE_ACCOUNT_JSON, FOUNDER_EMAIL — set in the Cloudflare
+# dashboard (Workers & Pages → siwu-connect-api → Settings → Variables and Secrets) or with `wrangler secret put`.
 [env.production]
 name = "siwu-connect-api"
+workers_dev = true
+account_id = "56ca686cd94e782648ae9b8ba47a1820"
 [env.production.vars]
-FIREBASE_PROJECT_ID = "REPLACE_WITH_FIREBASE_PROJECT_ID"
-ALLOWED_ORIGINS = "https://REPLACE_WITH_WEB_DOMAIN"
-PUBLIC_API_URL = "https://REPLACE_WITH_API_DOMAIN"
+FIREBASE_PROJECT_ID = "siwu-connect-cadd9"
+ALLOWED_ORIGINS = "https://siwu-connect.fnorxx.workers.dev"
+PUBLIC_API_URL = "https://siwu-connect-api.fnorxx.workers.dev"
 [[env.production.r2_buckets]]
 binding = "AVATARS"
-bucket_name = "siwu-avatars"
+bucket_name = "siwu-photos"

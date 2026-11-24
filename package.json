@@ -21,7 +21,9 @@
     "seed:emulator": "node scripts/admin-cli.mjs seed-towns",
     "admin": "node scripts/admin-cli.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "gen:assets": "node scripts/gen-firebase-assets.mjs"
+    "gen:assets": "node scripts/gen-firebase-assets.mjs",
+    "deploy:api": "cd apps/api && wrangler deploy --env production",
+    "deploy:site": "npm run build && node scripts/gen-site.mjs && cd apps/site && wrangler deploy"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

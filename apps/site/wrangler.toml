@@ -1,0 +1,6 @@
+# Cloudflare Worker that serves the built website (apps/web/dist embedded by scripts/gen-site.mjs).
+name = "siwu-connect"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+account_id = "56ca686cd94e782648ae9b8ba47a1820"
+workers_dev = true

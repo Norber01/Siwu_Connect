@@ -1,6 +1,9 @@
 # Siwu Connect — Project Log
 
 ## Status
+**2026-11-24: LIVE** at https://siwu-connect.fnorxx.workers.dev (API https://siwu-connect-api.fnorxx.workers.dev).
+Remaining before first use: add Firebase key + founder email on the API Worker, then run /setup.
+
 **Stage:** Phase 1 built and passing all automated tests locally (emulators). **Not yet deployed** —
 needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 

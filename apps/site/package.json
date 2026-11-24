@@ -1,0 +1,7 @@
+{
+  "name": "@siwu/site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Serves the built web app (apps/web/dist) from a Cloudflare Worker."
+}
