@@ -13,7 +13,7 @@
     "typecheck": "tsc -p packages/shared && tsc -p apps/web --noEmit && tsc -p apps/api --noEmit && tsc -p tests --noEmit",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:emulator",
-    "test:unit": "vitest run --project shared --project web",
+    "test:unit": "vitest run --project shared --project web --project site",
     "test:emulator": "firebase emulators:exec --only firestore,auth --project demo-siwu \"vitest run --project rules --project api\"",
     "test:e2e": "playwright test --trace off",
     "emulators": "firebase emulators:start --only firestore,auth --project demo-siwu",
@@ -23,6 +23,7 @@
     "icons": "node scripts/make-icons.mjs",
     "gen:assets": "node scripts/gen-firebase-assets.mjs",
     "deploy:api": "cd apps/api && wrangler deploy --env production",
+    "check:live": "node scripts/check-live.mjs",
     "deploy:site": "npm run build && node scripts/gen-site.mjs && cd apps/site && wrangler deploy"
   },
   "devDependencies": {
