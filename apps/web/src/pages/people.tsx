@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { COUNTRIES, RESIDENCE_OPTIONS, TOWNS, canSuspend, profileSchema, townName } from '@siwu/shared';
@@ -79,6 +80,16 @@ export function ProfilePage() {
     }
   };
 
+  const toggleVerified = async () => {
+    try {
+      await api(`/admin/users/${p.uid}/${p.verified ? 'unverify' : 'verify'}`, { json: { note: '' } });
+      toast(p.verified ? 'Verified badge removed.' : `@${p.username} is now verified ✔`);
+      await q.refetch();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+
   const suspend = async () => {
     setBusy(true);
     try {
@@ -105,6 +116,12 @@ export function ProfilePage() {
         onSelect: () => setConfirmSuspend(true),
       });
   }
+  if (canSuspend(role, p.hometownId))
+    items.push({
+      label: p.verified ? 'Remove verified badge (admin)' : 'Verify account (admin)',
+      icon: 'check',
+      onSelect: toggleVerified,
+    });
 
   const residence = residenceText(p);
 
@@ -122,7 +139,7 @@ export function ProfilePage() {
             <Menu items={items} label="Profile actions" />
           </div>
           <h1 className="mt-2 text-xl font-bold text-gray-900">
-            {p.displayName} {p.vibe && <span aria-label="vibe">{p.vibe}</span>}
+            {p.displayName} {p.verified && <VerifiedBadge className="h-5 w-5" />} {p.vibe && <span aria-label="vibe">{p.vibe}</span>}
           </h1>
           <p className="text-sm text-gray-600">@{p.username}</p>
           {p.bio && <p className="mt-2 whitespace-pre-wrap text-[15px] text-gray-800">{p.bio}</p>}
@@ -299,7 +316,9 @@ export function SearchPage() {
               <Link to={`/u/${p.username}`} className="flex items-center gap-3 rounded-2xl border border-sand-200 bg-white p-3 hover:border-brand-300">
                 <Avatar url={p.photoUrl} name={p.displayName} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-gray-900">{p.displayName}</span>
+                  <span className="block truncate font-semibold text-gray-900">
+                    {p.displayName} {p.verified && <VerifiedBadge className="h-4 w-4" />}
+                  </span>
                   <span className="block text-sm text-gray-600">
                     @{p.username} · {townName(p.hometownId)}
                   </span>

@@ -55,6 +55,7 @@ export function NotificationBell() {
 
 function notificationLink(n: AppNotification, actorUsername: string | undefined): string {
   if (n.type === 'friend_request') return '/chat';
+  if (n.type === 'verified') return '/me';
   if (n.type === 'friend_accepted') return actorUsername ? `/u/${actorUsername}` : '/chat';
   if (n.type === 'approved' || n.type === 'rejected') {
     const [col, id] = (n.targetPath ?? '').split('/');
@@ -67,7 +68,7 @@ function NotificationRow({ n }: { n: AppNotification }) {
   const { data: actor } = useProfileById(n.actorId);
   const name = actor?.displayName ?? 'Someone';
   const approval = n.type === 'approved' || n.type === 'rejected';
-  const icon = n.type === 'like' ? 'thumb' : n.type.startsWith('friend') ? 'user' : approval ? (n.type === 'approved' ? 'check' : 'close') : 'comment';
+  const icon = n.type === 'verified' ? 'check' : n.type === 'like' ? 'thumb' : n.type.startsWith('friend') ? 'user' : approval ? (n.type === 'approved' ? 'check' : 'close') : 'comment';
   const color = n.type === 'like' || n.type === 'approved' ? 'bg-brand-600' : n.type === 'rejected' ? 'bg-red-600' : n.type.startsWith('friend') ? 'bg-blue-600' : 'bg-gold-600';
   const text =
     n.type === 'like'
@@ -80,7 +81,9 @@ function NotificationRow({ n }: { n: AppNotification }) {
             ? 'accepted your friend request. You can now chat 🎉'
             : n.type === 'comment'
               ? 'commented on your post'
-              : '';
+              : n.type === 'verified'
+                ? 'verified your account. Everyone now sees the blue tick next to your name ✔'
+                : '';
   return (
     <li>
       <Link

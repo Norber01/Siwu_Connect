@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -492,7 +493,7 @@ function CommentAuthor({ uid }: { uid: string }) {
   if (!data) return <span className="text-sm font-bold text-gray-500">{data === null ? 'Deleted account' : '…'}</span>;
   return (
     <Link to={`/u/${data.username}`} className="truncate text-sm font-bold text-gray-900 hover:underline">
-      {data.displayName}
+      {data.displayName} {data.verified && <VerifiedBadge className="h-3.5 w-3.5" />}
     </Link>
   );
 }

@@ -654,6 +654,37 @@ export function createApp() {
     });
   }
 
+  // Verified badge: Super Admins (any member) and Town Admins (members from their towns).
+  for (const route of ['verify', 'unverify'] as const) {
+    admin.post(`/users/:uid/${route}`, async (c) => {
+      const { note } = await body(c.req.raw, moderationNoteSchema);
+      const fs = c.get('fs');
+      const uid = c.get('uid');
+      const path = `users/${c.req.param('uid')}`;
+      const user = await fs.get<UserDoc & { verified?: boolean }>(path);
+      if (!user) fail(404, 'User not found');
+      if (!canSuspend(c.get('role'), user!.data.hometownId)) fail(403, 'You cannot verify members of this town');
+      const verify = route === 'verify';
+      if (!!user!.data.verified === verify) fail(409, verify ? 'Already verified' : 'Not verified');
+      const writes: Write[] = [
+        {
+          kind: 'update',
+          path,
+          data: { verified: verify, verifiedBy: verify ? uid : null, verifiedAt: verify ? FieldValue.serverTimestamp() : null },
+        },
+        audit(fs, uid, `user.${route}`, path, user!.data.hometownId, { note }),
+      ];
+      if (verify)
+        writes.push({
+          kind: 'create',
+          path: `${path}/notifications/${fs.newId()}`,
+          data: { type: 'verified', actorId: uid, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
+        });
+      await fs.commit(writes);
+      return c.json({ ok: true });
+    });
+  }
+
   // ---------- announcements ----------
   admin.post('/announcements', async (c) => {
     const input = await body(c.req.raw, announcementSchema);

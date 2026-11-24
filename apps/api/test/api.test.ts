@@ -352,6 +352,23 @@ describe('one-time setup', () => {
   });
 });
 
+describe('verified badge', () => {
+  it('admins verify members of their towns; members cannot verify themselves', async () => {
+    const v = (who: string, uid: string, route: string) => call('POST', `/admin/users/${uid}/${route}`, who, {});
+    expect((await v('bob', 'bob', 'verify')).status).toBe(403);
+    expect((await v('townadmin', 'bob', 'verify')).status).toBe(403); // bob is from Todzi
+    expect((await v('townadmin', 'alice', 'verify')).status).toBe(200);
+    expect((await v('boss', 'bob', 'verify')).status).toBe(200);
+    expect((await v('boss', 'bob', 'verify')).status).toBe(409);
+    expect((await fs().get<{ verified: boolean }>('users/bob'))!.data.verified).toBe(true);
+    const n = await fs().query<{ type: string }>({ collection: 'notifications', parent: 'users/bob' });
+    expect(n.map((x) => x.data.type)).toContain('verified');
+    expect((await v('boss', 'bob', 'unverify')).status).toBe(200);
+    expect((await fs().get<{ verified: boolean }>('users/bob'))!.data.verified).toBe(false);
+    expect(await auditActions()).toEqual(expect.arrayContaining(['user.verify', 'user.unverify']));
+  });
+});
+
 describe('video uploads', () => {
   const mp4 = (n = 2000) => {
     const b = new Uint8Array(n);

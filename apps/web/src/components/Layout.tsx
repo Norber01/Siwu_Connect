@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { VerifiedBadge } from './VerifiedBadge';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { hasAdminAccess } from '@siwu/shared';
@@ -277,7 +278,7 @@ function Drawer({ onClose, onFeedback, admin }: { onClose: () => void; onFeedbac
         <Link to="/me" className="block">
           <Avatar url={profile.photoUrl} name={profile.displayName} size={44} />
           <span className="mt-2 block font-black text-gray-900">
-            {profile.displayName} {profile.vibe}
+            {profile.displayName} {profile.verified && <VerifiedBadge className="h-4 w-4" />} {profile.vibe}
           </span>
           <span className="block text-sm text-gray-600">@{profile.username}</span>
         </Link>

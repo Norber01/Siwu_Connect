@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { type Timestamp, collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
@@ -89,7 +90,9 @@ function DmRow({ chat, unread }: { chat: Chat; unread: boolean }) {
     <Link to={`/chat/${chat.id}`} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-sand-100">
       <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={48} />
       <span className="min-w-0 flex-1">
-        <span className={`block truncate ${unread ? 'font-black' : 'font-semibold'} text-gray-900`}>{p?.displayName ?? '…'}</span>
+        <span className={`block truncate ${unread ? 'font-black' : 'font-semibold'} text-gray-900`}>
+          {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-4 w-4" />}
+        </span>
         <span className={`block truncate text-sm ${unread ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
           {chat.lastMessage ? `${chat.lastMessage.senderId === user.uid ? 'You: ' : ''}${chat.lastMessage.text}` : 'Say hello 👋'}
         </span>
@@ -347,7 +350,7 @@ export function ChatRoomPage() {
         title={
           chat.type === 'dm' && other ? (
             <Link to={`/u/${other.username}`} className="flex items-center gap-2">
-              <Avatar url={other.photoUrl} name={other.displayName} size={32} /> <span className="truncate">{other.displayName}</span>
+              <Avatar url={other.photoUrl} name={other.displayName} size={32} /> <span className="truncate">{other.displayName}</span> {other.verified && <VerifiedBadge className="h-4 w-4" />}
             </Link>
           ) : (
             title
@@ -481,7 +484,7 @@ function Bubble({ m, mine, showSender, items }: { m: Message; mine: boolean; sho
       <div className={`group max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
         {showSender && !mine && sender && (
           <Link to={`/u/${sender.username}`} className="mb-0.5 ml-1 text-xs font-bold text-brand-700">
-            {sender.displayName}
+            {sender.displayName} {sender.verified && <VerifiedBadge className="h-3 w-3" />}
           </Link>
         )}
         <div className="flex items-center gap-1">

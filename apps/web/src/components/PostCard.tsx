@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { VerifiedBadge } from './VerifiedBadge';
 import { Link, useNavigate } from 'react-router-dom';
 import { canAnnounce, canModerate } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
@@ -120,7 +121,7 @@ export function AuthorLine({ uid, townId, date, edited }: { uid: string; townId?
       <div className="min-w-0">
         {author ? (
           <Link to={`/u/${author.username}`} className="block truncate font-bold text-gray-900 hover:underline">
-            {name}
+            {name} {author.verified && <VerifiedBadge className="h-4 w-4" />}
           </Link>
         ) : (
           <span className="block font-bold text-gray-500">{name}</span>
@@ -167,6 +168,7 @@ function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string
       {author ? (
         <Link to={`/u/${author.username}`} className="truncate font-bold text-gray-900 hover:underline">
           {name}
+          {author.verified && <VerifiedBadge className="ml-0.5 h-[17px] w-[17px]" />}
           {author.vibe && <span className="ml-1 font-normal">{author.vibe}</span>}
         </Link>
       ) : (

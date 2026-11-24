@@ -13,6 +13,8 @@ export interface Profile {
   createdAt: Date | null;
   bio: string;
   vibe: string;
+  /** Verified by a Siwu Connect admin (blue tick). */
+  verified: boolean;
 }
 
 export interface Post {
@@ -100,6 +102,7 @@ export function toProfile(s: DocumentSnapshot): Profile {
     createdAt: date(d.createdAt),
     bio: d.bio ?? '',
     vibe: d.vibe ?? '',
+    verified: d.verified === true,
   };
 }
 
@@ -244,7 +247,7 @@ export interface MatchUpdate {
 
 export interface AppNotification {
   id: string;
-  type: 'like' | 'comment' | 'mention' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected';
+  type: 'like' | 'comment' | 'mention' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
   actorId: string;
   postId: string | null;
   commentId: string | null;
