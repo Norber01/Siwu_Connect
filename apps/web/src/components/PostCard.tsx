@@ -159,6 +159,17 @@ function PostAvatar({ uid }: { uid: string }) {
   );
 }
 
+/** Compact time like X: now, 5m, 3h, 2d, 24 Nov. */
+function shortAgo(d: Date | null): string {
+  if (!d) return '';
+  const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+}
+
 /** X-style header line: Name @username · 2h · Town */
 function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string; date: Date | null; edited: boolean }) {
   const { data: author } = useProfileById(uid);
@@ -177,7 +188,7 @@ function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string
       {author && <span className="truncate text-gray-600">@{author.username}</span>}
       <span className="text-gray-600">·</span>
       <time dateTime={date?.toISOString()} title={fullDate(date)} className="text-gray-600">
-        {timeAgo(date)}
+        {shortAgo(date)}
       </time>
       <span className="text-gray-600">·</span>
       <Link to={`/towns/${townId}`} className="text-[13px] font-semibold text-brand-700 hover:underline">

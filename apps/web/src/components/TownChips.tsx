@@ -34,7 +34,7 @@ export function TownChips({
               aria-selected={active}
               aria-label={o.full}
               onClick={() => onChange(o.id)}
-              className={`flex min-h-[50px] min-w-[64px] flex-1 shrink-0 items-center justify-center px-3 text-[15px] hover:bg-sand-100 ${
+              className={`flex min-h-[50px] flex-auto shrink-0 items-center justify-center whitespace-nowrap px-4 text-[15px] hover:bg-sand-100 ${
                 active ? 'font-bold text-gray-900' : 'font-medium text-gray-600'
               }`}
             >
