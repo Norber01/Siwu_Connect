@@ -115,6 +115,15 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     right result). Sports → 🔮 League ranks members and towns over the last 7 days.
   - Speed ideas not done yet: a custom domain (lets Cloudflare cache photos and videos near users); smaller photo
     thumbnails; Cloudflare Stream adaptive video (paid).
+- 2026-11-24 — **Search, comments, friends fix and new look:**
+  - People search suggests members as you type, matching any part of a name ("men" → Kofi Mensah).
+  - Comments open TikTok-style in a sheet over the feed.
+  - Friend requests are sent and accepted through the API, with a clear reason when one is refused.
+  - New look from the founder's second mockup: teal-navy and gold on a soft sky background, a labelled bottom bar
+    with a gold + button, a stories card, quick-action buttons, and a chat list with filters and unread counts.
+    The X-style feed and the original logo are kept.
+  - Lesson: after each update that changes the security rules, the founder must tap **Run setup again**.
+    Private chat failed until this was done.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
