@@ -13,7 +13,7 @@ const nav: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/sports', label: 'Sports', icon: 'trophy' },
   { to: '/new', label: 'Create', icon: 'plus' },
   { to: '/events', label: 'Events', icon: 'calendar' },
-  { to: '/me', label: 'Profile', icon: 'user' },
+  { to: '/chat', label: 'Chat', icon: 'message' },
 ];
 
 export function AppLayout() {

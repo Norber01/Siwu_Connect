@@ -159,7 +159,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByLabel('What happened?').selectOption('goal');
   await page.getByLabel('Team').selectOption('away');
   await page.getByLabel('Comment (optional)').fill('Mempeasem equalise!');
-  await page.getByRole('button', { name: 'Post update' }).click();
+  await page.getByRole('button', { name: 'Post goal for Mempeasem' }).click();
   await expect(page.getByText('Mempeasem equalise!')).toBeVisible();
   await expect(page.getByText('1 - 1').first()).toBeVisible();
   // Adding a match asks for length and break; a match that kicked off 2 minutes ago is live and counting.

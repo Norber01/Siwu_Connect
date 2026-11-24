@@ -6,6 +6,7 @@ import {
   collectionGroup,
   doc,
   documentId,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -316,4 +317,23 @@ export async function fetchNewMembers(): Promise<Profile[]> {
 export async function fetchFeedback(): Promise<Feedback[]> {
   const snap = await getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(100)));
   return snap.docs.map(toFeedback);
+}
+
+// ---------------- admin: all members ----------------
+
+export async function fetchUsersPage(
+  filter: { townId: string | null; status: 'active' | 'suspended' | null },
+  cursor: DocumentSnapshot | null,
+): Promise<Page<Profile>> {
+  const c: QueryConstraint[] = [];
+  if (filter.townId) c.push(where('hometownId', '==', filter.townId));
+  if (filter.status) c.push(where('status', '==', filter.status));
+  c.push(orderBy('createdAt', 'desc'), limit(30));
+  if (cursor) c.push(startAfter(cursor));
+  const snap = await getDocs(query(collection(db, 'users'), ...c));
+  return { items: snap.docs.map(toProfile), cursor: snap.docs.length === 30 ? snap.docs[29]! : null };
+}
+
+export async function countUsers(): Promise<number> {
+  return (await getCountFromServer(collection(db, 'users'))).data().count;
 }

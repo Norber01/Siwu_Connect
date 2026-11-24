@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LIMITS,
   REPORT_REASONS,
@@ -23,12 +23,13 @@ import {
   fetchAuditLog,
   fetchFeedback,
   fetchOpenReports,
-  fetchProfileByUsername,
   fetchRoles,
-  fetchSuspendedUsers,
+  countUsers,
+  fetchUsersPage,
+  searchPeople,
   fetchTargetDoc,
 } from '../../lib/queries';
-import type { Report } from '../../lib/types';
+import type { Profile, Report } from '../../lib/types';
 import { friendlyError, fullDate, timeAgo } from '../../lib/util';
 import { RichText } from '../../components/PostCard';
 import { useToast } from '../../components/Toast';
@@ -247,22 +248,26 @@ function ReportItem({ report, onDone }: { report: Report; onDone: () => void }) 
 function UsersTab() {
   const { role } = useMe();
   const toast = useToast();
-  const [name, setName] = useState('');
+  const [town, setTown] = useState('');
+  const [status, setStatus] = useState<'' | 'active' | 'suspended'>('');
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
-  const suspended = useQuery({ queryKey: ['admin', 'suspended'], queryFn: fetchSuspendedUsers });
-  const [lookup, setLookup] = useState<string>('');
-  const found = useQuery({
-    queryKey: ['admin', 'lookup', lookup],
-    queryFn: () => fetchProfileByUsername(lookup),
-    enabled: !!lookup,
+  const total = useQuery({ queryKey: ['admin', 'userCount'], queryFn: countUsers, staleTime: 60_000 });
+  const list = useInfiniteQuery({
+    queryKey: ['admin', 'users', town, status],
+    initialPageParam: null as Awaited<ReturnType<typeof fetchUsersPage>>['cursor'],
+    queryFn: ({ pageParam }) => fetchUsersPage({ townId: town || null, status: status || null }, pageParam),
+    getNextPageParam: (last) => last.cursor ?? undefined,
+    enabled: !search.trim(),
   });
+  const found = useQuery({ queryKey: ['admin', 'userSearch', search.trim()], queryFn: () => searchPeople(search), enabled: search.trim().length >= 2 });
 
   const act = async (uid: string, action: 'suspend' | 'restore') => {
     setBusy(uid);
     try {
       await api(`/admin/users/${uid}/${action}`, { json: { note: '' } });
       toast(action === 'suspend' ? 'User suspended.' : 'User restored.');
-      void suspended.refetch();
+      void list.refetch();
       void found.refetch();
     } catch (e) {
       toast(friendlyError(e), 'error');
@@ -271,57 +276,69 @@ function UsersTab() {
     }
   };
 
-  const row = (p: NonNullable<typeof found.data>) => (
+  const row = (p: Profile) => (
     <li key={p.uid} className="flex items-center gap-3 py-2">
-      <Avatar url={p.photoUrl} name={p.displayName} size={36} />
+      <Avatar url={p.photoUrl} name={p.displayName} size={40} />
       <Link to={`/u/${p.username}`} className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold">{p.displayName}</span>
-        <span className="block text-xs text-gray-600">
-          @{p.username} · {townName(p.hometownId)} · {p.status}
+        <span className="block truncate text-xs text-gray-600">
+          @{p.username} · {townName(p.hometownId)} · joined {p.createdAt ? p.createdAt.toLocaleDateString('en-GB') : '—'}
         </span>
+        {p.status === 'suspended' && <span className="mt-0.5 inline-block rounded-full bg-red-50 px-2 text-[11px] font-bold text-red-700">Suspended</span>}
       </Link>
       {canSuspend(role, p.hometownId) && (
-        <Button
-          small
-          variant={p.status === 'active' ? 'danger' : 'secondary'}
-          busy={busy === p.uid}
-          onClick={() => act(p.uid, p.status === 'active' ? 'suspend' : 'restore')}
-        >
+        <Button small variant={p.status === 'active' ? 'danger' : 'secondary'} busy={busy === p.uid} onClick={() => act(p.uid, p.status === 'active' ? 'suspend' : 'restore')}>
           {p.status === 'active' ? 'Suspend' : 'Restore'}
         </Button>
       )}
     </li>
   );
 
+  const searching = search.trim().length >= 2;
+  const users = searching ? (found.data ?? []) : (list.data?.pages.flatMap((pg) => pg.items) ?? []);
+
   return (
-    <div className="space-y-4">
-      <Card className="p-4">
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setLookup(name.trim().replace(/^@/, '').toLowerCase());
-          }}
-        >
-          <TextField label="Find a user by username" className="flex-1" value={name} onChange={(e) => setName(e.target.value)} autoCapitalize="none" />
-          <Button type="submit">Find</Button>
-        </form>
-        {lookup && (
-          <div className="mt-3">
-            {found.isPending ? <PageSpinner /> : found.data ? <ul>{row(found.data)}</ul> : <p className="text-sm text-gray-600">No user @{lookup}.</p>}
+    <div className="space-y-3">
+      <Card className="space-y-3 p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-bold text-gray-900">Members</h2>
+          {total.data !== undefined && <span className="text-sm font-semibold text-brand-700">{total.data.toLocaleString('en-GB')} total</span>}
+        </div>
+        <TextField label="Search by name or username" type="search" value={search} onChange={(e) => setSearch(e.target.value)} autoCapitalize="none" />
+        {!searching && (
+          <div className="grid grid-cols-2 gap-2">
+            <SelectField label="Town" value={town} onChange={(e) => setTown(e.target.value)}>
+              <option value="">All towns</option>
+              {TOWNS.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.shortName}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="Status" value={status} onChange={(e) => setStatus(e.target.value as '' | 'active' | 'suspended')}>
+              <option value="">Everyone</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </SelectField>
           </div>
         )}
       </Card>
       <Card className="p-4">
-        <h2 className="mb-2 font-bold text-gray-900">Suspended users</h2>
-        {suspended.isPending ? (
+        {(searching ? found.isPending : list.isPending) ? (
           <PageSpinner />
-        ) : suspended.isError ? (
-          <ErrorState message={friendlyError(suspended.error)} onRetry={() => suspended.refetch()} />
-        ) : suspended.data.length ? (
-          <ul className="divide-y divide-sand-100">{suspended.data.map(row)}</ul>
+        ) : (searching ? found.isError : list.isError) ? (
+          <ErrorState message={friendlyError(searching ? found.error : list.error)} onRetry={() => (searching ? found.refetch() : list.refetch())} />
+        ) : users.length === 0 ? (
+          <p className="text-sm text-gray-600">No members match.</p>
         ) : (
-          <p className="text-sm text-gray-600">No suspended users.</p>
+          <ul className="divide-y divide-sand-100">{users.map(row)}</ul>
+        )}
+        {!searching && list.hasNextPage && (
+          <div className="mt-3 flex justify-center">
+            <Button variant="secondary" small busy={list.isFetchingNextPage} onClick={() => list.fetchNextPage()}>
+              Load more members
+            </Button>
+          </div>
         )}
       </Card>
     </div>

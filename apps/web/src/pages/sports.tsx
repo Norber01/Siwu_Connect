@@ -476,8 +476,9 @@ function ReporterPanel({ match: m, clock }: { match: Match; clock: Clock }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [minute, setMinute] = useState('');
-  const [type, setType] = useState('goal');
-  const [team, setTeam] = useState<'home' | 'away' | ''>('home');
+  // Start as a plain "Update" with no team, so a goal is only ever counted on purpose.
+  const [type, setType] = useState('note');
+  const [team, setTeam] = useState<'home' | 'away' | ''>('');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -512,11 +513,17 @@ function ReporterPanel({ match: m, clock }: { match: Match; clock: Clock }) {
       toast('Choose which team scored.', 'error');
       return;
     }
-    await act('update', async () => {
-      await addMatchUpdate(db, user.uid, m, parsed.data);
-      setText('');
-      setMinute('');
-    });
+    await act(
+      'update',
+      async () => {
+        await addMatchUpdate(db, user.uid, m, parsed.data);
+        setText('');
+        setMinute('');
+        setType('note');
+        setTeam('');
+      },
+      parsed.data.type === 'goal' ? `⚽ Goal for ${parsed.data.team === 'home' ? m.home.name : m.away.name}!` : 'Update posted.',
+    );
   };
 
   const score = (side: 'home' | 'away', d: number) => {
@@ -599,9 +606,9 @@ function ReporterPanel({ match: m, clock }: { match: Match; clock: Clock }) {
             ))}
           </SelectField>
           <SelectField label="Team" value={team} onChange={(e) => setTeam(e.target.value as 'home' | 'away' | '')}>
+            <option value="">— None —</option>
             <option value="home">{m.home.name}</option>
             <option value="away">{m.away.name}</option>
-            <option value="">Neither</option>
           </SelectField>
         </div>
         <div className="grid grid-cols-[6rem_1fr] gap-3">
@@ -614,9 +621,11 @@ function ReporterPanel({ match: m, clock }: { match: Match; clock: Clock }) {
           />
           <TextField label="Comment (optional)" maxLength={EXTRA_LIMITS.matchUpdateMax} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Header from the corner!" />
         </div>
-        <p className="text-xs text-gray-600">The minute is filled in from the clock. A goal update also adds 1 to that team's score.</p>
+        <p className="text-xs text-gray-600">
+          The minute is filled in from the clock. Only a <strong>Goal</strong> update changes the score (+1 for the team you choose).
+        </p>
         <Button type="submit" busy={busy === 'update'}>
-          Post update
+          {type === 'goal' ? (team ? `Post goal for ${team === 'home' ? m.home.name : m.away.name}` : 'Choose the team that scored') : 'Post update'}
         </Button>
       </form>
 
