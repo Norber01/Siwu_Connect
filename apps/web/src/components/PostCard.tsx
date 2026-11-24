@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { Link, useNavigate } from 'react-router-dom';
 import { canAnnounce, canModerate } from '@siwu/shared';
@@ -17,6 +17,7 @@ import { ReportDialog } from './ReportDialog';
 import { useToast } from './Toast';
 import { Avatar, Button, Modal } from './ui';
 import { MediaGallery } from './media';
+import { CommentsSheet } from './Comments';
 import { townShortName } from '@siwu/shared';
 
 /** Plain text with safe links, #hashtags (→ tag page) and @mentions (→ profile). Never renders HTML. */
@@ -327,6 +328,8 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
   const [picker, setPicker] = useState(false);
   const liked = !!reaction;
   const [reporting, setReporting] = useState(false);
+  const [commenting, setCommenting] = useState(false);
+  const closeComments = useCallback(() => setCommenting(false), []);
   const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
   const [busy, setBusy] = useState(false);
   const isAuthor = post.authorId === user.uid;
@@ -456,6 +459,13 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
             )}
             <Link
               to={`/p/${post.id}#comments`}
+              onClick={(e) => {
+                // In the feed, comments slide up over the post (TikTok-style) instead of opening a new page.
+                if (linkToDetail) {
+                  e.preventDefault();
+                  setCommenting(true);
+                }
+              }}
               className="group inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-2 hover:text-blue-600"
               aria-label={`Comment${post.commentCount ? `, ${post.commentCount} comments` : ''}`}
             >
@@ -514,6 +524,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
         </div>
       </div>
 
+      {commenting && <CommentsSheet post={post} onClose={closeComments} />}
       <ReportDialog
         open={reporting}
         onClose={() => setReporting(false)}

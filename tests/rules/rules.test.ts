@@ -180,7 +180,7 @@ describe('profiles', () => {
   it('users can edit their own profile but not status, username or others', async () => {
     await seedUser('alice');
     await seedUser('bob');
-    const edit = { displayName: 'Alice A', hometownId: 'todzi' as const, residence: 'abroad' as const, countryCode: 'GB', photoUrl: null };
+    const edit = { displayName: 'Alice A', hometownId: 'todzi' as const, residence: 'abroad' as const, countryCode: 'GB', photoUrl: null, username: 'alice' };
     await assertSucceeds(ops.updateProfile(db('alice'), 'alice', edit));
     await assertFails(ops.updateProfile(db('bob'), 'alice', edit));
     await assertFails(updateDoc(doc(db('alice'), 'users', 'alice'), { status: 'active' , username: 'new' }));

@@ -48,7 +48,7 @@ test('Gen Z features', async ({ page }) => {
   await expect(page.getByText('Town spirit this week')).toBeVisible();
 
   // People search suggests members while typing part of a name (the surname here).
-  await page.getByLabel('Search', { exact: true }).fill('mens');
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('mens');
   await expect(page.getByRole('list', { name: 'People suggestions' }).getByText('Kofi Mensah')).toBeVisible();
 
   // Directory: add a job.
@@ -83,6 +83,16 @@ test('Gen Z features', async ({ page }) => {
   await page.getByRole('button', { name: 'Repost' }).first().click();
   await page.getByRole('menuitem', { name: 'Repost' }).click();
   await expect(page.getByText('Reposted 🔁')).toBeVisible();
+
+  // Comments slide up over the feed (TikTok-style).
+  await page.getByRole('link', { name: /^Comment/ }).first().click();
+  const sheet = page.getByRole('dialog', { name: 'Comments' });
+  await expect(sheet).toBeVisible();
+  await sheet.getByLabel('Add a comment').fill(`From the sheet ${tag}`);
+  await sheet.getByRole('button', { name: 'Send' }).click();
+  await expect(sheet.getByText(`From the sheet ${tag}`)).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
 
   // Bio + dark mode.
   await page.goto('/settings');
