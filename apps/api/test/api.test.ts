@@ -337,7 +337,7 @@ describe('one-time setup', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; steps: { id: string; ok: boolean }[] };
     expect(body.ok).toBe(true);
-    expect(body.steps.map((s) => s.id)).toEqual(['credentials', 'rules', 'indexes', 'towns', 'domains', 'superAdmin']);
+    expect(body.steps.map((s) => s.id)).toEqual(['credentials', 'rules', 'indexes', 'towns', 'search', 'domains', 'superAdmin']);
     expect((await fs().get<{ type: string }>('chats/room_sokpo'))!.data.type).toBe('room');
     expect((await fs().get<{ role: string }>('admin_roles/founder'))!.data.role).toBe('super_admin');
     expect((await fs().query({ collection: 'towns' })).length).toBe(5);

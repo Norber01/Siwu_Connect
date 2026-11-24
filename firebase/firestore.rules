@@ -96,7 +96,8 @@ service cloud.firestore {
             || (str(p.photoUrl, 10, 300)
                 && p.photoUrl.matches('^https?://[^/]+(/[^/]+)*/avatars/' + uid + '/[A-Za-z0-9_-]+[.](webp|jpg)$')))
         && str(p.get('bio', ''), 0, 160)
-        && str(p.get('vibe', ''), 0, 16);
+        && str(p.get('vibe', ''), 0, 16)
+        && p.get('nameTokens', []) is list && p.get('nameTokens', []).size() <= 100;
     }
 
     match /users/{uid} {
@@ -105,7 +106,7 @@ service cloud.firestore {
         && d().keys().hasAll(['displayName', 'displayNameLower', 'username', 'photoUrl', 'hometownId',
                               'residence', 'countryCode', 'status', 'createdAt', 'updatedAt'])
         && d().keys().hasOnly(['displayName', 'displayNameLower', 'username', 'photoUrl', 'hometownId',
-                               'residence', 'countryCode', 'status', 'createdAt', 'updatedAt', 'bio', 'vibe'])
+                               'residence', 'countryCode', 'status', 'createdAt', 'updatedAt', 'bio', 'vibe', 'nameTokens'])
         && validProfile(d(), uid)
         && d().username is string
         && getAfter(/databases/$(database)/documents/usernames/$(d().username)).data.uid == uid
@@ -115,7 +116,7 @@ service cloud.firestore {
       // Username, status and createdAt are immutable from the client.
       allow update: if isActive() && uid == me()
         && changed().hasOnly(['displayName', 'displayNameLower', 'photoUrl', 'hometownId',
-                              'residence', 'countryCode', 'bio', 'vibe', 'updatedAt'])
+                              'residence', 'countryCode', 'bio', 'vibe', 'updatedAt', 'nameTokens'])
         && validProfile(d(), uid)
         && d().updatedAt == request.time;
       allow delete: if false;

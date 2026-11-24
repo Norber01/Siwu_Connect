@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { blockUser, unblockUser, updateBio, updateProfile } from '../lib/ops';
 import { FriendActions } from '../components/FriendButton';
+import { PeopleSuggest } from '../components/PeopleSuggest';
 import { ThemePicker } from '../components/theme';
 import { fetchMyLikes, fetchProfile, fetchProfileByUsername, fetchSellerListings, searchPeople, searchPosts } from '../lib/queries';
 import { FeedbackDialog, InviteButton } from '../components/extras';
@@ -281,6 +282,7 @@ export function SearchPage() {
         />
         <Button type="submit" icon="search" aria-label="Search" />
       </form>
+      {text.trim() !== term.trim() && <PeopleSuggest text={text} />}
       <div className="flex flex-wrap items-center gap-2">
         <div role="tablist" className="flex gap-1 rounded-xl bg-sand-200 p-1">
           {(['posts', 'people'] as const).map((t) => (
@@ -389,7 +391,7 @@ export function SettingsPage() {
     setErrors({});
     setBusy(true);
     try {
-      await updateProfile(db, user.uid, { ...p.data, photoUrl: draft.photoUrl });
+      await updateProfile(db, user.uid, { ...p.data, photoUrl: draft.photoUrl, username: profile.username });
       toast('Profile saved.');
     } catch (err) {
       toast(friendlyError(err), 'error');

@@ -15,6 +15,22 @@ export function searchTokens(...texts: string[]): string[] {
   return [...seen];
 }
 
+/**
+ * Search keys for a member: every beginning (2+ letters) of every word of their name and of their
+ * username, so typing part of any name ("ser" → Ama Serwaa) finds them.
+ */
+export function nameTokens(displayName: string, username: string): string[] {
+  const seen = new Set<string>();
+  const words = [...normalize(displayName).split(/[^a-z0-9]+/), ...normalize(username).split(/[^a-z0-9]+/), normalize(username)];
+  for (const w of words) {
+    for (let i = 2; i <= Math.min(w.length, 20); i++) {
+      seen.add(w.slice(0, i));
+      if (seen.size >= 100) return [...seen];
+    }
+  }
+  return [...seen];
+}
+
 export function normalize(text: string): string {
   return text.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }

@@ -60,6 +60,7 @@ describe('setup against Google APIs', () => {
       ['rules', true],
       ['indexes', true],
       ['towns', true],
+      ['search', true],
       ['domains', true],
       ['superAdmin', true],
     ]);
@@ -83,7 +84,7 @@ describe('setup against Google APIs', () => {
   it('runs in parts small enough for Cloudflare', async () => {
     const g = fakeGoogle();
     const core = await runSetup(await prodEnv(), caller, 'core');
-    expect(core.steps.map((s) => s.id)).toEqual(['credentials', 'rules', 'towns', 'domains', 'superAdmin']);
+    expect(core.steps.map((s) => s.id)).toEqual(['credentials', 'rules', 'towns', 'search', 'domains', 'superAdmin']);
     expect(g.calls.filter((c) => c.includes('/collectionGroups/'))).toHaveLength(0);
     let from: number | null | undefined = 0;
     let calls = 0;

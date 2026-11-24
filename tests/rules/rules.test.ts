@@ -809,6 +809,13 @@ describe('Gen Z features', () => {
     await assertSucceeds(ops.deleteWord(db('carol'), list.docs[0]!.id));
   });
 
+  it('people search keys: members keep their own up to date and anyone can search them', async () => {
+    await assertSucceeds(updateDoc(doc(db('bob'), 'users', 'bob'), { nameTokens: ['bo', 'bob'], updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(db('bob'), 'users', 'bob'), { nameTokens: Array.from({ length: 101 }, (_, i) => `t${i}`), updatedAt: serverTimestamp() }));
+    const found = await getDocs(query(collection(db('carol'), 'users'), where('nameTokens', 'array-contains', 'bo')));
+    expect(found.docs.map((d) => d.id)).toEqual(['bob']);
+  });
+
   it('profile bio and vibe', async () => {
     await assertSucceeds(ops.updateBio(db('bob'), 'bob', 'Footballer from Todzi ⚽', '🔥'));
     await assertFails(updateDoc(doc(db('bob'), 'users', 'bob'), { bio: 'x'.repeat(200), updatedAt: serverTimestamp() }));

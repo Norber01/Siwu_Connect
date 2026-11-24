@@ -10,6 +10,7 @@ import { useChats } from '../pages/chat';
 import { CountBadge, useUnreadNotifications } from '../pages/notifications';
 import { LogoMark, Wordmark } from './Brand';
 import { LiveBanner } from './LiveBanner';
+import { PeopleSuggest } from './PeopleSuggest';
 import { CreateSheet, FeedbackDialog, InviteButton } from './extras';
 import { Icon, type IconName } from './Icon';
 import { ThemePicker } from './theme';
@@ -347,6 +348,7 @@ function RightRail() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" className="w-full bg-transparent outline-none" type="search" />
         </label>
       </form>
+      <PeopleSuggest text={q} onPick={() => setQ('')} />
       <section className="overflow-hidden rounded-2xl border border-sand-200">
         <h2 className="px-4 pb-1 pt-3 text-xl font-black text-gray-900">What's happening</h2>
         {(trending.data ?? []).length === 0 ? (

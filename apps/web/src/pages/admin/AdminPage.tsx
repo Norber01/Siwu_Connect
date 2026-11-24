@@ -492,7 +492,7 @@ function UsersTab() {
     getNextPageParam: (last) => last.cursor ?? undefined,
     enabled: !search.trim(),
   });
-  const found = useQuery({ queryKey: ['admin', 'userSearch', search.trim()], queryFn: () => searchPeople(search), enabled: search.trim().length >= 2 });
+  const found = useQuery({ queryKey: ['admin', 'userSearch', search.trim()], queryFn: () => searchPeople(search, { includeSuspended: true }), enabled: search.trim().length >= 2 });
 
   const act = async (uid: string, action: 'suspend' | 'restore' | 'verify' | 'unverify') => {
     setBusy(uid);

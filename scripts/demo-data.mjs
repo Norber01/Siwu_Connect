@@ -23,6 +23,14 @@ async function commit(writes) {
   if (!r.ok) throw new Error(await r.text());
 }
 const ago = (min) => new Date(Date.now() - min * 60_000);
+/** Same as nameTokens() in packages/shared/src/text.ts. */
+const nameTokens = (name, username) => {
+  const norm = (x) => x.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const seen = new Set();
+  for (const w of [...norm(name).split(/[^a-z0-9]+/), ...norm(username).split(/[^a-z0-9]+/), norm(username)])
+    for (let i = 2; i <= Math.min(w.length, 20); i++) seen.add(w.slice(0, i));
+  return [...seen].slice(0, 100);
+};
 const tokens = (t) => [...new Set(t.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 2))].slice(0, 50);
 
 await fetch(`${FS}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
@@ -44,7 +52,7 @@ for (const [username, name, town, residence] of people) {
   const uid = (await r.json()).localId;
   uids[username] = uid;
   await commit([
-    set(`users/${uid}`, { displayName: name, displayNameLower: name.toLowerCase(), username, photoUrl: null, hometownId: town, residence, countryCode: residence === 'abroad' ? 'GB' : residence ? 'GH' : null, status: 'active', createdAt: ago(5000), updatedAt: ago(5000) }),
+    set(`users/${uid}`, { displayName: name, displayNameLower: name.toLowerCase(), nameTokens: nameTokens(name, username), username, photoUrl: null, hometownId: town, residence, countryCode: residence === 'abroad' ? 'GB' : residence ? 'GH' : null, status: 'active', createdAt: ago(5000), updatedAt: ago(5000) }),
     set(`usernames/${username}`, { uid }),
   ]);
 }

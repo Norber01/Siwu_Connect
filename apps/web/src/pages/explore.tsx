@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { type EntryInput, type EntryKind, saveEntry, setEntryStatus } from '../lib/ops';
 import { fetchTownActivity, fetchTrendingTags } from '../lib/queries';
+import { PeopleSuggest } from '../components/PeopleSuggest';
 import { friendlyError, fromLocalInput, isPermissionDenied, toLocalInput, whatsappLink } from '../lib/util';
 import { PhotoField } from '../components/extras';
 import { Icon } from '../components/Icon';
@@ -44,6 +45,7 @@ export function ExplorePage() {
         <TextField label="Search" className="flex-1 [&_label]:sr-only" type="search" placeholder="Search posts and people" value={term} onChange={(e) => setTerm(e.target.value)} />
         <Button type="submit" icon="search" aria-label="Search" />
       </form>
+      <PeopleSuggest text={term} />
 
       <Card className="p-4">
         <h2 className="mb-2 font-bold text-gray-900">🔥 Trending in Akpafu</h2>

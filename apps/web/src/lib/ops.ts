@@ -24,6 +24,7 @@ import {
   type PostInput,
   type ProfileInput,
   type ReportTargetType,
+  nameTokens,
   searchTokens,
 } from '@siwu/shared';
 
@@ -39,6 +40,7 @@ export async function createProfile(db: Firestore, uid: string, p: NewProfile): 
   batch.set(doc(db, 'users', uid), {
     displayName: p.displayName,
     displayNameLower: p.displayName.toLowerCase(),
+    nameTokens: nameTokens(p.displayName, p.username),
     username: p.username,
     photoUrl: p.photoUrl,
     hometownId: p.hometownId,
@@ -59,11 +61,12 @@ export async function createProfile(db: Firestore, uid: string, p: NewProfile): 
 export async function updateProfile(
   db: Firestore,
   uid: string,
-  p: ProfileInput & { photoUrl: string | null },
+  p: ProfileInput & { photoUrl: string | null; username: string },
 ): Promise<void> {
   await updateDoc(doc(db, 'users', uid), {
     displayName: p.displayName,
     displayNameLower: p.displayName.toLowerCase(),
+    nameTokens: nameTokens(p.displayName, p.username),
     photoUrl: p.photoUrl,
     hometownId: p.hometownId,
     residence: p.residence,

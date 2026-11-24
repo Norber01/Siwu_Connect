@@ -47,6 +47,10 @@ test('Gen Z features', async ({ page }) => {
   await expect(page.getByRole('link', { name: new RegExp(`#${tag}`) })).toBeVisible();
   await expect(page.getByText('Town spirit this week')).toBeVisible();
 
+  // People search suggests members while typing part of a name (the surname here).
+  await page.getByLabel('Search', { exact: true }).fill('mens');
+  await expect(page.getByRole('list', { name: 'People suggestions' }).getByText('Kofi Mensah')).toBeVisible();
+
   // Directory: add a job.
   await page.getByRole('link', { name: /Jobs/ }).click();
   await page.getByRole('link', { name: 'Add' }).click();

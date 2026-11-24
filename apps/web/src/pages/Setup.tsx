@@ -40,7 +40,7 @@ export function SetupPage() {
       // Done in small parts: Cloudflare limits how many calls one request may make.
       type Part = { ok: boolean; steps: Step[]; next?: number | null; created?: number; existing?: number; total?: number };
       const core = await api<Part>('/setup/run?part=core');
-      const order = ['credentials', 'rules', 'indexes', 'towns', 'domains', 'superAdmin'];
+      const order = ['credentials', 'rules', 'indexes', 'towns', 'search', 'domains', 'superAdmin'];
       const show = (idx: Step | null) =>
         setSteps([...core.steps, ...(idx ? [idx] : [])].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)));
       show(null);

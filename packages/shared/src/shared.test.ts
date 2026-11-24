@@ -4,6 +4,7 @@ import {
   canModerate,
   canSuspend,
   grantRoleSchema,
+  nameTokens,
   isTownId,
   postSchema,
   searchTokens,
@@ -78,5 +79,15 @@ describe('permissions', () => {
   });
   it('no role means no access', () => {
     expect(canModerate(null, 'odomi')).toBe(false);
+  });
+});
+
+describe('nameTokens', () => {
+  it('lets members be found by the start of any part of their name or username', () => {
+    const t = nameTokens('Ama Serwaa', 'ama_serwaa');
+    for (const k of ['am', 'ama', 'se', 'ser', 'serwaa', 'ama_s', 'ama_serwaa']) expect(t).toContain(k);
+    expect(t).not.toContain('a');
+    expect(t).not.toContain('wa');
+    expect(nameTokens('Kwame Òkò', 'kwame1')).toContain('oko');
   });
 });

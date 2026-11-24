@@ -117,6 +117,7 @@ test('Phase 1 journeys', async ({ page }, info) => {
   const like = page.getByRole('button', { name: 'Like', exact: true });
   await like.click();
   await expect(page.getByRole('button', { name: 'Unlike' })).toBeVisible();
+  await page.waitForTimeout(1500); // let the like reach the server before the full page reload
   await page.reload();
   await expect(page.getByRole('button', { name: 'Unlike' })).toBeVisible(); // persisted, still one like
   await page.getByText(postText).click();

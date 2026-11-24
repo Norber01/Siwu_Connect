@@ -182,15 +182,31 @@ export async function searchPosts(text: string, townId: string | null): Promise<
     .filter((p) => !townId || p.townId === townId);
 }
 
-export async function searchPeople(text: string): Promise<Profile[]> {
-  const term = text.trim().replace(/^@/, '').toLowerCase();
-  if (term.length < 2) return [];
-  const prefix = (field: string) =>
-    getDocs(query(collection(db, 'users'), where(field, '>=', term), where(field, '<=', `${term}`), limit(20)));
-  const [byUsername, byName] = await Promise.all([prefix('username'), prefix('displayNameLower')]);
+/**
+ * Finds members by any part of their name or username, as you type: "ser" finds Ama Serwaa,
+ * "kofi m" finds Kofi Mensah. Best matches first.
+ */
+export async function searchPeople(text: string, opts: { includeSuspended?: boolean } = {}): Promise<Profile[]> {
+  const words = normalize(text.trim().replace(/^@/, '')).split(/[^a-z0-9]+/).filter(Boolean);
+  const term = words.join(' ');
+  if (term.replace(/ /g, '').length < 2) return [];
+  const longest = [...words].sort((a, b) => b.length - a.length)[0]!.slice(0, 20);
+  const end = '\uf8ff';
+  const [byToken, byUsername, byName] = await Promise.all([
+    longest.length >= 2
+      ? getDocs(query(collection(db, 'users'), where('nameTokens', 'array-contains', longest), limit(30)))
+      : Promise.resolve(null),
+    getDocs(query(collection(db, 'users'), where('username', '>=', words.join('_')), where('username', '<=', `${words.join('_')}${end}`), limit(10))),
+    getDocs(query(collection(db, 'users'), where('displayNameLower', '>=', term), where('displayNameLower', '<=', `${term}${end}`), limit(10))),
+  ]);
   const seen = new Map<string, Profile>();
-  for (const d of [...byUsername.docs, ...byName.docs]) seen.set(d.id, toProfile(d));
-  return [...seen.values()];
+  for (const d of [...byUsername.docs, ...byName.docs, ...(byToken?.docs ?? [])]) seen.set(d.id, toProfile(d));
+  // Every typed word must start one of the words of the name or username.
+  const parts = (p: Profile) => [...normalize(p.displayName).split(/[^a-z0-9]+/), ...normalize(p.username).split(/[^a-z0-9]+/), normalize(p.username)];
+  const matches = (p: Profile) => words.every((w) => parts(p).some((x) => x.startsWith(w)));
+  const score = (p: Profile) =>
+    (normalize(p.username).startsWith(words.join('_')) ? 0 : normalize(p.displayName).startsWith(term) ? 1 : 2) - (p.verified ? 0.5 : 0);
+  return [...seen.values()].filter((p) => (opts.includeSuspended || p.status === 'active') && matches(p)).sort((a, b) => score(a) - score(b) || a.displayName.localeCompare(b.displayName));
 }
 
 // ---------- admin ----------

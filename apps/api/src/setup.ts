@@ -6,7 +6,7 @@
  * again: every step is idempotent. Only the founder's verified account may run it while no
  * Super Admin exists; afterwards only a Super Admin may re-run it (e.g. after an update).
  */
-import { TOWNS } from '@siwu/shared';
+import { TOWNS, nameTokens } from '@siwu/shared';
 import type { Caller } from './auth';
 import { type Env, isEmulator } from './env';
 import { FieldValue, Firestore } from './firestore';
@@ -14,7 +14,7 @@ import { FIRESTORE_INDEXES, FIRESTORE_RULES } from './generated/firebase-assets'
 import { googleAccessToken } from './google-auth';
 
 export interface SetupStep {
-  id: 'credentials' | 'rules' | 'indexes' | 'towns' | 'domains' | 'superAdmin';
+  id: 'credentials' | 'rules' | 'indexes' | 'towns' | 'search' | 'domains' | 'superAdmin';
   label: string;
   ok: boolean;
   detail: string;
@@ -162,6 +162,16 @@ async function seedTowns(fs: Firestore): Promise<string> {
   return `${TOWNS.length} towns ready: ${TOWNS.map((t) => t.shortName).join(', ')}. Town chat rooms ready.`;
 }
 
+/** Adds the "any part of the name" search keys to members who joined before people search had them. */
+async function backfillNameTokens(fs: Firestore): Promise<string> {
+  const users = await fs.query<{ displayName?: string; username?: string; nameTokens?: string[] }>({ collection: 'users', limit: 2000 });
+  const writes = users
+    .filter((u) => !Array.isArray(u.data.nameTokens) && u.data.displayName && u.data.username)
+    .map((u) => ({ kind: 'update' as const, path: u.path, data: { nameTokens: nameTokens(u.data.displayName!, u.data.username!) } }));
+  for (let i = 0; i < writes.length; i += 400) await fs.commit(writes.slice(i, i + 400));
+  return writes.length ? `Search updated for ${writes.length} members.` : 'People search is up to date.';
+}
+
 async function grantFounder(fs: Firestore, caller: Caller): Promise<string> {
   if (await superAdminExists(fs)) return 'A Super Admin already exists — no change.';
   const path = `admin_roles/${caller.uid}`;
@@ -238,6 +248,7 @@ export async function runSetup(env: Env, caller: Caller, part: 'core' | 'indexes
   if (part !== 'core') await run('indexes', 'Database indexes', indexes);
   if (part !== 'indexes') {
     await run('towns', 'Five towns', () => seedTowns(fs));
+    await run('search', 'People search', () => backfillNameTokens(fs));
     await run('domains', 'Website sign-in', () => (emulator ? Promise.resolve('Skipped in local test mode.') : authorizeDomains(env)));
     await run('superAdmin', 'Super Admin', () => grantFounder(fs, caller));
   }
