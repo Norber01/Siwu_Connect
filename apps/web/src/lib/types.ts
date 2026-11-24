@@ -206,6 +206,10 @@ export interface Match {
   away: Team;
   venue: string;
   kickoffAt: Date;
+  durationMinutes: number;
+  breakMinutes: number;
+  actualKickoffAt: Date | null;
+  secondHalfStartAt: Date | null;
   status: 'scheduled' | 'live' | 'halftime' | 'finished' | 'postponed' | 'cancelled';
   homeScore: number;
   awayScore: number;
@@ -290,6 +294,10 @@ export function toMatch(s: DocumentSnapshot): Match {
     away: d.away,
     venue: d.venue ?? '',
     kickoffAt: date(d.kickoffAt) ?? new Date(0),
+    durationMinutes: d.durationMinutes ?? 90,
+    breakMinutes: d.breakMinutes ?? 15,
+    actualKickoffAt: date(d.actualKickoffAt),
+    secondHalfStartAt: date(d.secondHalfStartAt),
     status: d.status,
     homeScore: d.homeScore ?? 0,
     awayScore: d.awayScore ?? 0,

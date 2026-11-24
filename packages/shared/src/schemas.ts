@@ -176,6 +176,8 @@ export const matchSchema = z
     away: teamSchema,
     venue: z.string().transform(cleanSingleLine).pipe(z.string().max(EXTRA_LIMITS.eventLocationMax)),
     kickoffAt: z.date({ invalid_type_error: 'Choose the kick-off date and time' }),
+    durationMinutes: z.number({ invalid_type_error: 'Enter the match length in minutes' }).int().min(10, 'At least 10 minutes').max(150, 'At most 150 minutes'),
+    breakMinutes: z.number({ invalid_type_error: 'Enter the half-time break in minutes' }).int().min(0).max(60, 'At most 60 minutes'),
   })
   .refine((m) => m.home.name.toLowerCase() !== m.away.name.toLowerCase(), { message: 'Choose two different teams', path: ['away'] });
 export type MatchInput = z.infer<typeof matchSchema>;

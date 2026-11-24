@@ -124,6 +124,18 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByRole('button', { name: 'Post update' }).click();
   await expect(page.getByText('Mempeasem equalise!')).toBeVisible();
   await expect(page.getByText('1 - 1').first()).toBeVisible();
+  // Adding a match asks for length and break; a match that kicked off 2 minutes ago is live and counting.
+  await page.goto('/sports/new');
+  await page.getByLabel('Competition').fill(`Clock test ${tag}`);
+  const ko = new Date(Date.now() - 2 * 60_000);
+  await page.getByLabel('Kick-off (date and time)').fill(new Date(ko.getTime() - ko.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+  await page.getByLabel('Match length (minutes)').fill('20');
+  await page.getByLabel('Half-time break (minutes)').fill('5');
+  await page.getByRole('button', { name: 'Add match' }).click();
+  await expect(page.getByText('Match added to the Sports Centre.')).toBeVisible();
+  await expect(page.getByText(/⏱ [23]:\d\d/)).toBeVisible();
+  await expect(page.getByText('20 min, 5-min break')).toBeVisible();
+
   await page.goto('/admin/feedback');
   await expect(page.getByText(`The sports centre is brilliant ${tag}`)).toBeVisible();
 });

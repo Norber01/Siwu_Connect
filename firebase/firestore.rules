@@ -418,7 +418,11 @@ service cloud.firestore {
         && m.status in ['scheduled', 'live', 'halftime', 'finished', 'postponed', 'cancelled']
         && m.homeScore is int && m.homeScore >= 0 && m.homeScore <= 99
         && m.awayScore is int && m.awayScore >= 0 && m.awayScore <= 99
-        && (m.minute == null || (m.minute is int && m.minute >= 0 && m.minute <= 130));
+        && (m.minute == null || (m.minute is int && m.minute >= 0 && m.minute <= 130))
+        && m.durationMinutes is int && m.durationMinutes >= 10 && m.durationMinutes <= 150
+        && m.breakMinutes is int && m.breakMinutes >= 0 && m.breakMinutes <= 60
+        && (m.actualKickoffAt == null || m.actualKickoffAt is timestamp)
+        && (m.secondHalfStartAt == null || m.secondHalfStartAt is timestamp);
     }
     function votingOpen(m) { return m.status in ['scheduled', 'live', 'halftime']; }
     function voteCountersOk(before, after, pick) {
@@ -430,8 +434,10 @@ service cloud.firestore {
     match /matches/{matchId} {
       allow read: if signedIn();
       allow create: if canReportSports()
-        && exactKeys(['competition', 'home', 'away', 'venue', 'kickoffAt', 'status', 'homeScore', 'awayScore', 'minute',
+        && exactKeys(['competition', 'home', 'away', 'venue', 'kickoffAt', 'durationMinutes', 'breakMinutes',
+                      'actualKickoffAt', 'secondHalfStartAt', 'status', 'homeScore', 'awayScore', 'minute',
                       'votesHome', 'votesDraw', 'votesAway', 'createdBy', 'createdAt', 'updatedAt'])
+        && d().actualKickoffAt == null && d().secondHalfStartAt == null
         && validMatch(d())
         && d().status == 'scheduled' && d().homeScore == 0 && d().awayScore == 0 && d().minute == null
         && d().votesHome == 0 && d().votesDraw == 0 && d().votesAway == 0
@@ -439,7 +445,8 @@ service cloud.firestore {
         && d().createdAt == request.time && d().updatedAt == request.time;
       allow update: if
         (canReportSports()
-          && changed().hasOnly(['competition', 'home', 'away', 'venue', 'kickoffAt', 'status', 'homeScore', 'awayScore',
+          && changed().hasOnly(['competition', 'home', 'away', 'venue', 'kickoffAt', 'durationMinutes', 'breakMinutes',
+                                'actualKickoffAt', 'secondHalfStartAt', 'status', 'homeScore', 'awayScore',
                                 'minute', 'updatedAt'])
           && validMatch(d()) && d().updatedAt == request.time)
         || (signedIn() && votingOpen(resource.data)

@@ -4,19 +4,30 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import {
   EXTRA_LIMITS,
-  MATCH_STATUSES,
   MATCH_UPDATE_TYPES,
   TOWNS,
-  type MatchStatus,
+  type Clock,
   canReportSports,
+  matchClock,
   matchSchema,
   matchUpdateSchema,
   townName,
 } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
-import { type MatchPick, addMatchUpdate, createMatch, deleteMatch, deleteMatchUpdate, updateMatchState, voteOnMatch } from '../lib/ops';
-import { fetchMatches, fetchMyVote, matchesQuery } from '../lib/queries';
+import {
+  type MatchPick,
+  addMatchUpdate,
+  createMatch,
+  deleteMatch,
+  deleteMatchUpdate,
+  setMatchScore,
+  setMatchStatus,
+  startMatchNow,
+  startSecondHalfNow,
+  voteOnMatch,
+} from '../lib/ops';
+import { activeMatchesQuery, fetchMatches, fetchMyVote } from '../lib/queries';
 import { type Match, type MatchUpdate, toMatch, toMatchUpdate } from '../lib/types';
 import { friendlyError, fromLocalInput } from '../lib/util';
 import { TeamCrest } from '../components/extras';
@@ -33,16 +44,25 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'standings', label: 'Standings' },
 ];
 
-const statusLabel = (s: string) => MATCH_STATUSES.find((x) => x.id === s)?.label ?? s;
-const isLive = (m: Match) => m.status === 'live' || m.status === 'halftime';
+/** Re-renders every `ms` so the match clock ticks. */
+function useNow(ms = 1000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
 
-/** Real-time list of live matches (scores update without refreshing). */
-function useLiveMatches(enabled: boolean) {
+const clockOf = (m: Match, now: Date) => matchClock(m, now);
+
+/** Real-time list of every match that is not finished (fixtures and live games). */
+function useActiveMatches(enabled: boolean) {
   const [state, setState] = useState<{ data: Match[] | null; error: unknown }>({ data: null, error: null });
   useEffect(() => {
     if (!enabled) return;
     return onSnapshot(
-      matchesQuery('live'),
+      activeMatchesQuery(),
       (snap) => setState({ data: snap.docs.map(toMatch), error: null }),
       (error) => setState({ data: null, error }),
     );
@@ -54,13 +74,18 @@ export function SportsPage() {
   const { role } = useMe();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.find((t) => t.id === params.get('tab'))?.id ?? 'live') as Tab;
-  const live = useLiveMatches(tab === 'live');
-  const list = useQuery({
-    queryKey: ['matches', tab],
-    queryFn: () => fetchMatches(tab === 'standings' ? 'results' : (tab as 'fixtures' | 'results')),
-    enabled: tab !== 'live',
+  const now = useNow(1000);
+  const active = useActiveMatches(tab === 'live' || tab === 'fixtures');
+  const results = useQuery({
+    queryKey: ['matches', 'results'],
+    queryFn: () => fetchMatches('results'),
+    enabled: tab === 'results' || tab === 'standings',
     staleTime: 30_000,
   });
+  // Live = being played now (or waiting for a reporter to confirm full time); Fixtures = not started yet.
+  const liveMatches = (active.data ?? []).filter((m) => ['first', 'break', 'second', 'ended'].includes(clockOf(m, now).phase));
+  const fixtureMatches = (active.data ?? []).filter((m) => ['scheduled', 'postponed'].includes(clockOf(m, now).phase));
+  const list = tab === 'results' || tab === 'standings' ? results : null;
 
   return (
     <div className="space-y-3">
@@ -90,56 +115,65 @@ export function SportsPage() {
         </div>
       </div>
 
-      {tab === 'live' ? (
-        live.error ? (
-          <ErrorState message={friendlyError(live.error)} />
-        ) : !live.data ? (
+      {tab === 'live' || tab === 'fixtures' ? (
+        active.error ? (
+          <ErrorState message={friendlyError(active.error)} />
+        ) : !active.data ? (
           <PageSpinner />
-        ) : live.data.length === 0 ? (
-          <EmptyState title="No matches live right now" icon="ball">
-            Check the <button className="font-semibold text-brand-700 underline" onClick={() => setParams({ tab: 'fixtures' })}>fixtures</button> for the next kick-off.
+        ) : tab === 'live' ? (
+          liveMatches.length === 0 ? (
+            <EmptyState title="No matches live right now" icon="ball">
+              Check the <button className="font-semibold text-brand-700 underline" onClick={() => setParams({ tab: 'fixtures' })}>fixtures</button> for the next kick-off.
+            </EmptyState>
+          ) : (
+            <MatchList matches={liveMatches} now={now} />
+          )
+        ) : fixtureMatches.length === 0 ? (
+          <EmptyState title="No upcoming fixtures" icon="ball">
+            {canReportSports(role) ? 'Add a match with the “Match” button.' : 'Match reporters will add fixtures here.'}
           </EmptyState>
         ) : (
-          <MatchList matches={live.data} />
+          <MatchList matches={fixtureMatches} now={now} />
         )
-      ) : list.isPending ? (
+      ) : list!.isPending ? (
         <PageSpinner />
-      ) : list.isError ? (
-        <ErrorState message={friendlyError(list.error)} onRetry={() => list.refetch()} />
+      ) : list!.isError ? (
+        <ErrorState message={friendlyError(list!.error)} onRetry={() => list!.refetch()} />
       ) : tab === 'standings' ? (
-        <Standings matches={list.data} />
-      ) : list.data.length === 0 ? (
-        <EmptyState title={tab === 'fixtures' ? 'No upcoming fixtures' : 'No results yet'} icon="ball">
-          {canReportSports(role) ? 'Add a match with the “Match” button.' : 'Match reporters will add fixtures here.'}
+        <Standings matches={list!.data!} />
+      ) : list!.data!.length === 0 ? (
+        <EmptyState title="No results yet" icon="ball">
+          Finished matches will appear here.
         </EmptyState>
       ) : (
-        <MatchList matches={list.data} />
+        <MatchList matches={list!.data!} now={now} />
       )}
     </div>
   );
 }
 
-function MatchList({ matches }: { matches: Match[] }) {
+function MatchList({ matches, now }: { matches: Match[]; now: Date }) {
   return (
     <ul className="space-y-3">
       {matches.map((m) => (
         <li key={m.id}>
-          <MatchCard match={m} />
+          <MatchCard match={m} now={now} />
         </li>
       ))}
     </ul>
   );
 }
 
-function MatchCard({ match: m }: { match: Match }) {
-  const started = m.status !== 'scheduled' && m.status !== 'postponed' && m.status !== 'cancelled';
+function MatchCard({ match: m, now }: { match: Match; now: Date }) {
+  const clock = clockOf(m, now);
+  const started = !['scheduled', 'postponed', 'cancelled'].includes(clock.phase);
   return (
     <Link to={`/sports/${m.id}`} className="block rounded-2xl border border-sand-200 bg-white p-4 shadow-sm hover:border-brand-300">
       <div className="mb-3 flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-bold text-gray-900">
           <Icon name="ball" className="h-4 w-4 text-brand-700" /> {m.competition}
         </span>
-        <StatusBadge match={m} />
+        <StatusBadge clock={clock} />
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
         <TeamBlock team={m.home} />
@@ -151,8 +185,8 @@ function MatchCard({ match: m }: { match: Match }) {
           ) : (
             <p className="text-lg font-black text-gray-900">{m.kickoffAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
           )}
-          <p className="text-xs text-gray-600">
-            {isLive(m) && m.minute !== null ? `${m.minute}'` : m.kickoffAt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+          <p className="text-xs font-semibold tabular-nums text-gray-600">
+            <ClockText clock={clock} fallback={m.kickoffAt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} />
           </p>
         </div>
         <TeamBlock team={m.away} />
@@ -170,18 +204,31 @@ function TeamBlock({ team, large }: { team: Match['home']; large?: boolean }) {
   );
 }
 
-function StatusBadge({ match: m }: { match: Match }) {
-  if (isLive(m))
+function StatusBadge({ clock }: { clock: Clock }) {
+  if (clock.phase === 'first' || clock.phase === 'second' || clock.phase === 'break')
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-black text-white">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-        {m.status === 'halftime' ? 'HT' : 'LIVE'}
+        <span className={`h-1.5 w-1.5 rounded-full bg-white ${clock.phase === 'break' ? '' : 'animate-pulse'}`} />
+        {clock.phase === 'break' ? 'HT' : 'LIVE'}
       </span>
     );
-  if (m.status === 'finished') return <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-bold text-white">FT</span>;
-  if (m.status === 'postponed' || m.status === 'cancelled')
-    return <span className="rounded-full bg-gold-100 px-2 py-0.5 text-xs font-bold text-gold-800">{statusLabel(m.status)}</span>;
+  if (clock.phase === 'finished' || clock.phase === 'ended')
+    return <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-bold text-white">FT</span>;
+  if (clock.phase === 'postponed' || clock.phase === 'cancelled')
+    return <span className="rounded-full bg-gold-100 px-2 py-0.5 text-xs font-bold text-gold-800">{clock.label}</span>;
   return <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-800">Upcoming</span>;
+}
+
+/** "32:15", "HT · 2nd half in 3:12", "FT"... */
+function ClockText({ clock, fallback }: { clock: Clock; fallback: string }) {
+  if (clock.phase === 'first' || clock.phase === 'second') return <>⏱ {clock.display}</>;
+  if (clock.phase === 'break') {
+    const r = Math.ceil(clock.breakRemaining ?? 0);
+    return <>Half time · 2nd half in {Math.floor(r / 60)}:{String(r % 60).padStart(2, '0')}</>;
+  }
+  if (clock.phase === 'ended') return <>Full time</>;
+  if (clock.phase === 'finished') return <>Full time</>;
+  return <>{fallback}</>;
 }
 
 // ---------------- standings ----------------
@@ -253,6 +300,7 @@ export function MatchDetailPage() {
   const myVote = useQuery({ queryKey: ['vote', matchId], queryFn: () => fetchMyVote(user.uid, matchId) });
   const [voting, setVoting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const now = useNow(1000);
 
   useEffect(() => {
     const unsubMatch = onSnapshot(
@@ -277,6 +325,7 @@ export function MatchDetailPage() {
   const m = match;
   const reporter = canReportSports(role);
   const totalVotes = m.votesHome + m.votesDraw + m.votesAway;
+  const clock = clockOf(m, now);
   const votingOpen = m.status === 'scheduled' || m.status === 'live' || m.status === 'halftime';
   const pct = (n: number) => (totalVotes ? Math.round((n / totalVotes) * 100) : 0);
 
@@ -301,7 +350,7 @@ export function MatchDetailPage() {
       <section className="overflow-hidden rounded-2xl border border-sand-200 bg-white shadow-sm">
         <div className="flex items-center justify-between bg-brand-600 px-4 py-2 text-white">
           <span className="text-sm font-bold">{m.competition}</span>
-          <StatusBadge match={m} />
+          <StatusBadge clock={clock} />
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 p-5 text-center">
           <TeamBlock team={m.home} large />
@@ -309,19 +358,19 @@ export function MatchDetailPage() {
             <p className="text-4xl font-black tabular-nums text-gray-900" aria-live="polite">
               {m.homeScore} - {m.awayScore}
             </p>
-            <p className="mt-1 text-xs font-semibold text-gray-600">
-              {isLive(m) ? (m.status === 'halftime' ? 'Half time' : m.minute !== null ? `${m.minute}'` : 'Live') : statusLabel(m.status)}
+            <p className="mt-1 text-sm font-bold tabular-nums text-gray-700" aria-live="off">
+              <ClockText clock={clock} fallback={m.kickoffAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} />
             </p>
           </div>
           <TeamBlock team={m.away} large />
         </div>
         <p className="border-t border-sand-100 px-4 py-2 text-center text-xs text-gray-600">
           {m.kickoffAt.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
-          {m.venue && ` · ${m.venue}`}
+          {m.venue && ` · ${m.venue}`} · {m.durationMinutes} min, {m.breakMinutes}-min break
         </p>
       </section>
 
-      {reporter && <ReporterPanel match={m} />}
+      {reporter && <ReporterPanel match={m} clock={clock} />}
 
       <section className="rounded-2xl border border-sand-200 bg-white p-4 shadow-sm">
         <h2 className="mb-3 flex items-center gap-2 font-bold text-gray-900">
@@ -422,32 +471,23 @@ export function MatchDetailPage() {
   );
 }
 
-function ReporterPanel({ match: m }: { match: Match }) {
+function ReporterPanel({ match: m, clock }: { match: Match; clock: Clock }) {
   const { user } = useMe();
   const toast = useToast();
   const qc = useQueryClient();
-  const [status, setStatus] = useState<MatchStatus>(m.status);
-  const [minute, setMinute] = useState(m.minute === null ? '' : String(m.minute));
+  const [minute, setMinute] = useState('');
   const [type, setType] = useState('goal');
   const [team, setTeam] = useState<'home' | 'away' | ''>('home');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirmEnd, setConfirmEnd] = useState(false);
 
-  useEffect(() => {
-    setStatus(m.status);
-    setMinute(m.minute === null ? '' : String(m.minute));
-  }, [m.status, m.minute]);
-
-  const saveState = async (patch: Partial<{ status: MatchStatus; homeScore: number; awayScore: number }>) => {
-    setBusy('state');
+  const act = async (name: string, fn: () => Promise<void>, done?: string) => {
+    setBusy(name);
     try {
-      await updateMatchState(db, m.id, {
-        status: patch.status ?? status,
-        homeScore: patch.homeScore ?? m.homeScore,
-        awayScore: patch.awayScore ?? m.awayScore,
-        minute: minute === '' ? null : Math.min(130, Number(minute)),
-      });
+      await fn();
       void qc.invalidateQueries({ queryKey: ['matches'] });
+      if (done) toast(done);
     } catch (e) {
       toast(friendlyError(e), 'error');
     } finally {
@@ -460,7 +500,8 @@ function ReporterPanel({ match: m }: { match: Match }) {
     const parsed = matchUpdateSchema.safeParse({
       type,
       team: team || null,
-      minute: minute === '' ? null : Number(minute),
+      // Defaults to the live clock's minute; the reporter can type a different one.
+      minute: minute !== '' ? Number(minute) : clock.minute,
       text,
     });
     if (!parsed.success) {
@@ -471,46 +512,65 @@ function ReporterPanel({ match: m }: { match: Match }) {
       toast('Choose which team scored.', 'error');
       return;
     }
-    setBusy('update');
-    try {
+    await act('update', async () => {
       await addMatchUpdate(db, user.uid, m, parsed.data);
       setText('');
-      void qc.invalidateQueries({ queryKey: ['matches'] });
-    } catch (err) {
-      toast(friendlyError(err), 'error');
-    } finally {
-      setBusy(null);
-    }
+      setMinute('');
+    });
   };
 
   const score = (side: 'home' | 'away', d: number) => {
-    const v = (side === 'home' ? m.homeScore : m.awayScore) + d;
-    if (v < 0) return;
-    void saveState(side === 'home' ? { homeScore: v } : { awayScore: v });
+    const home = m.homeScore + (side === 'home' ? d : 0);
+    const away = m.awayScore + (side === 'away' ? d : 0);
+    if (home < 0 || away < 0) return;
+    void act('score', () => setMatchScore(db, m.id, home, away));
   };
+
+  const finished = clock.phase === 'finished';
 
   return (
     <section className="space-y-4 rounded-2xl border-2 border-gold-400 bg-gold-100/40 p-4">
       <h2 className="flex items-center gap-2 font-bold text-gray-900">
         <Icon name="megaphone" className="h-5 w-5" /> Match reporter controls
       </h2>
-      <div className="grid grid-cols-2 gap-3">
-        <SelectField
-          label="Status"
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value as MatchStatus);
-            void saveState({ status: e.target.value as MatchStatus });
-          }}
-        >
-          {MATCH_STATUSES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </SelectField>
-        <TextField label="Minute" inputMode="numeric" value={minute} onChange={(e) => setMinute(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))} onBlur={() => saveState({})} />
+
+      <div className="rounded-xl bg-white p-3 text-sm ring-1 ring-sand-200">
+        <p className="font-semibold text-gray-900">⏱️ The clock runs by itself</p>
+        <p className="mt-0.5 text-gray-600">
+          {m.durationMinutes} minutes ({m.durationMinutes / 2} each half) with a {m.breakMinutes}-minute break. It starts at kick-off, pauses at
+          half time and resumes for the second half. Use the buttons only if the real game is early or late.
+        </p>
+        {!finished && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(clock.phase === 'scheduled' || clock.phase === 'postponed') && (
+              <Button small busy={busy === 'start'} onClick={() => act('start', () => startMatchNow(db, m.id), 'Kick-off! The clock is running.')}>
+                ▶ Start match now
+              </Button>
+            )}
+            {(clock.phase === 'first' || clock.phase === 'break') && (
+              <Button small busy={busy === 'second'} onClick={() => act('second', () => startSecondHalfNow(db, m.id), 'Second half started.')}>
+                ▶ Start 2nd half now
+              </Button>
+            )}
+            {clock.phase !== 'scheduled' && clock.phase !== 'postponed' && (
+              <Button small variant={clock.phase === 'ended' ? 'primary' : 'secondary'} onClick={() => setConfirmEnd(true)}>
+                ■ {clock.phase === 'ended' ? 'Confirm full time' : 'End match'}
+              </Button>
+            )}
+            {clock.phase === 'scheduled' && (
+              <Button small variant="ghost" busy={busy === 'postpone'} onClick={() => act('postpone', () => setMatchStatus(db, m.id, 'postponed'), 'Match postponed.')}>
+                Postpone
+              </Button>
+            )}
+          </div>
+        )}
+        {finished && (
+          <Button small variant="ghost" className="mt-2" busy={busy === 'reopen'} onClick={() => act('reopen', () => setMatchStatus(db, m.id, 'live'), 'Match reopened.')}>
+            Reopen match (correct a mistake)
+          </Button>
+        )}
       </div>
+
       <div className="grid grid-cols-2 gap-3 text-center">
         {(['home', 'away'] as const).map((side) => (
           <div key={side} className="rounded-xl bg-white p-2 ring-1 ring-sand-200">
@@ -527,6 +587,7 @@ function ReporterPanel({ match: m }: { match: Match }) {
           </div>
         ))}
       </div>
+
       <form onSubmit={post} className="space-y-3 border-t border-gold-400/50 pt-3">
         <p className="text-sm font-semibold text-gray-800">Post a live update</p>
         <div className="grid grid-cols-2 gap-3">
@@ -543,12 +604,40 @@ function ReporterPanel({ match: m }: { match: Match }) {
             <option value="">Neither</option>
           </SelectField>
         </div>
-        <TextField label="Comment (optional)" maxLength={EXTRA_LIMITS.matchUpdateMax} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Header from the corner!" />
-        <p className="text-xs text-gray-600">A goal update also adds 1 to that team's score automatically.</p>
+        <div className="grid grid-cols-[6rem_1fr] gap-3">
+          <TextField
+            label="Minute"
+            inputMode="numeric"
+            value={minute}
+            placeholder={clock.minute !== null ? String(clock.minute) : ''}
+            onChange={(e) => setMinute(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+          />
+          <TextField label="Comment (optional)" maxLength={EXTRA_LIMITS.matchUpdateMax} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Header from the corner!" />
+        </div>
+        <p className="text-xs text-gray-600">The minute is filled in from the clock. A goal update also adds 1 to that team's score.</p>
         <Button type="submit" busy={busy === 'update'}>
           Post update
         </Button>
       </form>
+
+      <Modal open={confirmEnd} onClose={() => setConfirmEnd(false)} title="End the match?">
+        <p className="text-sm text-gray-700">
+          Final score {m.home.name} {m.homeScore} – {m.awayScore} {m.away.name}. The result goes into the table and voting closes.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmEnd(false)}>
+            Not yet
+          </Button>
+          <Button
+            onClick={() => {
+              setConfirmEnd(false);
+              void act('end', () => setMatchStatus(db, m.id, 'finished'), 'Full time. Result saved.');
+            }}
+          >
+            Confirm full time
+          </Button>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -567,6 +656,8 @@ export function MatchFormPage() {
   const [awayName, setAwayName] = useState('Mempeasem');
   const [venue, setVenue] = useState('');
   const [kickoff, setKickoff] = useState('');
+  const [duration, setDuration] = useState('90');
+  const [breakMins, setBreakMins] = useState('15');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -599,6 +690,8 @@ export function MatchFormPage() {
       away: { name: awayName, townId: awayTown || null },
       venue,
       kickoffAt: fromLocalInput(kickoff),
+      durationMinutes: duration === '' ? NaN : Number(duration),
+      breakMinutes: breakMins === '' ? NaN : Number(breakMins),
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]!.message);
@@ -633,7 +726,26 @@ export function MatchFormPage() {
             <TextField label="Away team name" maxLength={EXTRA_LIMITS.teamNameMax} value={awayName} onChange={(e) => setAwayName(e.target.value)} />
           </div>
         </div>
-        <TextField label="Kick-off" type="datetime-local" value={kickoff} onChange={(e) => setKickoff(e.target.value)} />
+        <TextField label="Kick-off (date and time)" type="datetime-local" value={kickoff} onChange={(e) => setKickoff(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <TextField
+            label="Match length (minutes)"
+            inputMode="numeric"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+            hint={Number(duration) ? `${Number(duration) / 2} minutes each half` : 'e.g. 90'}
+          />
+          <TextField
+            label="Half-time break (minutes)"
+            inputMode="numeric"
+            value={breakMins}
+            onChange={(e) => setBreakMins(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+            hint="e.g. 5, 10 or 15"
+          />
+        </div>
+        <p className="rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-900">
+          ⏱️ The clock starts by itself at kick-off, pauses at half time for the break, then carries on for the second half.
+        </p>
         <TextField label="Venue (optional)" maxLength={EXTRA_LIMITS.eventLocationMax} value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. Odomi Park" />
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">

@@ -282,6 +282,16 @@ export function matchesQuery(tab: 'live' | 'fixtures' | 'results') {
   return query(c, where('status', '==', 'finished'), orderBy('kickoffAt', 'desc'), limit(200));
 }
 
+/** Every match that is not finished/cancelled — split into Live and Fixtures by the clock. */
+export function activeMatchesQuery() {
+  return query(
+    collection(db, 'matches'),
+    where('status', 'in', ['scheduled', 'live', 'halftime', 'postponed']),
+    orderBy('kickoffAt', 'asc'),
+    limit(100),
+  );
+}
+
 export async function fetchMatches(tab: 'live' | 'fixtures' | 'results'): Promise<Match[]> {
   return (await getDocs(matchesQuery(tab))).docs.map(toMatch);
 }

@@ -549,6 +549,8 @@ describe('sports centre', () => {
     away: { name: 'Mempeasem', townId: 'mempeasem' as const },
     venue: 'Odomi Park',
     kickoffAt: new Date(Date.now() + 3600_000),
+    durationMinutes: 90,
+    breakMinutes: 5,
   });
   beforeEach(async () => {
     await seedUser('alice');
@@ -566,6 +568,9 @@ describe('sports centre', () => {
     const data = (await getDoc(doc(db('alice'), 'matches', id))).data()!;
     expect([data.homeScore, data.status, data.minute]).toEqual([1, 'live', 32]);
     await assertFails(updateDoc(doc(db('alice'), 'matches', id), { homeScore: 5 }));
+    await assertSucceeds(ops.startSecondHalfNow(db('rep'), id));
+    await assertFails(ops.startMatchNow(db('alice'), id));
+    await assertFails(updateDoc(doc(db('rep'), 'matches', id), { breakMinutes: 500 }));
   });
 
   it('one vote per member, only while voting is open', async () => {

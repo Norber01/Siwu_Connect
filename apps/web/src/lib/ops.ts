@@ -378,6 +378,10 @@ export async function createMatch(db: Firestore, uid: string, m: MatchInput): Pr
     away: m.away,
     venue: m.venue,
     kickoffAt: m.kickoffAt,
+    durationMinutes: m.durationMinutes,
+    breakMinutes: m.breakMinutes,
+    actualKickoffAt: null,
+    secondHalfStartAt: null,
     status: 'scheduled',
     homeScore: 0,
     awayScore: 0,
@@ -444,4 +448,21 @@ export async function voteOnMatch(db: Firestore, uid: string, matchId: string, p
     [pick === 'home' ? 'votesHome' : pick === 'draw' ? 'votesDraw' : 'votesAway']: increment(1),
   });
   await batch.commit();
+}
+
+/** Reporter clock controls. The clock itself runs automatically from these times. */
+export async function startMatchNow(db: Firestore, id: string): Promise<void> {
+  await updateDoc(doc(db, 'matches', id), { actualKickoffAt: serverTimestamp(), secondHalfStartAt: null, status: 'live', updatedAt: serverTimestamp() });
+}
+
+export async function startSecondHalfNow(db: Firestore, id: string): Promise<void> {
+  await updateDoc(doc(db, 'matches', id), { secondHalfStartAt: serverTimestamp(), status: 'live', updatedAt: serverTimestamp() });
+}
+
+export async function setMatchStatus(db: Firestore, id: string, status: MatchStatus): Promise<void> {
+  await updateDoc(doc(db, 'matches', id), { status, updatedAt: serverTimestamp() });
+}
+
+export async function setMatchScore(db: Firestore, id: string, homeScore: number, awayScore: number): Promise<void> {
+  await updateDoc(doc(db, 'matches', id), { homeScore, awayScore, updatedAt: serverTimestamp() });
 }
