@@ -137,6 +137,11 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   - **Housekeeping:** Wrangler 3 → 4.159.0. React Router: `v7_relativeSplatPath` is on, so admin links are
     absolute. `v7_startTransition` stays off: with it, a page could still show briefly after a tap, and quick
     typing went into the old page (caught by the password-reset test).
+- 2026-11-24 — **Admin stories for everyone:** when posting a story, admins choose who sees it: "My friends", or
+  "Everyone" in all towns (Super Admin), or "Everyone from <town>" (Super Admin, or that town's Town
+  Admin/Moderator). These stories show first in the stories row with a gold ring and a 📢 badge, and an
+  "All towns"/town label, for announcements and promotions. Enforced in the security rules: members cannot
+  post to everyone, and nobody can see another town's stories by faking their hometown. Needs **Run setup again**.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
