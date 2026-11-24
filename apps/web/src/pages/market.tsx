@@ -69,7 +69,7 @@ export function MarketPage() {
             onClick={() => setCategory(c.id)}
             aria-pressed={category === c.id}
             className={`min-h-[36px] shrink-0 rounded-full px-3 text-xs font-semibold ${
-              category === c.id ? 'bg-gold-400 text-brand-900' : 'bg-white text-gray-700 ring-1 ring-sand-200'
+              category === c.id ? 'bg-gold-400 text-[#0d4a1e]' : 'bg-white text-gray-700 ring-1 ring-sand-200'
             }`}
           >
             {c.label}

@@ -59,7 +59,9 @@ function NotificationRow({ n }: { n: AppNotification }) {
         </span>
         <span className="min-w-0 flex-1 text-sm">
           <span className="font-bold text-gray-900">{name}</span>{' '}
-          <span className="text-gray-700">{n.type === 'like' ? 'liked your post' : 'commented on your post'}</span>
+          <span className="text-gray-700">
+            {n.type === 'like' ? 'reacted to your post' : n.type === 'mention' ? 'mentioned you in a post' : 'commented on your post'}
+          </span>
           <span className="block text-xs text-gray-600">{timeAgo(n.createdAt)}</span>
         </span>
         {!n.read && <span className="h-2.5 w-2.5 rounded-full bg-brand-600" aria-label="Unread" />}

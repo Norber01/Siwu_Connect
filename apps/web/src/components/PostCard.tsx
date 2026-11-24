@@ -5,7 +5,9 @@ import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useInvalidatePosts, useProfileById } from '../lib/hooks';
-import { deletePost, setLike } from '../lib/ops';
+import { REACTIONS, type Reaction, deletePost, setReaction, votePoll } from '../lib/ops';
+import { fetchMyPollVote } from '../lib/queries';
+import { useQuery } from '@tanstack/react-query';
 import type { Post } from '../lib/types';
 import { friendlyError, fullDate, linkify, timeAgo } from '../lib/util';
 import { Icon } from './Icon';
@@ -16,19 +18,90 @@ import { Avatar, Button, Modal } from './ui';
 import { MediaGallery } from './media';
 import { townShortName } from '@siwu/shared';
 
+/** Plain text with safe links, #hashtags (→ tag page) and @mentions (→ profile). Never renders HTML. */
 export function RichText({ text }: { text: string }) {
-  return (
-    <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-gray-900">
-      {linkify(text).map((part, i) =>
-        part.href ? (
-          <a key={i} href={part.href} target="_blank" rel="noopener noreferrer nofollow ugc" className="text-brand-700 underline">
-            {part.text}
-          </a>
+  const parts: React.ReactNode[] = [];
+  linkify(text).forEach((part, i) => {
+    if (part.href) {
+      parts.push(
+        <a key={i} href={part.href} target="_blank" rel="noopener noreferrer nofollow ugc" className="text-brand-700 underline">
+          {part.text}
+        </a>,
+      );
+      return;
+    }
+    const re = /(^|\s)([#@])([\p{L}\p{N}_]{2,30})/gu;
+    let last = 0;
+    for (const m of part.text.matchAll(re)) {
+      const start = m.index! + m[1]!.length;
+      if (start > last) parts.push(<span key={`${i}-${last}`}>{part.text.slice(last, start)}</span>);
+      const word = m[3]!;
+      parts.push(
+        m[2] === '#' ? (
+          <Link key={`${i}-${start}`} to={`/tag/${word.toLowerCase()}`} className="font-semibold text-brand-700 hover:underline">
+            #{word}
+          </Link>
         ) : (
-          <span key={i}>{part.text}</span>
+          <Link key={`${i}-${start}`} to={`/u/${word.toLowerCase()}`} className="font-semibold text-brand-700 hover:underline">
+            @{word}
+          </Link>
+        ),
+      );
+      last = start + 1 + word.length;
+    }
+    if (last < part.text.length) parts.push(<span key={`${i}-${last}-end`}>{part.text.slice(last)}</span>);
+  });
+  return <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-gray-900">{parts}</p>;
+}
+
+function PollView({ post }: { post: Post }) {
+  const { user, profile } = useMe();
+  const toast = useToast();
+  const mine = useQuery({ queryKey: ['pollVote', post.id], queryFn: () => fetchMyPollVote(user.uid, post.id) });
+  const [counts, setCounts] = useState(post.poll!.counts);
+  const [voted, setVoted] = useState<number | null>(null);
+  const choice = voted ?? mine.data ?? null;
+  const total = counts.reduce((a, b) => a + b, 0);
+  const vote = async (i: number) => {
+    const before = counts;
+    setVoted(i);
+    setCounts(counts.map((c, j) => (j === i ? c + 1 : c)));
+    try {
+      await votePoll(db, user.uid, { id: post.id, poll: { counts: before } }, i);
+    } catch (e) {
+      setVoted(null);
+      setCounts(before);
+      toast(friendlyError(e), 'error');
+    }
+  };
+  return (
+    <div className="mt-3 space-y-2" aria-label="Poll">
+      {post.poll!.options.map((o, i) =>
+        choice === null && !mine.isPending && profile.status === 'active' ? (
+          <button
+            key={i}
+            onClick={() => vote(i)}
+            className="block min-h-[44px] w-full rounded-xl border-2 border-brand-600 px-4 text-left text-sm font-bold text-brand-700 hover:bg-brand-50"
+          >
+            {o}
+          </button>
+        ) : (
+          <div key={i} className="relative overflow-hidden rounded-xl bg-sand-100">
+            <div className={`absolute inset-y-0 left-0 ${choice === i ? 'bg-brand-200' : 'bg-sand-200'}`} style={{ width: `${total ? (counts[i]! / total) * 100 : 0}%` }} />
+            <div className="relative flex min-h-[44px] items-center justify-between px-4 text-sm">
+              <span className="font-semibold text-gray-900">
+                {o} {choice === i && '✓'}
+              </span>
+              <span className="font-bold tabular-nums">{total ? Math.round((counts[i]! / total) * 100) : 0}%</span>
+            </div>
+          </div>
         ),
       )}
-    </p>
+      <p className="text-xs text-gray-600">
+        {total} {total === 1 ? 'vote' : 'votes'}
+        {choice === null ? ' · tap an option to vote' : ''}
+      </p>
+    </div>
   );
 }
 
@@ -88,36 +161,54 @@ async function sharePost(post: Post, toast: (m: string, k?: 'success' | 'error')
   }
 }
 
-export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: { post: Post; liked: boolean; linkToDetail?: boolean }) {
+export function PostCard({ post, liked: initialReaction, linkToDetail = true }: { post: Post; liked: string | null; linkToDetail?: boolean }) {
   const { user, profile, role } = useMe();
   const navigate = useNavigate();
   const toast = useToast();
   const invalidate = useInvalidatePosts();
-  const [liked, setLiked] = useState(initiallyLiked);
+  const [reaction, setReactionState] = useState<Reaction | null>(initialReaction as Reaction | null);
   const [likes, setLikes] = useState(post.reactionCount);
+  const [counts, setCounts] = useState<Record<string, number>>(post.reactions);
   const [liking, setLiking] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const liked = !!reaction;
   const [reporting, setReporting] = useState(false);
   const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
   const [busy, setBusy] = useState(false);
   const isAuthor = post.authorId === user.uid;
   const active = profile.status === 'active';
 
-  const toggleLike = async () => {
-    if (liking) return;
-    const next = !liked;
+  const react = async (next: Reaction | null) => {
+    if (liking || next === reaction) return;
+    const prev = reaction;
+    setPicker(false);
     setLiking(true);
-    setLiked(next);
-    setLikes((n) => n + (next ? 1 : -1));
+    setReactionState(next);
+    setLikes((n) => n + (next ? 1 : 0) - (prev ? 1 : 0));
+    setCounts((c) => {
+      const n = { ...c };
+      if (prev) n[prev] = Math.max(0, (n[prev] ?? 0) - 1);
+      if (next) n[next] = (n[next] ?? 0) + 1;
+      return n;
+    });
     try {
-      await setLike(db, user.uid, post, next);
+      await setReaction(db, user.uid, post, prev, next);
     } catch (e) {
-      setLiked(!next);
-      setLikes((n) => n + (next ? -1 : 1));
+      setReactionState(prev);
+      setLikes(post.reactionCount);
+      setCounts(post.reactions);
       toast(friendlyError(e), 'error');
     } finally {
       setLiking(false);
     }
   };
+  const toggleLike = () => react(reaction ? null : 'like');
+  const top = Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, 3)
+    .map(([t]) => REACTIONS.find((r) => r.id === t)?.emoji);
+  const current = REACTIONS.find((r) => r.id === reaction);
 
   const runConfirmed = async () => {
     setBusy(true);
@@ -179,6 +270,7 @@ export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: {
             <RichText text={post.text} />
           )}
           <MediaGallery media={post.media} />
+          {post.poll && <PollView post={post} />}
           {post.visibility === 'town' && <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>}
         </div>
         {(likes > 0 || post.commentCount > 0) && (
@@ -186,9 +278,7 @@ export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: {
             <span className="inline-flex items-center gap-1">
               {likes > 0 && (
                 <>
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white">
-                    <Icon name="thumb" filled className="h-3 w-3" />
-                  </span>
+                  <span className="text-base leading-none tracking-tighter">{top.length ? top.join('') : '👍'}</span>
                   {likes}
                 </>
               )}
@@ -201,19 +291,49 @@ export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: {
           </div>
         )}
       </div>
-      <div className="grid grid-cols-3 border-t border-sand-200 px-2 py-1">
-        <button
-          onClick={toggleLike}
-          disabled={!active}
-          aria-pressed={liked}
-          aria-label={liked ? 'Unlike' : 'Like'}
-          className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold hover:bg-sand-100 disabled:opacity-50 ${
-            liked ? 'text-brand-600' : 'text-gray-700'
-          }`}
-        >
-          <Icon name="thumb" filled={liked} />
-          {liked ? 'Liked' : 'Like'}
-        </button>
+      <div className="relative grid grid-cols-3 border-t border-sand-200 px-2 py-1">
+        {picker && (
+          <div className="absolute -top-14 left-2 z-10 flex gap-1 rounded-full bg-white px-2 py-1.5 shadow-xl ring-1 ring-sand-200" role="menu" aria-label="Reactions">
+            {REACTIONS.map((r) => (
+              <button
+                key={r.id}
+                role="menuitem"
+                onClick={() => react(r.id)}
+                className={`rounded-full p-1 text-2xl transition-transform hover:scale-125 ${reaction === r.id ? 'bg-brand-50' : ''}`}
+                aria-label={`React ${r.id}`}
+              >
+                {r.emoji}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex">
+          <button
+            onClick={toggleLike}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setPicker(true);
+            }}
+            disabled={!active}
+            aria-pressed={liked}
+            aria-label={liked ? 'Unlike' : 'Like'}
+            className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold hover:bg-sand-100 disabled:opacity-50 ${
+              liked ? 'text-brand-600' : 'text-gray-700'
+            }`}
+          >
+            {current && current.id !== 'like' ? <span className="text-lg leading-none">{current.emoji}</span> : <Icon name="thumb" filled={liked} />}
+            {liked ? (current?.id === 'like' ? 'Liked' : 'Reacted') : 'Like'}
+          </button>
+          <button
+            onClick={() => setPicker((x) => !x)}
+            disabled={!active}
+            className="rounded-lg px-1.5 text-lg hover:bg-sand-100 disabled:opacity-50"
+            aria-label="Choose a reaction"
+            aria-expanded={picker}
+          >
+            😊
+          </button>
+        </div>
         <Link
           to={`/p/${post.id}#comments`}
           className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-sand-100"

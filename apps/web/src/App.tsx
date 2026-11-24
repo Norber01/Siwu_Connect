@@ -4,7 +4,7 @@ import { useAuth } from './auth/AuthProvider';
 import { AppLayout, PublicLayout } from './components/Layout';
 import { PageSpinner } from './components/ui';
 import { ForgotPasswordPage, LoginPage, RegisterPage, WelcomePage } from './pages/auth';
-import { HomePage, TownPage, TownsPage } from './pages/feeds';
+import { HomePage, TagPage, TownPage, TownsPage } from './pages/feeds';
 import { OnboardingPage } from './pages/Onboarding';
 import { MyProfileRedirect, ProfilePage, SearchPage, SettingsPage } from './pages/people';
 import { EditPostPage, NewPostPage, NotFoundPage, PostDetailPage } from './pages/posts';
@@ -15,6 +15,8 @@ import { ListingDetailPage, ListingFormPage, MarketPage } from './pages/market';
 import { MatchDetailPage, MatchFormPage, SportsPage } from './pages/sports';
 import { NotificationsPage } from './pages/notifications';
 import { ChatListPage, ChatRoomPage } from './pages/chat';
+import { NewStoryPage } from './pages/stories';
+import { DirectoryPage, EntryDetailPage, EntryFormPage, ExplorePage } from './pages/explore';
 
 const AdminPage = lazy(() => import('./pages/admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 
@@ -102,6 +104,13 @@ export function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/towns" element={<TownsPage />} />
           <Route path="/towns/:townId" element={<TownPage />} />
+          <Route path="/tag/:tag" element={<TagPage />} />
+          <Route path="/stories/new" element={<NewStoryPage />} />
+          <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/directory" element={<DirectoryPage />} />
+          <Route path="/directory/new" element={<EntryFormPage />} />
+          <Route path="/directory/:entryId" element={<EntryDetailPage />} />
+          <Route path="/directory/:entryId/edit" element={<EntryFormPage />} />
           <Route path="/new" element={<NewPostPage />} />
           <Route path="/p/:postId" element={<PostDetailPage />} />
           <Route path="/p/:postId/edit" element={<EditPostPage />} />

@@ -215,9 +215,11 @@ export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => v
     navigate(to);
   };
   const options: { to: string; icon: IconName; title: string; text: string }[] = [
-    { to: '/new', icon: 'edit', title: 'Post', text: 'News, a question or an update' },
+    { to: '/new', icon: 'edit', title: 'Post', text: 'News, photos, videos, a poll…' },
+    { to: '/stories/new', icon: 'camera', title: 'Story', text: 'Disappears after 24 hours ✨' },
     { to: '/events/new', icon: 'calendar', title: 'Event', text: 'Festival, funeral, wedding, meeting…' },
     { to: '/market/new', icon: 'cart', title: 'Marketplace listing', text: 'Sell an item, produce or a service' },
+    { to: '/directory/new', icon: 'globe', title: 'Business or opportunity', text: 'List a business, job, scholarship or training' },
   ];
   if (canReportSports(role)) options.push({ to: '/sports/new', icon: 'ball', title: 'Match', text: 'Add a fixture to the Sports Centre' });
   return (

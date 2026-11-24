@@ -6,7 +6,12 @@ import { TownChips } from '../components/TownChips';
 import { Landscape } from '../components/Brand';
 import { NewMembers } from '../components/extras';
 import { Icon } from '../components/Icon';
-import { EmptyState, PageHeader } from '../components/ui';
+import { EmptyState, ErrorState, PageHeader, PageSpinner } from '../components/ui';
+import { PostCard } from '../components/PostCard';
+import { StoriesBar } from './stories';
+import { useQuery } from '@tanstack/react-query';
+import { fetchMyLikes, fetchTagPosts } from '../lib/queries';
+import { friendlyError } from '../lib/util';
 
 export function HomePage() {
   const { profile } = useMe();
@@ -17,6 +22,7 @@ export function HomePage() {
   return (
     <div className="space-y-3">
       <h1 className="sr-only">{selected === 'all' ? 'All Akpafu feed' : `${townName(selected)} feed`}</h1>
+      <StoriesBar />
       <TownChips
         value={selected}
         onChange={(v) => setParams(v === profile.hometownId ? {} : { town: v }, { replace: true })}
@@ -63,7 +69,7 @@ export function TownsPage() {
                 <span>
                   <span className="block text-lg font-bold">{t.name}</span>
                   {profile.hometownId === t.id && (
-                    <span className="mt-0.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-brand-900">
+                    <span className="mt-0.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-[#0d4a1e]">
                       Your hometown
                     </span>
                   )}
@@ -76,7 +82,7 @@ export function TownsPage() {
       </ul>
       <Link
         to="/?town=all"
-        className="mt-3 flex min-h-[56px] items-center justify-between rounded-2xl bg-gold-400 px-4 font-bold text-brand-900 shadow-sm hover:bg-gold-600"
+        className="mt-3 flex min-h-[56px] items-center justify-between rounded-2xl bg-gold-400 px-4 font-bold text-[#0d4a1e] shadow-sm hover:bg-gold-600"
       >
         <span className="flex items-center gap-2">
           <Icon name="globe" /> All Akpafu — five towns, one community
@@ -108,6 +114,40 @@ export function TownPage() {
         emptyTitle={`No posts in ${townName(townId)} yet`}
         emptyText="Be the first to share news or ask a question."
       />
+    </div>
+  );
+}
+
+export function TagPage() {
+  const { tag = '' } = useParams();
+  const { user, blocked } = useMe();
+  const q = useQuery({
+    queryKey: ['tag', tag],
+    queryFn: async () => {
+      const items = await fetchTagPosts(tag.toLowerCase());
+      return { items, liked: await fetchMyLikes(user.uid, items.map((p) => p.id)) };
+    },
+  });
+  return (
+    <div className="space-y-3">
+      <PageHeader title={<span className="text-brand-700">#{tag}</span>} back />
+      {q.isPending ? (
+        <PageSpinner />
+      ) : q.isError ? (
+        <ErrorState message={friendlyError(q.error)} onRetry={() => q.refetch()} />
+      ) : q.data.items.length === 0 ? (
+        <EmptyState title={`No posts with #${tag} yet`} icon="search">
+          Start the conversation: write a post and include #{tag}.
+        </EmptyState>
+      ) : (
+        <div className="space-y-3">
+          {q.data.items
+            .filter((p) => !blocked.has(p.authorId))
+            .map((p) => (
+              <PostCard key={p.id} post={p} liked={q.data.liked.get(p.id) ?? null} />
+            ))}
+        </div>
+      )}
     </div>
   );
 }

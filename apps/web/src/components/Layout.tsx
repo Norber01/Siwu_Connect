@@ -33,15 +33,15 @@ export function AppLayout() {
           <div className="flex items-center">
             <button
               onClick={() => setFeedback(true)}
-              className="mr-0.5 rounded-full bg-gold-400 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-brand-900"
+              className="mr-0.5 rounded-full bg-gold-400 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#0d4a1e]"
               title="This is an early test version — tap to send feedback"
             >
               Beta
             </button>
             <NavLink
-              to="/search"
+              to="/explore"
               className="rounded-full p-1.5 text-gray-700 hover:bg-sand-100 aria-[current=page]:text-brand-700"
-              aria-label="Search"
+              aria-label="Explore and search"
             >
               <Icon name="search" className="h-6 w-6" />
             </NavLink>

@@ -9,7 +9,7 @@ import { Icon } from './Icon';
 // ---------------- uploading ----------------
 
 /** Uploads with a progress callback (fetch cannot report upload progress). */
-function uploadWithProgress(path: string, blob: Blob, onProgress: (fraction: number) => void): Promise<string> {
+export function uploadWithProgress(path: string, blob: Blob, onProgress: (fraction: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     void (async () => {
       const user = auth.currentUser;
@@ -39,7 +39,7 @@ function uploadWithProgress(path: string, blob: Blob, onProgress: (fraction: num
 const VIDEO_TYPES: Record<string, string> = { 'video/mp4': 'video/mp4', 'video/quicktime': 'video/quicktime', 'video/webm': 'video/webm' };
 
 /** Reads a video's length and grabs a preview frame (shown before the video is played, saving data). */
-function inspectVideo(file: File): Promise<{ duration: number; poster: Blob | null }> {
+export function inspectVideo(file: File): Promise<{ duration: number; poster: Blob | null }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');

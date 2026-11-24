@@ -135,15 +135,16 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 }
 
 /** Which of these posts has the user liked? One query instead of one read per post. */
-export async function fetchMyLikes(uid: string, postIds: string[]): Promise<Set<string>> {
-  const liked = new Set<string>();
+/** The caller's reaction (emoji type) per post, for a page of posts. */
+export async function fetchMyLikes(uid: string, postIds: string[]): Promise<Map<string, string>> {
+  const liked = new Map<string, string>();
   for (let i = 0; i < postIds.length; i += 30) {
     const chunk = postIds.slice(i, i + 30);
     if (!chunk.length) continue;
     const snap = await getDocs(
       query(collectionGroup(db, 'reactions'), where('userId', '==', uid), where('postId', 'in', chunk)),
     );
-    snap.docs.forEach((d) => liked.add(d.data().postId as string));
+    snap.docs.forEach((d) => liked.set(d.data().postId as string, d.data().type as string));
   }
   return liked;
 }
@@ -340,4 +341,47 @@ export async function fetchUsersPage(
 
 export async function countUsers(): Promise<number> {
   return (await getCountFromServer(collection(db, 'users'))).data().count;
+}
+
+export async function fetchMyPollVote(uid: string, postId: string): Promise<number | null> {
+  const snap = await getDoc(doc(db, 'posts', postId, 'pollVotes', uid));
+  return snap.exists() ? (snap.data().option as number) : null;
+}
+
+export async function fetchTagPosts(tag: string): Promise<Post[]> {
+  const snap = await getDocs(
+    query(collection(db, 'posts'), where('tags', 'array-contains', tag), where('status', '==', 'published'), orderBy('createdAt', 'desc'), limit(50)),
+  );
+  return snap.docs.map(toPost);
+}
+
+/** Trending hashtags from the 80 most recent Akpafu-wide posts. */
+export async function fetchTrendingTags(): Promise<Array<{ tag: string; count: number }>> {
+  const snap = await getDocs(
+    query(collection(db, 'posts'), where('visibility', '==', 'akpafu'), where('status', '==', 'published'), orderBy('createdAt', 'desc'), limit(80)),
+  );
+  const counts = new Map<string, number>();
+  for (const d of snap.docs) for (const t of (d.data().tags ?? []) as string[]) counts.set(t, (counts.get(t) ?? 0) + 1);
+  return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count).slice(0, 12);
+}
+
+/** Posts per town in the last 7 days (for the town leaderboard). */
+export async function fetchTownActivity(): Promise<Array<{ townId: string; posts: number; members: number }>> {
+  const since = new Date(Date.now() - 7 * 86400_000);
+  const { TOWNS } = await import('@siwu/shared');
+  return Promise.all(
+    TOWNS.map(async (t) => {
+      const [posts, members] = await Promise.all([
+        getCountFromServer(query(collection(db, 'posts'), where('townId', '==', t.id), where('status', '==', 'published'), where('createdAt', '>=', since))),
+        getCountFromServer(query(collection(db, 'users'), where('hometownId', '==', t.id))),
+      ]);
+      return { townId: t.id as string, posts: posts.data().count, members: members.data().count };
+    }),
+  );
+}
+
+/** Turns @usernames into member ids (unknown names are ignored). */
+export async function resolveMentions(usernames: string[]): Promise<string[]> {
+  const found = await Promise.all(usernames.map((u) => getDoc(doc(db, 'usernames', u)).then((d) => (d.exists() ? (d.data().uid as string) : null)).catch(() => null)));
+  return found.filter((x): x is string => !!x);
 }

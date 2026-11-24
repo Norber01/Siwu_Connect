@@ -165,7 +165,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.goto('/');
   await expect(page.getByRole('link', { name: /Notifications, 1 unread/ })).toBeVisible();
   await page.getByRole('link', { name: /Notifications/ }).click();
-  await expect(page.getByText('liked your post')).toBeVisible();
+  await expect(page.getByText('reacted to your post')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Notifications' })).toBeVisible(); // count cleared
   await signOut(page);
 

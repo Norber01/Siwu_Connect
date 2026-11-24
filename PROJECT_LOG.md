@@ -68,6 +68,18 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   videos served with byte ranges for phone playback. Limit 30 videos per member.
   Storage cost note: R2 free 10 GB, then about $0.015/GB-month.
 
+- 2026-11-24 — **Big feature round (founder: "complete the project, add chat, Gen Z features"):**
+  - Fixes: reporter updates no longer default to a home-team goal; bottom nav Home · Sports · + · Events · Chat
+    (profile via the top avatar); Admin → Users lists every member (filters, paging, total).
+  - **Chat:** private 1-to-1 messages (only the two members can read them — not admins; block-aware) and group chats
+    for All Akpafu + each town (photos, delete own, report, moderators remove with audit log), unread badges.
+  - **Gen Z:** Stories (24 h, photo/video/text, rings, viewer), emoji reactions (👍❤️😂🔥😮😢), polls, #hashtags with
+    tag pages and trending, @mentions with notifications, bio + vibe emoji, dark mode, weekly town leaderboard.
+  - **Directory:** Businesses, Jobs, Scholarships, Training (WhatsApp/call/apply link, deadlines, close/reopen).
+  - Explore page (search, trending, leaderboard, directory). Tests: unit 18, rules+API 82, e2e 12.
+  - Not built (need paid providers or a budget decision): livestreaming, live audio rooms, in-app payments.
+    Phone push notifications need a Firebase Web Push key from the founder — next step.
+
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
 |---|---|

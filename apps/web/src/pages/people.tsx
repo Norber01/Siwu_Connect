@@ -5,7 +5,8 @@ import { COUNTRIES, RESIDENCE_OPTIONS, TOWNS, canSuspend, profileSchema, townNam
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
-import { blockUser, openDm, unblockUser, updateProfile } from '../lib/ops';
+import { blockUser, openDm, unblockUser, updateBio, updateProfile } from '../lib/ops';
+import { ThemePicker } from '../components/theme';
 import { fetchMyLikes, fetchProfile, fetchProfileByUsername, fetchSellerListings, searchPeople, searchPosts } from '../lib/queries';
 import { FeedbackDialog, InviteButton } from '../components/extras';
 import { formatPrice } from '../lib/util';
@@ -127,8 +128,11 @@ export function ProfilePage() {
             </span>
             <Menu items={items} label="Profile actions" />
           </div>
-          <h1 className="mt-2 text-xl font-bold text-gray-900">{p.displayName}</h1>
+          <h1 className="mt-2 text-xl font-bold text-gray-900">
+            {p.displayName} {p.vibe && <span aria-label="vibe">{p.vibe}</span>}
+          </h1>
           <p className="text-sm text-gray-600">@{p.username}</p>
+          {p.bio && <p className="mt-2 whitespace-pre-wrap text-[15px] text-gray-800">{p.bio}</p>}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700">
             <span className="inline-flex items-center gap-1">
               <Icon name="home" className="h-4 w-4" /> From
@@ -291,7 +295,7 @@ export function SearchPage() {
             {posts.data!.items
               .filter((p) => !blocked.has(p.authorId))
               .map((p) => (
-                <PostCard key={p.id} post={p} liked={posts.data!.liked.has(p.id)} />
+                <PostCard key={p.id} post={p} liked={posts.data!.liked.get(p.id) ?? null} />
               ))}
           </div>
         ) : (
@@ -384,6 +388,13 @@ export function SettingsPage() {
         ) : (
           <Alert kind="warning">Your account is suspended, so your profile cannot be edited.</Alert>
         )}
+      </Card>
+
+      <BioCard />
+
+      <Card className="p-5">
+        <h2 className="mb-2 text-base font-bold text-gray-900">Appearance</h2>
+        <ThemePicker />
       </Card>
 
       <Card className="p-5">
@@ -532,5 +543,52 @@ function SellerListings({ uid }: { uid: string }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+const VIBES = ['🔥', '⚽', '🎶', '📚', '🙏🏾', '💚', '😎', '🌍', '💼', '🎨', '🍲', '✨'];
+
+function BioCard() {
+  const { user, profile } = useMe();
+  const toast = useToast();
+  const [bio, setBio] = useState(profile.bio);
+  const [vibe, setVibe] = useState(profile.vibe);
+  const [busy, setBusy] = useState(false);
+  if (profile.status !== 'active') return null;
+  const save = async () => {
+    setBusy(true);
+    try {
+      await updateBio(db, user.uid, bio, vibe);
+      toast('Profile updated ✨');
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="space-y-3 p-5">
+      <h2 className="text-base font-bold text-gray-900">Bio & vibe</h2>
+      <TextField label="Bio" maxLength={160} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="e.g. Footballer from Todzi ⚽ · living in Accra" hint={`${bio.length}/160`} />
+      <fieldset>
+        <legend className="mb-1 text-sm font-medium text-gray-800">Your vibe</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {VIBES.map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVibe(vibe === v ? '' : v)}
+              aria-pressed={vibe === v}
+              className={`h-11 w-11 rounded-full text-xl ${vibe === v ? 'bg-brand-100 ring-2 ring-brand-600' : 'bg-sand-100'}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <Button onClick={save} busy={busy}>
+        Save bio
+      </Button>
+    </Card>
   );
 }

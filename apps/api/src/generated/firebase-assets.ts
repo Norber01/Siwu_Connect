@@ -523,5 +523,95 @@ export const FIRESTORE_INDEXES: Array<{ collectionGroup: string; queryScope: str
         "order": "DESCENDING"
       }
     ]
+  },
+  {
+    "collectionGroup": "posts",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "tags",
+        "arrayConfig": "CONTAINS"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      }
+    ]
+  },
+  {
+    "collectionGroup": "posts",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "townId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "ASCENDING"
+      }
+    ]
+  },
+  {
+    "collectionGroup": "stories",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "expiresAt",
+        "order": "ASCENDING"
+      }
+    ]
+  },
+  {
+    "collectionGroup": "directory",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "kind",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      }
+    ]
+  },
+  {
+    "collectionGroup": "directory",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "kind",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "townId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      }
+    ]
   }
 ];

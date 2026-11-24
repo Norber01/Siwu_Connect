@@ -62,7 +62,7 @@ export function Feed({ feed, emptyTitle, emptyText }: { feed: FeedSpec; emptyTit
   const pinnedItems = (pinned.data?.items ?? []).filter((p) => !blocked.has(p.authorId));
   const pinnedIds = new Set(pinnedItems.map((p) => p.id));
   const rows = posts.data.pages.flatMap((page) =>
-    page.items.filter((p) => !pinnedIds.has(p.id) && !blocked.has(p.authorId)).map((p) => ({ post: p, liked: page.liked.has(p.id) })),
+    page.items.filter((p) => !pinnedIds.has(p.id) && !blocked.has(p.authorId)).map((p) => ({ post: p, liked: page.liked.get(p.id) ?? null })),
   );
 
   if (!rows.length && !pinnedItems.length) {
@@ -76,7 +76,7 @@ export function Feed({ feed, emptyTitle, emptyText }: { feed: FeedSpec; emptyTit
   return (
     <div className="space-y-3">
       {pinnedItems.map((p) => (
-        <PostCard key={`pin-${p.id}`} post={p} liked={pinned.data!.liked.has(p.id)} />
+        <PostCard key={`pin-${p.id}`} post={p} liked={pinned.data!.liked.get(p.id) ?? null} />
       ))}
       {rows.map(({ post, liked }) => (
         <PostCard key={post.id} post={post} liked={liked} />

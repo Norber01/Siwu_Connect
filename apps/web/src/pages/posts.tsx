@@ -16,7 +16,8 @@ import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useInvalidatePosts, useProfileById } from '../lib/hooks';
-import { type MediaItem, addComment, createPost, deleteComment, editPost } from '../lib/ops';
+import { type MediaItem, addComment, createPost, deleteComment, editPost, extractMentions } from '../lib/ops';
+import { resolveMentions } from '../lib/queries';
 import { fetchComments, fetchLastPostAt, fetchMyLikes, fetchPost } from '../lib/queries';
 import type { Comment, Post } from '../lib/types';
 import { friendlyError, isPermissionDenied, timeAgo } from '../lib/util';
@@ -25,7 +26,7 @@ import { MediaPicker } from '../components/media';
 import { Menu, type MenuItem } from '../components/Menu';
 import { ReportDialog } from '../components/ReportDialog';
 import { useToast } from '../components/Toast';
-import { Alert, Avatar, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextArea } from '../components/ui';
+import { Alert, Avatar, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, SelectField, TextArea, TextField } from '../components/ui';
 
 function VisibilityPicker({ value, onChange }: { value: PostVisibility; onChange: (v: PostVisibility) => void }) {
   const opt = (v: PostVisibility, title: string, desc: string) => (
@@ -64,6 +65,7 @@ export function NewPostPage() {
   const [visibility, setVisibility] = useState<PostVisibility>('akpafu');
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [poll, setPoll] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -95,7 +97,17 @@ export function NewPostPage() {
         setError(`You're posting quickly. Please wait ${wait} seconds and try again.`);
         return;
       }
-      const id = await createPost(db, user.uid, parsed.data, media);
+      const options = poll?.map((o) => o.trim()).filter(Boolean) ?? null;
+      if (poll && (!options || options.length < 2)) {
+        setError('A poll needs at least two options.');
+        return;
+      }
+      if (poll && !parsed.data.text) {
+        setError('Write the poll question in your post.');
+        return;
+      }
+      const mentions = await resolveMentions(extractMentions(parsed.data.text));
+      const id = await createPost(db, user.uid, parsed.data, media, { poll: options, mentions });
       invalidate();
       toast('Your post is live.');
       navigate(`/p/${id}`, { replace: true });
@@ -129,7 +141,38 @@ export function NewPostPage() {
           hint={`${text.length}/${LIMITS.postMaxChars}`}
           autoFocus
         />
+        <p className="-mt-3 text-xs text-gray-600">Tip: use #hashtags to join a topic and @username to mention someone.</p>
         <MediaPicker value={media} onChange={setMedia} onBusyChange={setUploading} />
+        {poll ? (
+          <fieldset className="space-y-2 rounded-2xl border border-sand-200 bg-white p-3">
+            <legend className="px-1 text-sm font-semibold text-gray-800">📊 Poll options</legend>
+            {poll.map((o, i) => (
+              <TextField
+                key={i}
+                label={`Option ${i + 1}`}
+                className="[&_label]:sr-only"
+                placeholder={`Option ${i + 1}`}
+                maxLength={60}
+                value={o}
+                onChange={(e) => setPoll(poll.map((x, j) => (j === i ? e.target.value : x)))}
+              />
+            ))}
+            <div className="flex gap-2">
+              {poll.length < 4 && (
+                <Button type="button" small variant="secondary" icon="plus" onClick={() => setPoll([...poll, ''])}>
+                  Add option
+                </Button>
+              )}
+              <Button type="button" small variant="ghost" onClick={() => setPoll(null)}>
+                Remove poll
+              </Button>
+            </div>
+          </fieldset>
+        ) : (
+          <Button type="button" variant="secondary" small onClick={() => setPoll(['', ''])}>
+            📊 Add a poll
+          </Button>
+        )}
         <VisibilityPicker value={visibility} onChange={setVisibility} />
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">
@@ -232,7 +275,7 @@ export function PostDetailPage() {
     queryKey: ['post', postId],
     queryFn: async () => {
       const post = await fetchPost(postId);
-      const liked = post ? (await fetchMyLikes(user.uid, [post.id])).has(post.id) : false;
+      const liked = post ? ((await fetchMyLikes(user.uid, [post.id])).get(post.id) ?? null) : null;
       return { post, liked };
     },
   });

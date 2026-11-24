@@ -26,7 +26,7 @@ export function useFeed(feed: Feed) {
     initialPageParam: null as Awaited<ReturnType<typeof fetchFeedPage>>['cursor'],
     queryFn: async ({ pageParam }) => {
       const page = await fetchFeedPage(feed, pageParam);
-      const liked = user ? await fetchMyLikes(user.uid, page.items.map((p) => p.id)) : new Set<string>();
+      const liked = user ? await fetchMyLikes(user.uid, page.items.map((p) => p.id)) : new Map<string, string>();
       return { ...page, liked };
     },
     getNextPageParam: (last) => last.cursor ?? undefined,

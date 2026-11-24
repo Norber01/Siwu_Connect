@@ -11,6 +11,8 @@ export interface Profile {
   countryCode: string | null;
   status: 'active' | 'suspended';
   createdAt: Date | null;
+  bio: string;
+  vibe: string;
 }
 
 export interface Post {
@@ -20,6 +22,9 @@ export interface Post {
   text: string;
   /** Photos and videos (older posts' single imageUrl is folded in here). */
   media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null }>;
+  poll: { options: string[]; counts: number[] } | null;
+  tags: string[];
+  reactions: Record<string, number>;
   visibility: PostVisibility;
   status: 'published' | 'removed' | 'deleted';
   pinned: boolean;
@@ -93,6 +98,8 @@ export function toProfile(s: DocumentSnapshot): Profile {
     countryCode: d.countryCode ?? null,
     status: d.status,
     createdAt: date(d.createdAt),
+    bio: d.bio ?? '',
+    vibe: d.vibe ?? '',
   };
 }
 
@@ -107,6 +114,9 @@ export function toPost(s: DocumentSnapshot): Post {
       ...(d.imageUrl ? [{ type: 'image' as const, url: d.imageUrl as string, posterUrl: null }] : []),
       ...((d.media ?? []) as Post['media']),
     ],
+    poll: d.poll ?? null,
+    tags: d.tags ?? [],
+    reactions: d.reactions ?? {},
     visibility: d.visibility,
     status: d.status,
     pinned: !!d.pinned,
@@ -234,7 +244,7 @@ export interface MatchUpdate {
 
 export interface AppNotification {
   id: string;
-  type: 'like' | 'comment';
+  type: 'like' | 'comment' | 'mention';
   actorId: string;
   postId: string;
   commentId: string | null;
