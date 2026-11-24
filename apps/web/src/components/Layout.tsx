@@ -8,6 +8,7 @@ import { fetchTrendingTags, fetchUpcomingEvents } from '../lib/queries';
 import { useChats } from '../pages/chat';
 import { CountBadge, useUnreadNotifications } from '../pages/notifications';
 import { LogoMark, Wordmark } from './Brand';
+import { LiveBanner } from './LiveBanner';
 import { CreateSheet, FeedbackDialog, InviteButton } from './extras';
 import { Icon, type IconName } from './Icon';
 import { ThemePicker } from './theme';
@@ -91,6 +92,8 @@ export function AppLayout() {
               </span>
             </div>
           </header>
+
+          {profile && <LiveBanner />}
 
           {profile?.status === 'suspended' && (
             <div className="px-4 pt-3">
