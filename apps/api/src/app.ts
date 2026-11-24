@@ -164,6 +164,33 @@ export function createApp() {
     });
   });
 
+  /** Videos are served with HTTP Range support, which phones need for playback and seeking. */
+  app.get('/videos/:uid/:file', async (c) => {
+    const { uid, file } = c.req.param();
+    if (!/^[A-Za-z0-9_-]+\.(mp4|mov|webm)$/.test(file) || !/^[A-Za-z0-9]+$/.test(uid)) fail(404, 'Not found');
+    const key = `videos/${uid}/${file}`;
+    const rangeHeader = c.req.header('range');
+    const m = rangeHeader?.match(/^bytes=(\d+)-(\d*)$/);
+    const offset = m ? Number(m[1]) : 0;
+    const end = m && m[2] ? Number(m[2]) : null;
+    const obj = await c.env.AVATARS.get(key, m ? { range: { offset, length: end !== null ? end - offset + 1 : undefined } } : undefined);
+    if (!obj) fail(404, 'Not found');
+    const headers: Record<string, string> = {
+      'content-type': obj!.httpMetadata?.contentType ?? 'video/mp4',
+      'cache-control': 'public, max-age=31536000, immutable',
+      'accept-ranges': 'bytes',
+      'x-content-type-options': 'nosniff',
+    };
+    if (m && obj!.size !== undefined && obj!.range) {
+      const len = obj!.range.length ?? obj!.size - offset;
+      headers['content-range'] = `bytes ${offset}-${offset + len - 1}/${obj!.size}`;
+      headers['content-length'] = String(len);
+      return new Response(obj!.body, { status: 206, headers });
+    }
+    if (obj!.size !== undefined) headers['content-length'] = String(obj!.size);
+    return new Response(obj!.body, { headers });
+  });
+
   app.get('/images/:uid/:file', async (c) => {
     const { uid, file } = c.req.param();
     if (!/^[A-Za-z0-9_-]+\.(webp|jpg)$/.test(file) || !/^[A-Za-z0-9]+$/.test(uid)) fail(404, 'Not found');
@@ -221,6 +248,32 @@ export function createApp() {
     return { bytes, type, ext: type === 'image/webp' ? 'webp' : 'jpg' };
   }
 
+  /** Short videos for posts: MP4, MOV or WebM, up to 50 MB; 30 videos per member. */
+  app.post('/uploads/video', async (c) => {
+    const uid = c.get('uid');
+    const fs = c.get('fs');
+    const user = await fs.get<UserDoc>(`users/${uid}`);
+    if (!user) fail(403, 'Finish setting up your profile first');
+    if (user!.data.status !== 'active') fail(403, 'Your account is suspended');
+    const type = c.req.header('content-type') ?? '';
+    const ext = ({ 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm' } as Record<string, string>)[type];
+    if (!ext) fail(415, 'Upload an MP4, MOV or WebM video');
+    const declared = Number(c.req.header('content-length') ?? 0);
+    if (declared > EXTRA_LIMITS.videoMaxBytes) fail(413, 'This video is too large (maximum 50 MB). Try a shorter clip.');
+    const existing = await c.env.AVATARS.list({ prefix: `videos/${uid}/`, limit: 31 });
+    if (existing.objects.length >= EXTRA_LIMITS.videosPerMember)
+      fail(409, `You can have at most ${EXTRA_LIMITS.videosPerMember} videos. Delete an old post with a video first.`);
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength === 0) fail(400, 'Empty upload');
+    if (bytes.byteLength > EXTRA_LIMITS.videoMaxBytes) fail(413, 'This video is too large (maximum 50 MB). Try a shorter clip.');
+    const isMp4 = bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70; // "ftyp"
+    const isWebm = bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+    if (ext === 'webm' ? !isWebm : !isMp4) fail(415, 'File content does not match its type');
+    const key = `videos/${uid}/${fs.newId()}.${ext}`;
+    await c.env.AVATARS.put(key, bytes, { httpMetadata: { contentType: type } });
+    return c.json({ url: `${c.env.PUBLIC_API_URL.replace(/\/$/, '')}/${key}` });
+  });
+
   app.post('/uploads/avatar', async (c) => {
     const uid = c.get('uid');
     const fs = c.get('fs');
@@ -277,7 +330,7 @@ export function createApp() {
         posts.map((p) => ({
           kind: 'update' as const,
           path: p.path,
-          data: { status: 'deleted', text: '', imageUrl: null, searchTokens: [], updatedAt: FieldValue.serverTimestamp() },
+          data: { status: 'deleted', text: '', imageUrl: null, media: [], searchTokens: [], updatedAt: FieldValue.serverTimestamp() },
         })),
       );
     }
@@ -331,7 +384,7 @@ export function createApp() {
     if (user) writes.push({ kind: 'delete', path: `usernames/${user.data.username}` });
     await fs.commit(writes);
 
-    for (const prefix of [`avatars/${uid}/`, `images/${uid}/`]) {
+    for (const prefix of [`avatars/${uid}/`, `images/${uid}/`, `videos/${uid}/`]) {
       const objects = await c.env.AVATARS.list({ prefix, limit: 1000 });
       if (objects.objects.length) await c.env.AVATARS.delete(objects.objects.map((o) => o.key));
     }

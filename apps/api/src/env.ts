@@ -30,7 +30,10 @@ export interface R2BucketLike {
     value: ArrayBuffer | Uint8Array,
     options?: { httpMetadata?: { contentType?: string; cacheControl?: string } },
   ): Promise<unknown>;
-  get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>;
+  get(
+    key: string,
+    options?: { range?: { offset: number; length?: number } },
+  ): Promise<{ body: ReadableStream; size?: number; httpMetadata?: { contentType?: string }; range?: { offset?: number; length?: number } } | null>;
   delete(keys: string | string[]): Promise<void>;
   list(options?: { prefix?: string; limit?: number }): Promise<{ objects: { key: string }[] }>;
 }

@@ -216,7 +216,7 @@ describe('posts', () => {
 
   it('cannot post as someone else, pre-pin, or fake counters', async () => {
     const base = {
-      townId: 'odomi', text: 'x', imageUrl: null, visibility: 'akpafu', status: 'published', pinned: false, reactionCount: 0,
+      townId: 'odomi', text: 'x', imageUrl: null, media: [], visibility: 'akpafu', status: 'published', pinned: false, reactionCount: 0,
       commentCount: 0, lastCommentOp: null, searchTokens: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(), editedAt: null,
     };
     const write = (data: object) => {
@@ -232,12 +232,18 @@ describe('posts', () => {
     await assertSucceeds(write({ ...base, authorId: 'alice' }));
   });
 
-  it('photo posts: photo-only is fine, but the photo must be the author\'s own', async () => {
-    await assertSucceeds(
-      ops.createPost(db('alice'), 'alice', { townId: 'odomi', text: '', visibility: 'akpafu' }, 'https://api.example.com/images/alice/p1.webp'),
+  it('photo and video posts: up to 4 items, all uploaded by the author', async () => {
+    const img = (u: string, n = 1) => ({ type: 'image' as const, url: `https://api.example.com/images/${u}/p${n}.webp`, posterUrl: null });
+    const vid = (u: string) => ({ type: 'video' as const, url: `https://api.example.com/videos/${u}/v1.mp4`, posterUrl: `https://api.example.com/images/${u}/poster.webp` });
+    await assertSucceeds(ops.createPost(db('alice'), 'alice', { townId: 'odomi', text: '', visibility: 'akpafu' }, [img('alice'), vid('alice')]));
+    await assertFails(ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: 'hi', visibility: 'akpafu' }, [vid('alice')]));
+    await assertFails(ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: '', visibility: 'akpafu' }, [])); // empty post
+    await assertFails(
+      ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: 'too many', visibility: 'akpafu' }, [1, 2, 3, 4, 5].map((n) => img('bob', n))),
     );
-    await assertFails(ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: 'hi', visibility: 'akpafu' }, 'https://api.example.com/images/alice/p1.webp'));
-    await assertFails(ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: '', visibility: 'akpafu' }, null)); // empty post
+    await assertFails(
+      ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: 'x', visibility: 'akpafu' }, [{ type: 'image', url: 'javascript:alert(1)', posterUrl: null }]),
+    );
   });
 
   it('suspended users cannot post', async () => {

@@ -15,10 +15,15 @@ class MemoryBucket implements R2BucketLike {
   async put(key: string, value: ArrayBuffer | Uint8Array, o?: { httpMetadata?: { contentType?: string } }) {
     this.objects.set(key, { bytes: new Uint8Array(value), type: o?.httpMetadata?.contentType });
   }
-  async get(key: string) {
+  async get(key: string, opts?: { range?: { offset: number; length?: number } }) {
     const o = this.objects.get(key);
     if (!o) return null;
-    return { body: new Response(o.bytes).body!, httpMetadata: { contentType: o.type } };
+    if (opts?.range) {
+      const { offset, length } = opts.range;
+      const slice = o.bytes.slice(offset, length !== undefined ? offset + length : undefined);
+      return { body: new Response(slice).body!, size: o.bytes.byteLength, httpMetadata: { contentType: o.type }, range: { offset, length: slice.byteLength } };
+    }
+    return { body: new Response(o.bytes).body!, size: o.bytes.byteLength, httpMetadata: { contentType: o.type } };
   }
   async delete(keys: string | string[]) {
     for (const k of Array.isArray(keys) ? keys : [keys]) this.objects.delete(k);
@@ -343,5 +348,37 @@ describe('one-time setup', () => {
   it('reports whether the key is configured', async () => {
     const res = await app.request('/setup/status', { headers: { authorization: `Bearer ${token('x', 'x@example.com')}` } }, env());
     expect(((await res.json()) as { keyConfigured: boolean }).keyConfigured).toBe(true);
+  });
+});
+
+describe('video uploads', () => {
+  const mp4 = (n = 2000) => {
+    const b = new Uint8Array(n);
+    b.set([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]);
+    for (let i = 12; i < n; i++) b[i] = i % 256;
+    return b;
+  };
+  const upload = (uid: string, bytes: Uint8Array, type = 'video/mp4') =>
+    app.request('/uploads/video', { method: 'POST', headers: { authorization: `Bearer ${token(uid)}`, 'content-type': type }, body: bytes }, env());
+
+  it('stores a video and serves byte ranges for phone playback', async () => {
+    const res = await upload('alice', mp4());
+    expect(res.status).toBe(200);
+    const { url } = (await res.json()) as { url: string };
+    expect(url).toMatch(/\/videos\/alice\/[A-Za-z0-9]+\.mp4$/);
+    const path = new URL(url).pathname;
+    const full = await app.request(path, {}, env());
+    expect(full.status).toBe(200);
+    expect(full.headers.get('accept-ranges')).toBe('bytes');
+    const part = await app.request(path, { headers: { range: 'bytes=100-199' } }, env());
+    expect(part.status).toBe(206);
+    expect(part.headers.get('content-range')).toBe('bytes 100-199/2000');
+    expect(new Uint8Array((await part.arrayBuffer()) as ArrayBuffer)[0]).toBe(100);
+  });
+
+  it('rejects fake or non-video files and non-members', async () => {
+    expect((await upload('alice', new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))).status).toBe(415);
+    expect((await upload('alice', mp4(), 'application/pdf')).status).toBe(415);
+    expect((await upload('nobody', mp4())).status).toBe(403);
   });
 });

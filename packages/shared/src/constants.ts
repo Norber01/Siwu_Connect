@@ -157,6 +157,10 @@ export const EXTRA_LIMITS = {
   matchUpdateMax: 200,
   feedbackMax: 2000,
   imageMaxBytes: 400 * 1024,
+  videoMaxBytes: 50 * 1024 * 1024,
+  videoMaxSeconds: 180,
+  videosPerMember: 30,
+  mediaPerPost: 4,
   imageMaxPixels: 1280,
   /** Seconds between two events / listings by the same user. */
   eventCooldownSeconds: 60,

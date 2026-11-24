@@ -155,11 +155,30 @@ service cloud.firestore {
     function reactionPath(postId, uid) { return /databases/$(database)/documents/posts/$(postId)/reactions/$(uid); }
     function commentPath(postId, cid) { return /databases/$(database)/documents/posts/$(postId)/comments/$(cid); }
 
-    // A post needs text, a photo, or both. The photo must be one the author uploaded.
+    // Photos and videos on posts: up to 4, each one uploaded by the author.
+    function videoOk(url, uid) {
+      return str(url, 10, 300)
+        && url.matches('^https?://[^/]+(/[^/]+)*/videos/' + uid + '/[A-Za-z0-9_-]+[.](mp4|mov|webm)$');
+    }
+    function mediaItemOk(i, uid) {
+      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl'])
+        && ((i.type == 'image' && i.url != null && imageOk(i.url, uid))
+            || (i.type == 'video' && videoOk(i.url, uid)))
+        && imageOk(i.get('posterUrl', null), uid);
+    }
+    function mediaOk(m, uid) {
+      return m is list && m.size() <= 4
+        && (m.size() < 1 || mediaItemOk(m[0], uid))
+        && (m.size() < 2 || mediaItemOk(m[1], uid))
+        && (m.size() < 3 || mediaItemOk(m[2], uid))
+        && (m.size() < 4 || mediaItemOk(m[3], uid));
+    }
+    // A post needs text, photos/videos, or both.
     function postBodyOk(p) {
       return str(p.text, 0, 2000)
         && imageOk(p.get('imageUrl', null), me())
-        && (p.text.size() > 0 || p.get('imageUrl', null) != null);
+        && mediaOk(p.get('media', []), me())
+        && (p.text.size() > 0 || p.get('imageUrl', null) != null || p.get('media', []).size() > 0);
     }
 
     match /posts/{postId} {
@@ -169,7 +188,7 @@ service cloud.firestore {
             || canModerate(resource.data.townId));
 
       allow create: if isActive()
-        && exactKeys(['authorId', 'townId', 'text', 'imageUrl', 'visibility', 'status', 'pinned', 'reactionCount',
+        && exactKeys(['authorId', 'townId', 'text', 'imageUrl', 'media', 'visibility', 'status', 'pinned', 'reactionCount',
                       'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
         && d().authorId == me()
         && isTown(d().townId)
@@ -189,7 +208,7 @@ service cloud.firestore {
       allow update: if
         // 1. Author edits their own published post.
         (isActive() && resource.data.authorId == me() && resource.data.status == 'published'
-          && changed().hasOnly(['text', 'imageUrl', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
+          && changed().hasOnly(['text', 'imageUrl', 'media', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
           && postBodyOk(d())
           && d().visibility in ['akpafu', 'town']
           && d().searchTokens is list && d().searchTokens.size() <= 50
@@ -197,8 +216,9 @@ service cloud.firestore {
           && d().editedAt == request.time)
         // 2. Author deletes their own post (soft delete; text is wiped).
         || (signedIn() && resource.data.authorId == me() && resource.data.status in ['published', 'removed']
-          && changed().hasOnly(['status', 'text', 'imageUrl', 'searchTokens', 'updatedAt'])
-          && d().status == 'deleted' && d().text == '' && d().get('imageUrl', null) == null && d().searchTokens.size() == 0
+          && changed().hasOnly(['status', 'text', 'imageUrl', 'media', 'searchTokens', 'updatedAt'])
+          && d().status == 'deleted' && d().text == '' && d().get('imageUrl', null) == null
+          && d().get('media', []).size() == 0 && d().searchTokens.size() == 0
           && d().updatedAt == request.time)
         // 3. Reaction counter moves by exactly one, together with the caller's reaction doc.
         || (signedIn() && resource.data.status == 'published'

@@ -18,7 +18,8 @@ export interface Post {
   authorId: string;
   townId: string;
   text: string;
-  imageUrl: string | null;
+  /** Photos and videos (older posts' single imageUrl is folded in here). */
+  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null }>;
   visibility: PostVisibility;
   status: 'published' | 'removed' | 'deleted';
   pinned: boolean;
@@ -102,7 +103,10 @@ export function toPost(s: DocumentSnapshot): Post {
     authorId: d.authorId,
     townId: d.townId,
     text: d.text,
-    imageUrl: d.imageUrl ?? null,
+    media: [
+      ...(d.imageUrl ? [{ type: 'image' as const, url: d.imageUrl as string, posterUrl: null }] : []),
+      ...((d.media ?? []) as Post['media']),
+    ],
     visibility: d.visibility,
     status: d.status,
     pinned: !!d.pinned,

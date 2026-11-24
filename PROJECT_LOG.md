@@ -61,6 +61,13 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   when there is a photo; photo must be the author's own upload) and a **"Coming up" events strip** on the home feed.
   Deployed; founder re-runs /setup to install the updated rules.
 
+- 2026-11-24 — **Automatic match clock:** matches store match length and half-time break; the clock counts from
+  kick-off, pauses at half time (with a countdown) and resumes, on every device; reporters can correct it.
+- 2026-11-24 — **Photos and videos in posts:** up to 4 per post (photos resized on the phone; videos MP4/MOV/WebM,
+  ≤50 MB and ≤3 min, preview frame captured on the phone), upload progress, grid view, full-screen photo viewer,
+  videos served with byte ranges for phone playback. Limit 30 videos per member.
+  Storage cost note: R2 free 10 GB, then about $0.015/GB-month.
+
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
 |---|---|

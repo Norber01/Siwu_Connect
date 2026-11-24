@@ -23,6 +23,7 @@ export function kvBucket(kv: KVLike): R2BucketLike {
     },
     async get(key) {
       const { value, metadata } = await kv.getWithMetadata<{ contentType?: string }>(key, 'stream');
+      // KV has no partial reads; the whole object is returned (fine for photos).
       return value ? { body: value, httpMetadata: { contentType: metadata?.contentType } } : null;
     },
     async delete(keys) {

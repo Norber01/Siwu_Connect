@@ -4,6 +4,7 @@
  * scripts/demo-data.mjs (emulator only).
  */
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { type Page, expect, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
@@ -14,6 +15,34 @@ async function signIn(page: Page, username: string) {
   await page.getByLabel('Password').fill('demo-password-1');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+}
+
+/** Records a 1-second WebM test clip in the browser (Chromium has no MP4 encoder). */
+async function recordTestVideo(page: Page): Promise<Buffer> {
+  await page.goto('/rules');
+  const b64 = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d')!;
+    const rec = new MediaRecorder(canvas.captureStream(15), { mimeType: 'video/webm' });
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => chunks.push(e.data);
+    const stopped = new Promise((r) => (rec.onstop = r));
+    rec.start();
+    for (let i = 0; i < 15; i++) {
+      ctx.fillStyle = `hsl(${i * 24}, 70%, 45%)`;
+      ctx.fillRect(0, 0, 160, 120);
+      await new Promise((r) => setTimeout(r, 66));
+    }
+    rec.stop();
+    await stopped;
+    const buf = new Uint8Array(await new Blob(chunks, { type: 'video/webm' }).arrayBuffer());
+    let s = '';
+    buf.forEach((x) => (s += String.fromCharCode(x)));
+    return btoa(s);
+  });
+  return Buffer.from(b64, 'base64');
 }
 
 async function signOut(page: Page) {
@@ -76,14 +105,23 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByText(/votes · just for fun/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Draw' })).toHaveCount(0); // cannot vote twice
 
-  // A photo post, and the new event shows on the home feed's "Coming up" strip.
+  // A post with a photo and a video, and the new event shows on the home feed's "Coming up" strip.
+  const webm = await recordTestVideo(page);
   await page.goto('/new?town=mempeasem');
   await page.getByLabel('Your post').fill(`Sunset over Mempeasem ${tag}`);
-  await page.getByLabel('Choose photo').setInputFiles('apps/web/public/icon-512.png');
-  await expect(page.getByRole('button', { name: 'Change' })).toBeVisible();
+  await page.getByLabel('Choose photos or videos').setInputFiles([
+    { name: 'photo.png', mimeType: 'image/png', buffer: readFileSync('apps/web/public/icon-512.png') },
+    { name: 'clip.webm', mimeType: 'video/webm', buffer: webm },
+  ]);
+  await expect(page.getByRole('button', { name: 'Remove' })).toHaveCount(2, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Post', exact: true }).click();
   await expect(page.getByText('Your post is live.')).toBeVisible();
   await expect(page.locator('article img[src*="/images/"]')).toBeVisible();
+  await expect(page.locator('article video[src*="/videos/"]')).toHaveCount(1);
+  // Tapping the photo opens the full-screen viewer.
+  await page.locator('article img[src*="/images/"]').first().click();
+  await expect(page.getByRole('dialog', { name: 'Photo viewer' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
   await page.goto('/?town=todzi');
   await expect(page.getByRole('region', { name: 'Upcoming events' }).getByText(`Todzi town meeting ${tag}`)).toBeVisible();
 
