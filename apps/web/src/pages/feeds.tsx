@@ -22,11 +22,12 @@ export function HomePage() {
   return (
     <div className="space-y-3">
       <h1 className="sr-only">{selected === 'all' ? 'All Akpafu feed' : `${townName(selected)} feed`}</h1>
-      <StoriesBar />
       <TownChips
+        variant="tabs"
         value={selected}
         onChange={(v) => setParams(v === profile.hometownId ? {} : { town: v }, { replace: true })}
       />
+      <StoriesBar />
       <CreatePostPrompt townId={selected === 'all' ? undefined : selected} />
       <Announcements townId={selected === 'all' ? null : selected} />
       <UpcomingEvents townId={selected === 'all' ? null : selected} />
@@ -140,7 +141,7 @@ export function TagPage() {
           Start the conversation: write a post and include #{tag}.
         </EmptyState>
       ) : (
-        <div className="space-y-3">
+        <div className="-mx-4 border-t border-sand-200 px-4">
           {q.data.items
             .filter((p) => !blocked.has(p.authorId))
             .map((p) => (

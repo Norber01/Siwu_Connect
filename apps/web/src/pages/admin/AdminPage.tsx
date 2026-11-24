@@ -62,6 +62,7 @@ export function AdminPage() {
 
   const tabs = [
     { to: 'reports', label: 'Reports' },
+    { to: 'approvals', label: 'Approvals' },
     ...(showUsers ? [{ to: 'users', label: 'Users' }] : []),
     ...(showAnnouncements ? [{ to: 'announcements', label: 'Announcements' }] : []),
     ...(superAdmin ? [{ to: 'feedback', label: 'Feedback' }, { to: 'roles', label: 'Roles' }, { to: 'audit', label: 'Audit log' }] : []),
@@ -94,6 +95,7 @@ export function AdminPage() {
       <Routes>
         <Route index element={<Navigate to="reports" replace />} />
         <Route path="reports" element={<ReportsTab />} />
+        <Route path="approvals" element={<ApprovalsTab />} />
         {showUsers && <Route path="users" element={<UsersTab />} />}
         {showAnnouncements && <Route path="announcements" element={<AnnouncementsTab />} />}
         {superAdmin && <Route path="feedback" element={<FeedbackTab />} />}
@@ -102,6 +104,101 @@ export function AdminPage() {
         <Route path="*" element={<Navigate to="reports" replace />} />
       </Routes>
     </div>
+  );
+}
+
+// ---------------- Approvals ----------------
+
+interface PendingItem {
+  collection: 'listings' | 'directory';
+  id: string;
+  ownerId: string;
+  townId: string;
+  title: string;
+  description: string;
+  price: number | null;
+  kind: string | null;
+  category: string | null;
+  imageUrl: string | null;
+  createdAt: string | null;
+}
+
+function ApprovalsTab() {
+  const q = useQuery({ queryKey: ['admin', 'approvals'], queryFn: () => api<{ items: PendingItem[] }>('/admin/approvals', { method: 'GET' }) });
+  if (q.isPending) return <PageSpinner />;
+  if (q.isError) return <ErrorState message={friendlyError(q.error)} onRetry={() => q.refetch()} />;
+  const items = q.data.items;
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-600">
+        Members' marketplace listings and businesses, jobs and opportunities wait here until a moderator approves them.
+      </p>
+      {items.length === 0 ? (
+        <EmptyState title="Nothing waiting for approval" icon="check">
+          New listings from members will show up here.
+        </EmptyState>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((it) => (
+            <ApprovalCard key={`${it.collection}/${it.id}`} item={it} onDone={() => q.refetch()} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ApprovalCard({ item, onDone }: { item: PendingItem; onDone: () => void }) {
+  const { data: owner } = useProfileById(item.ownerId);
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const decide = async (decision: 'approve' | 'reject') => {
+    setBusy(decision);
+    try {
+      await api(`/admin/${item.collection}/${item.id}/${decision}`, { json: { note: note.trim() } });
+      toast(decision === 'approve' ? 'Approved — it is live now.' : 'Not approved. The member has been told.');
+      void qc.invalidateQueries({ queryKey: [item.collection === 'listings' ? 'listings' : 'directory'] });
+      onDone();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const link = item.collection === 'listings' ? `/market/${item.id}` : `/directory/${item.id}`;
+  return (
+    <li>
+      <Card className="space-y-3 p-4">
+        <div className="flex gap-3">
+          {item.imageUrl && <img src={item.imageUrl} alt="" className="h-20 w-20 shrink-0 rounded-xl object-cover" />}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold uppercase tracking-wide text-gold-700">
+              {item.collection === 'listings' ? 'Marketplace' : (item.kind ?? 'Directory')} · {townName(item.townId)}
+            </p>
+            <Link to={link} className="block font-bold text-gray-900 hover:underline">
+              {item.title}
+            </Link>
+            {item.price != null && item.collection === 'listings' && <p className="text-sm font-black text-brand-700">GH₵ {item.price}</p>}
+            <p className="line-clamp-3 text-sm text-gray-700">{item.description}</p>
+            <p className="mt-1 text-xs text-gray-600">
+              By {owner ? <Link to={`/u/${owner.username}`} className="font-semibold underline">{owner.displayName}</Link> : '…'}
+              {item.createdAt && <> · {timeAgo(new Date(item.createdAt))}</>}
+            </p>
+          </div>
+        </div>
+        <TextField label="Note to the member (optional)" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Please add a clear photo" />
+        <div className="flex gap-2">
+          <Button className="flex-1" icon="check" busy={busy === 'approve'} disabled={!!busy} onClick={() => decide('approve')}>
+            Approve
+          </Button>
+          <Button className="flex-1" variant="danger" icon="close" busy={busy === 'reject'} disabled={!!busy} onClick={() => decide('reject')}>
+            Reject
+          </Button>
+        </div>
+      </Card>
+    </li>
   );
 }
 

@@ -5,7 +5,8 @@ import { COUNTRIES, RESIDENCE_OPTIONS, TOWNS, canSuspend, profileSchema, townNam
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
-import { blockUser, openDm, unblockUser, updateBio, updateProfile } from '../lib/ops';
+import { blockUser, unblockUser, updateBio, updateProfile } from '../lib/ops';
+import { FriendActions } from '../components/FriendButton';
 import { ThemePicker } from '../components/theme';
 import { fetchMyLikes, fetchProfile, fetchProfileByUsername, fetchSellerListings, searchPeople, searchPosts } from '../lib/queries';
 import { FeedbackDialog, InviteButton } from '../components/extras';
@@ -78,14 +79,6 @@ export function ProfilePage() {
     }
   };
 
-  const startChat = async () => {
-    try {
-      navigate(`/chat/${await openDm(db, user.uid, p.uid)}`);
-    } catch (e) {
-      toast(friendlyError(e), 'error');
-    }
-  };
-
   const suspend = async () => {
     setBusy(true);
     try {
@@ -144,10 +137,8 @@ export function ProfilePage() {
             <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">This account is suspended.</p>
           )}
           {!isMe && !isBlocked && (
-            <div className="mt-4 flex gap-2">
-              <Button small icon="message" onClick={startChat}>
-                Message
-              </Button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <FriendActions uid={p.uid} name={p.displayName} />
             </div>
           )}
           {isMe && (
@@ -291,7 +282,7 @@ export function SearchPage() {
         <ErrorState message={friendlyError(active.error)} onRetry={() => active.refetch()} />
       ) : tab === 'posts' ? (
         posts.data!.items.filter((p) => !blocked.has(p.authorId)).length ? (
-          <div className="space-y-3">
+          <div className="-mx-4 border-t border-sand-200 px-4">
             {posts.data!.items
               .filter((p) => !blocked.has(p.authorId))
               .map((p) => (
@@ -518,7 +509,9 @@ function DeleteAccountDialog({ open, onClose, username }: { open: boolean; onClo
 }
 
 function SellerListings({ uid }: { uid: string }) {
-  const q = useQuery({ queryKey: ['sellerListings', uid], queryFn: () => fetchSellerListings(uid) });
+  const { user } = useMe();
+  const mine = uid === user.uid;
+  const q = useQuery({ queryKey: ['sellerListings', uid], queryFn: () => fetchSellerListings(uid, mine) });
   if (!q.data?.length) return null;
   return (
     <section>
@@ -536,7 +529,7 @@ function SellerListings({ uid }: { uid: string }) {
               )}
               <div className="p-2">
                 <p className="truncate text-sm font-bold">{l.title}</p>
-                <p className="text-xs font-black text-brand-700">{l.status === 'sold' ? 'SOLD' : formatPrice(l.price, l.priceUnit)}</p>
+                <p className="text-xs font-black text-brand-700">{l.status === 'sold' ? 'SOLD' : l.status === 'pending' ? '⏳ Awaiting approval' : l.status === 'rejected' ? 'Not approved' : formatPrice(l.price, l.priceUnit)}</p>
               </div>
             </Link>
           </li>

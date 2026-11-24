@@ -240,7 +240,9 @@ export function createApp() {
       if (!status.founderEmailConfigured) fail(403, 'The founder email has not been configured for this site.');
       if (!status.isFounder) fail(403, 'Only the founder account (with a verified email) can run the setup.');
     }
-    return c.json(await runSetup(c.env, c.get('caller')));
+    const part = c.req.query('part');
+    const from = Math.max(0, Math.floor(Number(c.req.query('from') ?? 0)) || 0);
+    return c.json(await runSetup(c.env, c.get('caller'), part === 'core' || part === 'indexes' ? part : 'all', from));
   });
 
   // ---------- photo uploads ----------
@@ -345,7 +347,7 @@ export function createApp() {
     // Wipe the user's events and listings.
     for (const [collection, field, live] of [
       ['events', 'authorId', ['published', 'cancelled', 'removed']],
-      ['listings', 'sellerId', ['available', 'sold', 'removed']],
+      ['listings', 'sellerId', ['available', 'sold', 'removed', 'pending', 'rejected']],
     ] as const) {
       for (;;) {
         const docs = await fs.query({ collection, where: [[field, 'EQUAL', uid], ['status', 'IN', [...live]]], limit: 200 });
@@ -358,6 +360,17 @@ export function createApp() {
           })),
         );
       }
+    }
+    // Remove friendships and stories.
+    for (;;) {
+      const docs = await fs.query({ collection: 'friendships', where: [['members', 'ARRAY_CONTAINS', uid]], limit: 200 });
+      if (!docs.length) break;
+      await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
+    }
+    for (;;) {
+      const docs = await fs.query({ collection: 'stories', where: [['authorId', 'EQUAL', uid], ['status', 'EQUAL', 'active']], limit: 200 });
+      if (!docs.length) break;
+      await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted' } })));
     }
     // Wipe the user's comments, keeping counters right.
     for (;;) {
@@ -459,6 +472,81 @@ export function createApp() {
       await fs.commit(writes);
       return c.json({ ok: true });
     });
+  }
+
+  // ---------- approvals: members' marketplace listings and directory entries ----------
+  /** Items waiting for approval in the towns this admin looks after (oldest first). */
+  admin.get('/approvals', async (c) => {
+    const fs = c.get('fs');
+    const role = c.get('role');
+    const out: Record<string, unknown>[] = [];
+    for (const [collection, owner] of [['listings', 'sellerId'], ['directory', 'ownerId']] as const) {
+      const rows = await fs.query<Record<string, unknown> & { townId: string }>({
+        collection,
+        where: [['status', 'EQUAL', 'pending']],
+        orderBy: [['createdAt', 'ASCENDING']],
+        limit: 100,
+      });
+      for (const r of rows) {
+        if (!canModerate(role, r.data.townId)) continue;
+        const d = r.data;
+        const created = d.createdAt instanceof Date ? d.createdAt.toISOString() : null;
+        out.push({
+          collection,
+          id: r.id,
+          ownerId: d[owner],
+          townId: d.townId,
+          title: d.title,
+          description: d.description,
+          price: d.price ?? null,
+          kind: d.kind ?? null,
+          category: d.category ?? null,
+          imageUrl: d.imageUrl ?? null,
+          createdAt: created,
+        });
+      }
+    }
+    return c.json({ items: out });
+  });
+
+  for (const [collection, live, owner, label] of [
+    ['listings', 'available', 'sellerId', 'marketplace listing'],
+    ['directory', 'active', 'ownerId', 'listing'],
+  ] as const) {
+    for (const decision of ['approve', 'reject'] as const) {
+      admin.post(`/${collection}/:id/${decision}`, async (c) => {
+        const { note } = await body(c.req.raw, moderationNoteSchema);
+        const fs = c.get('fs');
+        const uid = c.get('uid');
+        const path = `${collection}/${c.req.param('id')}`;
+        const item = await fs.get<{ status: string; townId: string; title: string } & Record<string, unknown>>(path);
+        if (!item) fail(404, 'Not found');
+        if (!canModerate(c.get('role'), item!.data.townId)) fail(403, 'You cannot moderate this town');
+        if (item!.data.status !== 'pending') fail(409, `This is ${item!.data.status}, not waiting for approval`);
+        const ownerId = item!.data[owner] as string;
+        const approved = decision === 'approve';
+        await fs.commit([
+          { kind: 'update', path, data: { status: approved ? live : 'rejected', ...moderation(uid, decision, note) } },
+          {
+            kind: 'create',
+            path: `users/${ownerId}/notifications/${fs.newId()}`,
+            data: {
+              type: approved ? 'approved' : 'rejected',
+              actorId: uid,
+              postId: null,
+              commentId: null,
+              targetPath: path,
+              title: item!.data.title,
+              note,
+              read: false,
+              createdAt: FieldValue.serverTimestamp(),
+            },
+          },
+          audit(fs, uid, `${collection === 'listings' ? 'listing' : 'directory'}.${decision}`, path, item!.data.townId, { note, label }),
+        ]);
+        return c.json({ ok: true });
+      });
+    }
   }
 
   admin.post('/posts/:postId/pin', async (c) => {

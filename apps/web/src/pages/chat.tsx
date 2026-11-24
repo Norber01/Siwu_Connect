@@ -8,6 +8,8 @@ import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
 import { deleteMessage, markChatRead, openDm, sendMessage } from '../lib/ops';
+import { useFriendships } from '../lib/friends';
+import { FriendActions } from '../components/FriendButton';
 import { searchPeople } from '../lib/queries';
 import { friendlyError, preparePhoto, timeAgo } from '../lib/util';
 import { Icon } from '../components/Icon';
@@ -79,18 +81,6 @@ export function useChats() {
   return { rooms, dms, error, isUnread };
 }
 
-/** Bottom-nav badge: number of private chats with unread messages. */
-export function ChatNavBadge() {
-  const { dms, isUnread } = useChats();
-  const n = (dms ?? []).filter(isUnread).length;
-  if (!n) return null;
-  return (
-    <span className="absolute -right-2 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
-      {n > 9 ? '9+' : n}
-    </span>
-  );
-}
-
 function DmRow({ chat, unread }: { chat: Chat; unread: boolean }) {
   const { user } = useMe();
   const other = chat.members.find((m) => m !== user.uid) ?? user.uid;
@@ -154,11 +144,12 @@ export function ChatListPage() {
           ))}
         </ul>
       </section>
+      <FriendRequests />
       <section>
         <h2 className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-600">Messages</h2>
         {visibleDms.length === 0 ? (
           <EmptyState title="No private messages yet" icon="message">
-            Tap <strong>New message</strong>, or open someone's profile and tap <strong>Message</strong>.
+            Add friends from their profile. Once they accept your request, tap <strong>New message</strong> to chat.
           </EmptyState>
         ) : (
           <ul className="rounded-2xl bg-white shadow-sm ring-1 ring-sand-200">
@@ -178,12 +169,47 @@ export function ChatListPage() {
   );
 }
 
+/** Friend requests waiting for me (accept to start chatting) and ones I sent. */
+export function FriendRequests() {
+  const f = useFriendships();
+  if (!f.incoming.length && !f.outgoing.length) return null;
+  return (
+    <section aria-label="Friend requests">
+      <h2 className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-600">
+        Requests {f.incoming.length > 0 && <span className="ml-1 rounded-full bg-red-600 px-1.5 text-[11px] text-white">{f.incoming.length}</span>}
+      </h2>
+      <ul className="divide-y divide-sand-200 rounded-2xl bg-white shadow-sm ring-1 ring-sand-200">
+        {[...f.incoming, ...f.outgoing].map((r) => (
+          <RequestRow key={r.otherUid} uid={r.otherUid} incoming={r.incoming} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RequestRow({ uid, incoming }: { uid: string; incoming: boolean }) {
+  const { data: p } = useProfileById(uid);
+  return (
+    <li className="flex flex-wrap items-center gap-3 p-3">
+      <Link to={p ? `/u/${p.username}` : '#'} className="flex min-w-0 flex-1 items-center gap-3">
+        <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={44} />
+        <span className="min-w-0">
+          <span className="block truncate font-semibold text-gray-900">{p?.displayName ?? '…'}</span>
+          <span className="block text-xs text-gray-600">{incoming ? 'Wants to be friends and chat' : 'Request sent'}</span>
+        </span>
+      </Link>
+      <span className="flex gap-1">{p && <FriendActions uid={uid} name={p.displayName} />}</span>
+    </li>
+  );
+}
+
 function NewMessageDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, blocked } = useMe();
   const navigate = useNavigate();
   const toast = useToast();
   const [term, setTerm] = useState('');
   const people = useQuery({ queryKey: ['search', 'people', term], queryFn: () => searchPeople(term), enabled: term.trim().length >= 2 });
+  const f = useFriendships();
   const start = async (uid: string) => {
     try {
       const id = await openDm(db, user.uid, uid);
@@ -199,18 +225,34 @@ function NewMessageDialog({ open, onClose }: { open: boolean; onClose: () => voi
       <ul className="mt-3 max-h-72 overflow-y-auto">
         {(people.data ?? [])
           .filter((p) => p.uid !== user.uid && !blocked.has(p.uid))
-          .map((p) => (
-            <li key={p.uid}>
-              <button onClick={() => start(p.uid)} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-sand-100">
+          .map((p) =>
+            f.get(p.uid)?.status === 'accepted' ? (
+              <li key={p.uid}>
+                <button onClick={() => start(p.uid)} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-sand-100">
+                  <Avatar url={p.photoUrl} name={p.displayName} size={40} />
+                  <span>
+                    <span className="block font-semibold">{p.displayName}</span>
+                    <span className="block text-xs text-gray-600">@{p.username} · Friend</span>
+                  </span>
+                </button>
+              </li>
+            ) : (
+              <li key={p.uid} className="flex items-center gap-3 rounded-xl p-2">
                 <Avatar url={p.photoUrl} name={p.displayName} size={40} />
-                <span>
-                  <span className="block font-semibold">{p.displayName}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{p.displayName}</span>
                   <span className="block text-xs text-gray-600">@{p.username}</span>
                 </span>
-              </button>
-            </li>
-          ))}
+                <span className="flex shrink-0 gap-1">
+                  <FriendActions uid={p.uid} name={p.displayName} />
+                </span>
+              </li>
+            ),
+          )}
       </ul>
+      <p className="mt-3 text-xs text-gray-600">
+        You can message your friends. To chat with someone new, send them a friend request — once they accept, you can chat.
+      </p>
     </Modal>
   );
 }
@@ -226,6 +268,7 @@ export function ChatRoomPage() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [reporting, setReporting] = useState<Message | null>(null);
+  const friends = useFriendships();
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -266,7 +309,8 @@ export function ChatRoomPage() {
   if (chat === undefined || messages === null) return <PageSpinner />;
   if (chat === null) return <EmptyState title="Chat not found" icon="message" />;
   const blockedOther = !!otherUid && blocked.has(otherUid);
-  const canSend = profile.status === 'active' && !blockedOther;
+  const notFriends = !!otherUid && !friends.loading && friends.get(otherUid)?.status !== 'accepted';
+  const canSend = profile.status === 'active' && !blockedOther && !notFriends;
 
   const send = async (imageUrl: string | null = null) => {
     const body = text.trim();
@@ -403,7 +447,11 @@ export function ChatRoomPage() {
           </form>
         ) : (
           <p className="py-2 text-center text-sm text-gray-600">
-            {blockedOther ? 'You blocked this person. Unblock them in Settings to send messages.' : 'You cannot send messages while suspended.'}
+            {blockedOther
+              ? 'You blocked this person. Unblock them in Settings to send messages.'
+              : notFriends
+                ? 'You are not friends any more. Send a friend request from their profile to chat again.'
+                : 'You cannot send messages while suspended.'}
           </p>
         )}
       </div>

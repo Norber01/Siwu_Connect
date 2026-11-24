@@ -80,6 +80,25 @@ describe('setup against Google APIs', () => {
     expect(result.steps.find((s) => s.id === 'rules')).toMatchObject({ ok: false, detail: expect.stringContaining('Permission denied') });
   });
 
+  it('runs in parts small enough for Cloudflare', async () => {
+    const g = fakeGoogle();
+    const core = await runSetup(await prodEnv(), caller, 'core');
+    expect(core.steps.map((s) => s.id)).toEqual(['credentials', 'rules', 'towns', 'domains', 'superAdmin']);
+    expect(g.calls.filter((c) => c.includes('/collectionGroups/'))).toHaveLength(0);
+    let from: number | null | undefined = 0;
+    let calls = 0;
+    while (from !== null && from !== undefined) {
+      const before = g.calls.length;
+      const part = await runSetup(await prodEnv(), caller, 'indexes', from);
+      expect(part.steps.map((s) => s.id)).toEqual(['credentials', 'indexes']);
+      expect(g.calls.length - before).toBeLessThan(45);
+      from = part.next;
+      calls++;
+    }
+    expect(calls).toBe(Math.ceil(FIRESTORE_INDEXES.length / 20));
+    expect(g.calls.filter((c) => c.includes('/collectionGroups/'))).toHaveLength(FIRESTORE_INDEXES.length);
+  });
+
   it('stops early with a helpful message when the key is missing', async () => {
     fakeGoogle();
     const env = { ...(await prodEnv()), GOOGLE_SERVICE_ACCOUNT_JSON: undefined };

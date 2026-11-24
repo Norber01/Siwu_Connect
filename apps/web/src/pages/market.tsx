@@ -7,6 +7,7 @@ import {
   TOWNS,
   type TownId,
   canModerate,
+  hasAdminAccess,
   isTownId,
   listingSchema,
   townShortName,
@@ -166,8 +167,9 @@ export function ListingDetailPage() {
 
   const items: MenuItem[] = [];
   if (mine && l.status !== 'removed') {
+    if (l.status !== 'pending' && l.status !== 'rejected')
+      items.push({ label: l.status === 'sold' ? 'Mark as available' : 'Mark as sold', icon: 'check', onSelect: toggleSold });
     items.push({ label: 'Edit listing', icon: 'edit', onSelect: () => navigate(`/market/${l.id}/edit`) });
-    items.push({ label: l.status === 'sold' ? 'Mark as available' : 'Mark as sold', icon: 'check', onSelect: toggleSold });
   }
   if (mine) items.push({ label: 'Delete listing', icon: 'trash', danger: true, onSelect: () => setConfirm('delete') });
   if (!mine && profile.status === 'active') items.push({ label: 'Report listing', icon: 'flag', onSelect: () => setReporting(true) });
@@ -180,6 +182,8 @@ export function ListingDetailPage() {
     <div className="space-y-4">
       <PageHeader title="Marketplace" back actions={<Menu items={items} label="Listing actions" />} />
       {l.status === 'removed' && <Alert kind="warning">This listing was removed by a moderator.</Alert>}
+      {l.status === 'pending' && <Alert kind="info">⏳ Waiting for a moderator to approve this listing. Only you can see it for now.</Alert>}
+      {l.status === 'rejected' && <Alert kind="warning">A moderator did not approve this listing. Edit it to fix the problem and send it again.</Alert>}
       <article className="overflow-hidden rounded-2xl border border-sand-200 bg-white shadow-sm">
         {l.imageUrl && <img src={l.imageUrl} alt="" className="max-h-96 w-full object-cover" />}
         <div className="space-y-3 p-4">
@@ -223,7 +227,7 @@ export function ListingDetailPage() {
             )}
           </div>
         )}
-        {mine && l.status !== 'removed' && (
+        {mine && (l.status === 'available' || l.status === 'sold') && (
           <div className="grid grid-cols-2 gap-2 border-t border-sand-200 p-3">
             <Button variant="secondary" icon="edit" onClick={() => navigate(`/market/${l.id}/edit`)}>
               Edit
@@ -259,7 +263,8 @@ export function ListingDetailPage() {
 export function ListingFormPage() {
   const { listingId } = useParams();
   const editing = !!listingId;
-  const { user, profile } = useMe();
+  const { user, profile, role } = useMe();
+  const staff = hasAdminAccess(role);
   const navigate = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
@@ -316,14 +321,14 @@ export function ListingFormPage() {
     try {
       let id = listingId;
       if (editing) {
-        const status = existing.data!.status === 'sold' ? 'sold' : 'available';
+        const status = !staff ? 'pending' : existing.data!.status === 'sold' ? 'sold' : 'available';
         await updateListing(db, listingId!, parsed.data, imageUrl, status);
       } else {
-        id = await createListing(db, user.uid, parsed.data, imageUrl);
+        id = await createListing(db, user.uid, parsed.data, imageUrl, staff);
       }
       void qc.invalidateQueries({ queryKey: ['listings'] });
       void qc.invalidateQueries({ queryKey: ['listing', id] });
-      toast(editing ? 'Listing updated.' : 'Your item is listed in the marketplace.');
+      toast(staff ? (editing ? 'Listing updated.' : 'Your item is listed in the marketplace.') : 'Sent for approval ✅ A moderator will check it soon.');
       navigate(`/market/${id}`, { replace: true });
     } catch (err) {
       setError(isPermissionDenied(err) && !editing ? 'You can add one listing per minute. Please wait and try again.' : friendlyError(err));

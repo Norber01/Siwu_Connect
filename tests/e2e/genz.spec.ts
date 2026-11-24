@@ -42,7 +42,7 @@ test('Gen Z features', async ({ page }) => {
   // Hashtag page and Explore trending.
   await page.getByRole('link', { name: `#${tag}` }).click();
   await expect(page.getByRole('heading', { name: `#${tag}` })).toBeVisible();
-  await page.getByRole('link', { name: 'Explore and search' }).click();
+  await page.getByRole('link', { name: 'Explore', exact: true }).click();
   await expect(page.getByRole('link', { name: new RegExp(`#${tag}`) })).toBeVisible();
   await expect(page.getByText('Town spirit this week')).toBeVisible();
 
@@ -52,7 +52,7 @@ test('Gen Z features', async ({ page }) => {
   await page.getByLabel('Title').fill(`Shop assistant ${tag}`);
   await page.getByLabel('Category').fill('Retail');
   await page.getByRole('button', { name: 'Publish' }).click();
-  await expect(page.getByText('Listed! 🎉')).toBeVisible();
+  await expect(page.getByText('Sent for approval')).toBeVisible();
 
   // Story (text).
   await page.goto('/stories/new');

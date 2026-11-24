@@ -13,8 +13,8 @@ import { InviteButton } from '../components/extras';
 import { Icon } from '../components/Icon';
 import { Avatar, EmptyState, ErrorState, PageHeader, PageSpinner } from '../components/ui';
 
-/** Header bell with a live unread count. */
-export function NotificationBell() {
+/** Live count of unread notifications. */
+export function useUnreadNotifications(): number {
   const { user } = useMe();
   const [unread, setUnread] = useState(0);
   useEffect(
@@ -26,6 +26,21 @@ export function NotificationBell() {
       ),
     [user.uid],
   );
+  return unread;
+}
+
+export function CountBadge({ n }: { n: number }) {
+  if (!n) return null;
+  return (
+    <span className="absolute -right-2 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
+      {n > 9 ? '9+' : n}
+    </span>
+  );
+}
+
+/** Header bell with a live unread count. */
+export function NotificationBell() {
+  const unread = useUnreadNotifications();
   return (
     <NavLink
       to="/notifications"
@@ -33,35 +48,71 @@ export function NotificationBell() {
       aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'}
     >
       <Icon name="bell" className="h-6 w-6" />
-      {unread > 0 && (
-        <span className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
-          {unread > 9 ? '9+' : unread}
-        </span>
-      )}
+      <CountBadge n={unread} />
     </NavLink>
   );
+}
+
+function notificationLink(n: AppNotification, actorUsername: string | undefined): string {
+  if (n.type === 'friend_request') return '/chat';
+  if (n.type === 'friend_accepted') return actorUsername ? `/u/${actorUsername}` : '/chat';
+  if (n.type === 'approved' || n.type === 'rejected') {
+    const [col, id] = (n.targetPath ?? '').split('/');
+    return col === 'listings' ? `/market/${id}` : col === 'directory' ? `/directory/${id}` : '/';
+  }
+  return `/p/${n.postId}${n.type === 'comment' ? '#comments' : ''}`;
 }
 
 function NotificationRow({ n }: { n: AppNotification }) {
   const { data: actor } = useProfileById(n.actorId);
   const name = actor?.displayName ?? 'Someone';
+  const approval = n.type === 'approved' || n.type === 'rejected';
+  const icon = n.type === 'like' ? 'thumb' : n.type.startsWith('friend') ? 'user' : approval ? (n.type === 'approved' ? 'check' : 'close') : 'comment';
+  const color = n.type === 'like' || n.type === 'approved' ? 'bg-brand-600' : n.type === 'rejected' ? 'bg-red-600' : n.type.startsWith('friend') ? 'bg-blue-600' : 'bg-gold-600';
+  const text =
+    n.type === 'like'
+      ? 'reacted to your post'
+      : n.type === 'mention'
+        ? 'mentioned you in a post'
+        : n.type === 'friend_request'
+          ? 'sent you a friend request. Accept it to chat and see each other\'s stories.'
+          : n.type === 'friend_accepted'
+            ? 'accepted your friend request. You can now chat 🎉'
+            : n.type === 'comment'
+              ? 'commented on your post'
+              : '';
   return (
     <li>
       <Link
-        to={`/p/${n.postId}${n.type === 'comment' ? '#comments' : ''}`}
+        to={notificationLink(n, actor?.username)}
         className={`flex items-center gap-3 rounded-2xl p-3 hover:bg-sand-100 ${n.read ? 'bg-white' : 'bg-brand-50'}`}
       >
         <span className="relative">
-          <Avatar url={actor?.photoUrl} name={name} size={44} />
-          <span className={`absolute -bottom-1 -right-1 rounded-full p-1 text-white ring-2 ring-white ${n.type === 'like' ? 'bg-brand-600' : 'bg-gold-600'}`}>
-            <Icon name={n.type === 'like' ? 'thumb' : 'comment'} filled={n.type === 'like'} className="h-3 w-3" />
-          </span>
+          {approval ? (
+            <span className={`flex h-11 w-11 items-center justify-center rounded-full ${color} text-white`}>
+              <Icon name={icon} className="h-5 w-5" />
+            </span>
+          ) : (
+            <>
+              <Avatar url={actor?.photoUrl} name={name} size={44} />
+              <span className={`absolute -bottom-1 -right-1 rounded-full p-1 text-white ring-2 ring-white ${color}`}>
+                <Icon name={icon} filled={n.type === 'like'} className="h-3 w-3" />
+              </span>
+            </>
+          )}
         </span>
         <span className="min-w-0 flex-1 text-sm">
-          <span className="font-bold text-gray-900">{name}</span>{' '}
-          <span className="text-gray-700">
-            {n.type === 'like' ? 'reacted to your post' : n.type === 'mention' ? 'mentioned you in a post' : 'commented on your post'}
-          </span>
+          {approval ? (
+            <span className="text-gray-800">
+              {n.type === 'approved' ? '✅ Approved and now live: ' : '❌ Not approved: '}
+              <strong>{n.title}</strong>
+              {n.note ? <span className="block text-gray-600">Moderator's note: {n.note}</span> : null}
+            </span>
+          ) : (
+            <>
+              <span className="font-bold text-gray-900">{name}</span> <span className="text-gray-700">{text}</span>
+            </>
+          )}
           <span className="block text-xs text-gray-600">{timeAgo(n.createdAt)}</span>
         </span>
         {!n.read && <span className="h-2.5 w-2.5 rounded-full bg-brand-600" aria-label="Unread" />}

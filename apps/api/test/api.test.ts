@@ -383,3 +383,21 @@ describe('video uploads', () => {
     expect((await upload('nobody', mp4())).status).toBe(403);
   });
 });
+
+describe('approvals', () => {
+  it('moderators approve or reject members\' listings; owner is notified', async () => {
+    await fs().commit([
+      { kind: 'set', path: 'listings/l9', data: { sellerId: 'alice', townId: 'odomi', title: 'Kente', status: 'pending' } },
+      { kind: 'set', path: 'directory/d9', data: { ownerId: 'bob', townId: 'todzi', title: 'Shop', status: 'pending' } },
+    ]);
+    expect((await call('POST', '/admin/listings/l9/approve', 'alice', {})).status).toBe(403);
+    expect((await call('POST', '/admin/listings/l9/approve', 'mod', {})).status).toBe(200);
+    expect((await fs().get<{ status: string }>('listings/l9'))!.data.status).toBe('available');
+    expect((await call('POST', '/admin/listings/l9/approve', 'mod', {})).status).toBe(409);
+    expect((await call('POST', '/admin/directory/d9/reject', 'townadmin', { note: 'x' })).status).toBe(403); // todzi
+    expect((await call('POST', '/admin/directory/d9/reject', 'mod', { note: 'Please add a phone number' })).status).toBe(200);
+    expect((await fs().get<{ status: string }>('directory/d9'))!.data.status).toBe('rejected');
+    const notes = await fs().query<{ type: string }>({ parent: 'users/bob', collection: 'notifications' });
+    expect(notes.map((n) => n.data.type)).toEqual(['rejected']);
+  });
+});

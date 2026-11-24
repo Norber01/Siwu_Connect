@@ -58,8 +58,20 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   execFileSync('node', ['scripts/demo-data.mjs'], { stdio: 'ignore' });
   const tag = Date.now().toString(36);
 
-  // --- Kofi adds an event through the "+" menu.
+  // --- Members cannot add events: they ask an admin instead.
   await signIn(page, 'kofi_mensah');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page.getByRole('button', { name: /^Event/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'Request event' }).click();
+  await expect(page.getByRole('dialog', { name: 'Ask an admin to add your event' })).toBeVisible();
+  await page.getByRole('button', { name: 'Send feedback' }).click();
+  await expect(page.getByText('Thank you!')).toBeVisible();
+  await signOut(page);
+
+  // --- An admin adds the event through the "+" menu.
+  await signIn(page, 'demo_admin');
   await page.getByRole('button', { name: 'Create' }).click();
   await page.getByRole('button', { name: /^Event/ }).click();
   await page.getByLabel('Event name').fill(`Todzi town meeting ${tag}`);
@@ -84,8 +96,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByRole('button', { name: /Going · 0/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Interested · 1/ })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Events', exact: true }).click();
-  await page.getByRole('link', { name: 'Marketplace' }).click();
+  await page.goto('/market');
   await page.getByRole('link', { name: 'Sell' }).click();
   await page.getByLabel('Choose photo').setInputFiles('apps/web/public/icon-512.png');
   await expect(page.getByRole('button', { name: 'Change' })).toBeVisible();
@@ -95,8 +106,9 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByLabel('Phone number for buyers (optional)').fill('0241234567');
   await expect(page.getByText('Enter a phone number')).toHaveCount(0);
   await page.getByRole('button', { name: 'List item' }).click();
-  await expect(page.getByText('Your item is listed in the marketplace.')).toBeVisible();
-  await expect(page.getByText('GH₵ 850')).toBeVisible();
+  await expect(page.getByText('Sent for approval')).toBeVisible();
+  await expect(page.getByText('Waiting for a moderator to approve this listing')).toBeVisible();
+  const listingUrl = page.url();
 
   await page.goto('/sports');
   await page.getByText('Odomi').first().click();
@@ -130,12 +142,11 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByRole('button', { name: 'Unlike' }).first()).toBeVisible();
   await page.waitForTimeout(1500); // let the like reach the server before the full page reload below
 
-  // Chat: Ama messages Kofi privately and says hi in the Todzi room.
+  // Chat: Ama asks Kofi to be friends (private chat needs an accepted request), and says hi in the Todzi room.
   await page.goto('/u/kofi_mensah');
-  await page.getByRole('button', { name: 'Message' }).click();
-  await page.getByLabel('Message', { exact: true }).fill(`Akwaaba Kofi ${tag}`);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText(`Akwaaba Kofi ${tag}`)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Message' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add friend' }).click();
+  await expect(page.getByRole('button', { name: 'Requested · Cancel' })).toBeVisible();
   await page.goto('/chat');
   await page.getByRole('link', { name: /Todzi/ }).first().click();
   await page.getByLabel('Message', { exact: true }).fill(`Hello Todzi room ${tag}`);
@@ -149,6 +160,14 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByText('Thank you! Your feedback')).toBeVisible();
   await signOut(page);
 
+  // --- A moderator approves Ama's listing.
+  await signIn(page, 'demo_admin');
+  await page.goto('/admin/approvals');
+  await expect(page.getByText(`Kente cloth ${tag}`)).toBeVisible();
+  await page.getByRole('button', { name: 'Approve' }).first().click();
+  await expect(page.getByText('Approved — it is live now.')).toBeVisible();
+  await signOut(page);
+
   // --- Efua (buyer) sees Ama's listing with a WhatsApp link in Ghana format.
   await signIn(page, 'efua_adokor');
   await page.goto('/market?town=mempeasem');
@@ -157,16 +176,32 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByRole('link', { name: 'Call seller' })).toHaveAttribute('href', 'tel:0241234567');
   await signOut(page);
 
-  // --- Kofi gets a notification for Ama's like, and an unread chat.
+  // --- Kofi gets notifications for Ama's like and friend request, accepts it and messages her.
   await signIn(page, 'kofi_mensah');
-  await page.getByRole('link', { name: 'Chat' }).click();
-  await page.getByText(`Akwaaba Kofi ${tag}`).click();
-  await expect(page.getByText(`Akwaaba Kofi ${tag}`).first()).toBeVisible();
-  await page.goto('/');
-  await expect(page.getByRole('link', { name: /Notifications, 1 unread/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Notifications, 2 unread/ })).toBeVisible();
   await page.getByRole('link', { name: /Notifications/ }).click();
   await expect(page.getByText('reacted to your post')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Notifications' })).toBeVisible(); // count cleared
+  await expect(page.getByText('sent you a friend request')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible(); // count cleared
+  await page.getByRole('link', { name: /^Chat/ }).click();
+  await expect(page.getByRole('region', { name: 'Friend requests' })).toBeVisible();
+  await page.getByRole('button', { name: 'Accept request' }).click();
+  await expect(page.getByText('are now friends')).toBeVisible();
+  await page.goto('/u/ama_serwaa');
+  await page.getByRole('button', { name: 'Message' }).click();
+  await page.getByLabel('Message', { exact: true }).fill(`Akwaaba Ama ${tag}`);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText(`Akwaaba Ama ${tag}`)).toBeVisible();
+  await signOut(page);
+
+  // --- Ama sees the approval and the unread chat.
+  await signIn(page, 'ama_serwaa');
+  await page.getByRole('link', { name: /^Chat, 1 unread/ }).click();
+  await expect(page.getByText(`Akwaaba Ama ${tag}`)).toBeVisible();
+  await page.goto('/notifications');
+  await expect(page.getByText('Approved and now live')).toBeVisible();
+  await page.goto(listingUrl);
+  await expect(page.getByText('GH₵ 850')).toBeVisible();
   await signOut(page);
 
   // --- Super Admin posts a live goal and reads the feedback.

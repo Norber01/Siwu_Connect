@@ -8,6 +8,7 @@ import {
   type TownId,
   canModerate,
   eventSchema,
+  hasAdminAccess,
   isTownId,
   townShortName,
 } from '@siwu/shared';
@@ -18,7 +19,7 @@ import { type RsvpStatus, createEvent, setEventStatus, setRsvp, updateEvent } fr
 import { fetchEvent, fetchMyRsvp, fetchUpcomingEvents } from '../lib/queries';
 import type { CommunityEvent } from '../lib/types';
 import { eventTime, friendlyError, fromLocalInput, isPermissionDenied, toLocalInput } from '../lib/util';
-import { DateTile, PhotoField } from '../components/extras';
+import { DateTile, FeedbackDialog, PhotoField } from '../components/extras';
 import { Icon } from '../components/Icon';
 import { Menu, type MenuItem } from '../components/Menu';
 import { AuthorLine, RichText } from '../components/PostCard';
@@ -69,6 +70,9 @@ export function EventsPage() {
   const [params, setParams] = useSearchParams();
   const town = isTownId(params.get('town')) ? params.get('town')! : 'all';
   const [category, setCategory] = useState('');
+  const [asking, setAsking] = useState(false);
+  const { role } = useMe();
+  const staff = hasAdminAccess(role);
   const q = useQuery({
     queryKey: ['events', town],
     queryFn: () => fetchUpcomingEvents(town === 'all' ? null : town),
@@ -89,10 +93,23 @@ export function EventsPage() {
             </option>
           ))}
         </SelectField>
-        <Link to="/events/new" className="inline-flex min-h-[44px] items-center gap-1 rounded-xl bg-brand-600 px-4 font-semibold text-white hover:bg-brand-700">
-          <Icon name="plus" className="h-4 w-4" /> Add event
-        </Link>
+        {staff ? (
+          <Link to="/events/new" className="inline-flex min-h-[44px] items-center gap-1 rounded-xl bg-brand-600 px-4 font-semibold text-white hover:bg-brand-700">
+            <Icon name="plus" className="h-4 w-4" /> Add event
+          </Link>
+        ) : (
+          <Button variant="secondary" icon="megaphone" onClick={() => setAsking(true)}>
+            Request event
+          </Button>
+        )}
       </div>
+      <FeedbackDialog
+        open={asking}
+        onClose={() => setAsking(false)}
+        title="Ask an admin to add your event"
+        intro="Events are added by Siwu Connect admins. Tell us the event name, town, date and time, place and any details — an admin will add it."
+        initialText={'Event request:\nName: \nTown: \nDate and time: \nPlace: \nDetails: '}
+      />
       {q.isPending ? (
         <PageSpinner />
       ) : q.isError ? (
@@ -358,7 +375,7 @@ export function EventDetailPage() {
 export function EventFormPage() {
   const { eventId } = useParams();
   const editing = !!eventId;
-  const { user, profile } = useMe();
+  const { user, profile, role } = useMe();
   const navigate = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
@@ -389,6 +406,12 @@ export function EventFormPage() {
   }, [existing.data]);
 
   if (profile.status !== 'active') return <EmptyState title="Unavailable while suspended" icon="ban" />;
+  if (!hasAdminAccess(role))
+    return (
+      <EmptyState title="Events are added by admins" icon="calendar">
+        Go to <Link to="/events" className="font-semibold text-brand-700 underline">Events</Link> and tap <strong>Request event</strong> to send the details to an admin.
+      </EmptyState>
+    );
   if (editing && existing.isPending) return <PageSpinner />;
   if (editing && (!existing.data || existing.data.authorId !== user.uid)) return <EmptyState title="You can only edit your own events" icon="ban" />;
 

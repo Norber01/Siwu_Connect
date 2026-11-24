@@ -37,9 +37,43 @@ export function SetupPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ ok: boolean; steps: Step[] }>('/setup/run');
-      setSteps(res.steps);
-      setDone(res.ok);
+      // Done in small parts: Cloudflare limits how many calls one request may make.
+      type Part = { ok: boolean; steps: Step[]; next?: number | null; created?: number; existing?: number; total?: number };
+      const core = await api<Part>('/setup/run?part=core');
+      const order = ['credentials', 'rules', 'indexes', 'towns', 'domains', 'superAdmin'];
+      const show = (idx: Step | null) =>
+        setSteps([...core.steps, ...(idx ? [idx] : [])].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)));
+      show(null);
+      if (!core.steps[0]?.ok) {
+        setDone(false);
+        return;
+      }
+      let from: number | null = 0;
+      let created = 0;
+      let existing = 0;
+      let idxStep: Step = { id: 'indexes', label: 'Database indexes', ok: true, detail: '' };
+      while (from !== null) {
+        const part: Part = await api<Part>(`/setup/run?part=indexes&from=${from}`);
+        const s = part.steps.find((x) => x.id === 'indexes');
+        if (!s || !s.ok) {
+          idxStep = s ?? { id: 'indexes', label: 'Database indexes', ok: false, detail: 'Could not create the indexes.' };
+          break;
+        }
+        created += part.created ?? 0;
+        existing += part.existing ?? 0;
+        from = part.next ?? null;
+        idxStep = {
+          id: 'indexes',
+          label: 'Database indexes',
+          ok: true,
+          detail:
+            s.detail.startsWith('Skipped') ? s.detail
+            : `${created} indexes started building, ${existing} already existed${from !== null ? ` (${from} of ${part.total})…` : '. Building can take a few minutes.'}`,
+        };
+        show(idxStep);
+      }
+      show(idxStep);
+      setDone(core.ok && idxStep.ok);
       void status.refetch();
     } catch (e) {
       setError(friendlyError(e));

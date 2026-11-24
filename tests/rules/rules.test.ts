@@ -473,6 +473,10 @@ describe('notifications', () => {
 });
 
 describe('events', () => {
+  beforeEach(async () => {
+    await seedRole('alice', 'moderator', ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']);
+    await seedRole('bob', 'moderator', ['todzi']);
+  });
   const input = () => ({
     townId: 'todzi' as const,
     title: 'Todzi Harvest Thanksgiving',
@@ -487,7 +491,9 @@ describe('events', () => {
     await seedUser('bob');
   });
 
-  it('members create events; RSVP counters stay exact', async () => {
+  it('only admins create events; RSVP counters stay exact', async () => {
+    await seedUser('dan');
+    await assertFails(ops.createEvent(db('dan'), 'dan', input(), null)); // ordinary member
     const id = await ops.createEvent(db('alice'), 'alice', input(), null);
     await assertSucceeds(ops.setRsvp(db('bob'), 'bob', id, null, 'going'));
     await assertSucceeds(ops.setRsvp(db('bob'), 'bob', id, 'going', 'interested'));
@@ -506,6 +512,7 @@ describe('events', () => {
     await assertFails(ops.setEventStatus(db('bob'), id, 'cancelled'));
     await assertSucceeds(ops.setEventStatus(db('alice'), id, 'cancelled'));
     await seedUser('carol');
+    await seedRole('carol', 'moderator', ['todzi']);
     await assertFails(ops.createEvent(db('carol'), 'carol', input(), 'https://x.example/images/alice/a.webp'));
     await assertSucceeds(ops.createEvent(db('bob'), 'bob', input(), 'https://x.example/images/bob/a.webp'));
   });
@@ -532,8 +539,17 @@ describe('marketplace', () => {
     await seedUser('bob');
   });
 
-  it('sellers list, mark sold and delete; others cannot', async () => {
-    const id = await ops.createListing(db('alice'), 'alice', input(), null);
+  it('members\' listings wait for approval (hidden until approved); admins\' go live', async () => {
+    await assertFails(ops.createListing(db('alice'), 'alice', input(), null, true)); // member cannot skip approval
+    const pending = await ops.createListing(db('alice'), 'alice', input(), null);
+    await assertFails(getDoc(doc(db('bob'), 'listings', pending)));
+    await assertSucceeds(getDoc(doc(db('alice'), 'listings', pending)));
+    await assertFails(ops.setListingStatus(db('alice'), pending, 'available')); // cannot self-approve
+  });
+
+  it('sellers mark sold and delete; others cannot', async () => {
+    await seedRole('alice', 'moderator', ['adokor']);
+    const id = await ops.createListing(db('alice'), 'alice', input(), null, true);
     await assertFails(ops.setListingStatus(db('bob'), id, 'sold'));
     await assertSucceeds(ops.setListingStatus(db('alice'), id, 'sold'));
     await assertSucceeds(getDoc(doc(db('bob'), 'listings', id))); // sold items stay visible
@@ -544,7 +560,7 @@ describe('marketplace', () => {
   it('validates price and phone', async () => {
     await assertFails(ops.createListing(db('alice'), 'alice', { ...input(), price: -5 }, null));
     await assertFails(ops.createListing(db('bob'), 'bob', { ...input(), contactPhone: 'call me' }, null));
-    await assertSucceeds(ops.createListing(db('bob'), 'bob', { ...input(), price: null, contactPhone: null }, null));
+    await assertSucceeds(ops.createListing(db('bob'), 'bob', { ...input(), price: null, contactPhone: null }, null)); // pending
   });
 });
 
@@ -617,7 +633,38 @@ describe('chat', () => {
     await seed((a) => setDoc(doc(a, 'chats', 'room_odomi'), { type: 'room', townId: 'odomi', name: 'Akpafu Odomi', lastMessage: null }));
   });
 
+  const befriend = async (a: string, b: string) => {
+    await ops.sendFriendRequest(db(a), a, b);
+    await ops.acceptFriendRequest(db(b), b, a);
+  };
+
+  it('friend requests: send, accept by the other person only, notify, unfriend', async () => {
+    await assertSucceeds(ops.sendFriendRequest(db('alice'), 'alice', 'bob'));
+    expect((await getDoc(doc(db('bob'), 'users', 'bob', 'notifications', 'friend_alice'))).data()?.type).toBe('friend_request');
+    await assertFails(ops.acceptFriendRequest(db('alice'), 'alice', 'bob')); // cannot accept your own request
+    await assertFails(getDoc(doc(db('carol'), 'friendships', 'alice_bob')));
+    await assertFails(ops.openDm(db('alice'), 'alice', 'bob')); // not friends yet
+    await assertSucceeds(ops.acceptFriendRequest(db('bob'), 'bob', 'alice'));
+    expect((await getDoc(doc(db('alice'), 'users', 'alice', 'notifications', 'friendok_bob'))).data()?.type).toBe('friend_accepted');
+    // Cannot fake a friendship for others, or as already accepted.
+    await assertFails(
+      setDoc(doc(db('carol'), 'friendships', 'alice_carol'), { members: ['alice', 'carol'], requesterId: 'carol', status: 'accepted', createdAt: serverTimestamp(), acceptedAt: null }),
+    );
+    await assertFails(
+      setDoc(doc(db('carol'), 'friendships', 'alice_bob'), { members: ['alice', 'bob'], requesterId: 'carol', status: 'pending', createdAt: serverTimestamp(), acceptedAt: null }),
+    );
+    const id = await ops.openDm(db('alice'), 'alice', 'bob');
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', id, 'Hi friend', null));
+    await assertSucceeds(ops.removeFriendship(db('bob'), 'bob', 'alice'));
+    await new Promise((r) => setTimeout(r, 1100));
+    await assertFails(ops.sendMessage(db('alice'), 'alice', id, 'still there?', null)); // unfriended
+    // Blocked people cannot send requests.
+    await ops.blockUser(db('bob'), 'bob', 'carol');
+    await assertFails(ops.sendFriendRequest(db('carol'), 'carol', 'bob'));
+  });
+
   it('direct messages are private to the two members — even from admins', async () => {
+    await befriend('alice', 'bob');
     const id = await ops.openDm(db('alice'), 'alice', 'bob');
     expect(id).toBe('alice_bob');
     await assertSucceeds(ops.sendMessage(db('alice'), 'alice', id, 'Hi Bob!', null));
@@ -633,6 +680,7 @@ describe('chat', () => {
     await assertFails(
       setDoc(doc(db('carol'), 'chats', 'alice_bob'), { type: 'dm', members: ['alice', 'bob'], lastMessage: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }),
     );
+    await befriend('carol', 'bob');
     await ops.blockUser(db('bob'), 'bob', 'carol');
     await assertFails(ops.openDm(db('carol'), 'carol', 'bob'));
   });
@@ -691,15 +739,31 @@ describe('Gen Z features', () => {
     );
   });
 
-  it('stories: own media only, expire in ~24h, author deletes', async () => {
-    await assertSucceeds(ops.createStory(db('bob'), 'bob', 'odomi', { type: 'text', url: null, posterUrl: null, text: 'Good morning Akpafu ☀️', bg: 'sunset' }));
-    await assertFails(
-      ops.createStory(db('carol'), 'carol', 'odomi', { type: 'image', url: 'https://x.example/images/bob/a.webp', posterUrl: null, text: '', bg: 'green' }),
+  it('stories: friends only, own media only, author sees viewers, author deletes', async () => {
+    await assertSucceeds(
+      ops.createStory(db('bob'), 'bob', 'odomi', { type: 'text', url: null, posterUrl: null, text: 'Good morning Akpafu ☀️', bg: 'sunset' }, ['alice']),
     );
-    const s = await getDocs(collection(db('alice'), 'stories'));
+    await assertFails(
+      ops.createStory(db('carol'), 'carol', 'odomi', { type: 'image', url: 'https://x.example/images/bob/a.webp', posterUrl: null, text: '', bg: 'green' }, []),
+    );
+    const visible = (uid: string) =>
+      getDocs(query(collection(db(uid), 'stories'), where('audience', 'array-contains', uid), where('status', '==', 'active')));
+    const s = await visible('alice');
     expect(s.size).toBe(1);
-    await assertFails(ops.deleteStory(db('alice'), s.docs[0]!.id));
-    await assertSucceeds(ops.deleteStory(db('bob'), s.docs[0]!.id));
+    const id = s.docs[0]!.id;
+    await assertFails(getDocs(collection(db('carol'), 'stories'))); // not a friend: cannot list
+    await assertFails(getDoc(doc(db('carol'), 'stories', id)));
+    expect((await visible('carol')).size).toBe(0);
+    // Views: friends record a view; only the author lists them.
+    await assertSucceeds(ops.recordStoryView(db('alice'), 'alice', id));
+    await assertSucceeds(ops.recordStoryView(db('alice'), 'alice', id)); // already viewed: no-op
+    await assertFails(setDoc(doc(db('carol'), 'stories', id, 'views', 'carol'), { viewedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(db('alice'), 'stories', id, 'views', 'carol'), { viewedAt: serverTimestamp() }));
+    const views = await getDocs(collection(db('bob'), 'stories', id, 'views'));
+    expect(views.docs.map((d) => d.id)).toEqual(['alice']);
+    await assertFails(getDocs(collection(db('alice'), 'stories', id, 'views')));
+    await assertFails(ops.deleteStory(db('alice'), id));
+    await assertSucceeds(ops.deleteStory(db('bob'), id));
   });
 
   it('profile bio and vibe', async () => {
@@ -710,6 +774,8 @@ describe('Gen Z features', () => {
   it('directory entries: owners manage their own', async () => {
     const e = { kind: 'job' as const, townId: 'todzi', title: 'Teaching assistant', description: 'Primary school, Todzi.', category: 'Education', contactPhone: '+233241234567', link: null, deadline: new Date(Date.now() + 7 * 86400_000) };
     const id = await ops.saveEntry(db('bob'), 'bob', e, null);
+    await assertFails(ops.setEntryStatus(db('bob'), id, 'active')); // pending: cannot self-approve
+    await seed((a) => updateDoc(doc(a, 'directory', id), { status: 'active' })); // moderator approved
     await assertFails(ops.setEntryStatus(db('carol'), id, 'closed'));
     await assertSucceeds(ops.setEntryStatus(db('bob'), id, 'closed'));
     await assertFails(ops.saveEntry(db('carol'), 'carol', { ...e, link: 'http://insecure.example' }, null));

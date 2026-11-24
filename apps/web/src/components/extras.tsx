@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { EXTRA_LIMITS, canReportSports, feedbackSchema } from '@siwu/shared';
+import { EXTRA_LIMITS, canReportSports, feedbackSchema, hasAdminAccess } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
@@ -104,11 +104,23 @@ export function TeamCrest({ name, townId, size = 56 }: { name: string; townId: s
   );
 }
 
-export function FeedbackDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function FeedbackDialog({
+  open,
+  onClose,
+  title = 'Send feedback',
+  intro = 'Found a problem, or have an idea? Tell us — every message is read by the team building Siwu Connect.',
+  initialText = '',
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  intro?: string;
+  initialText?: string;
+}) {
   const { user } = useMe();
   const toast = useToast();
   const location = useLocation();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -134,11 +146,9 @@ export function FeedbackDialog({ open, onClose }: { open: boolean; onClose: () =
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Send feedback">
+    <Modal open={open} onClose={onClose} title={title}>
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-gray-700">
-          Found a problem, or have an idea? Tell us — every message is read by the team building Siwu Connect.
-        </p>
+        <p className="text-sm text-gray-700">{intro}</p>
         <TextArea label="Your feedback" rows={5} maxLength={EXTRA_LIMITS.feedbackMax} value={text} onChange={(e) => setText(e.target.value)} />
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">
@@ -214,12 +224,23 @@ export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => v
     onClose();
     navigate(to);
   };
+  const staff = hasAdminAccess(role);
   const options: { to: string; icon: IconName; title: string; text: string }[] = [
     { to: '/new', icon: 'edit', title: 'Post', text: 'News, photos, videos, a poll…' },
     { to: '/stories/new', icon: 'camera', title: 'Story', text: 'Disappears after 24 hours ✨' },
-    { to: '/events/new', icon: 'calendar', title: 'Event', text: 'Festival, funeral, wedding, meeting…' },
-    { to: '/market/new', icon: 'cart', title: 'Marketplace listing', text: 'Sell an item, produce or a service' },
-    { to: '/directory/new', icon: 'globe', title: 'Business or opportunity', text: 'List a business, job, scholarship or training' },
+    ...(staff ? [{ to: '/events/new', icon: 'calendar' as const, title: 'Event', text: 'Festival, funeral, wedding, meeting…' }] : []),
+    {
+      to: '/market/new',
+      icon: 'cart',
+      title: 'Marketplace listing',
+      text: staff ? 'Sell an item, produce or a service' : 'Sell something · checked by a moderator first',
+    },
+    {
+      to: '/directory/new',
+      icon: 'globe',
+      title: 'Business or opportunity',
+      text: staff ? 'List a business, job, scholarship or training' : 'Business, job, scholarship · checked first',
+    },
   ];
   if (canReportSports(role)) options.push({ to: '/sports/new', icon: 'ball', title: 'Match', text: 'Add a fixture to the Sports Centre' });
   return (

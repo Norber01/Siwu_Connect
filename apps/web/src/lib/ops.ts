@@ -76,6 +76,9 @@ export interface MediaItem {
   type: 'image' | 'video';
   url: string;
   posterUrl: string | null;
+  /** Pixel size, so the feed can reserve the right space before it loads. */
+  width?: number;
+  height?: number;
 }
 
 export interface PostExtras {
@@ -428,13 +431,14 @@ function listingFields(l: ListingInput, imageUrl: string | null) {
   };
 }
 
-export async function createListing(db: Firestore, uid: string, l: ListingInput, imageUrl: string | null): Promise<string> {
+/** `staff`: admins' listings go live at once; members' wait for moderator approval. */
+export async function createListing(db: Firestore, uid: string, l: ListingInput, imageUrl: string | null, staff = false): Promise<string> {
   const ref = doc(collection(db, 'listings'));
   const batch = writeBatch(db);
   batch.set(ref, {
     sellerId: uid,
     ...listingFields(l, imageUrl),
-    status: 'available',
+    status: staff ? 'available' : 'pending',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -448,7 +452,7 @@ export async function updateListing(
   id: string,
   l: ListingInput,
   imageUrl: string | null,
-  status: 'available' | 'sold',
+  status: 'available' | 'sold' | 'pending',
 ): Promise<void> {
   await updateDoc(doc(db, 'listings', id), { ...listingFields(l, imageUrl), status, updatedAt: serverTimestamp() });
 }
@@ -599,6 +603,51 @@ export async function markChatRead(db: Firestore, uid: string, chatId: string): 
   await setDoc(doc(db, 'users', uid, 'chatState', chatId), { lastReadAt: serverTimestamp() });
 }
 
+// ---------------- friends ----------------
+// friendships/{dmId}: someone sends a request, the other person accepts. Friends can chat
+// privately and see each other's stories.
+
+export async function sendFriendRequest(db: Firestore, uid: string, otherUid: string): Promise<void> {
+  const id = dmId(uid, otherUid);
+  const b = writeBatch(db);
+  b.set(doc(db, 'friendships', id), {
+    members: [uid, otherUid].sort(),
+    requesterId: uid,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    acceptedAt: null,
+  });
+  b.set(doc(db, 'users', otherUid, 'notifications', `friend_${uid}`), {
+    type: 'friend_request',
+    actorId: uid,
+    postId: null,
+    commentId: null,
+    read: false,
+    createdAt: serverTimestamp(),
+  });
+  b.set(doc(db, 'rate_limits', uid), { lastFriendAt: serverTimestamp() }, { merge: true });
+  await b.commit();
+}
+
+export async function acceptFriendRequest(db: Firestore, uid: string, otherUid: string): Promise<void> {
+  const b = writeBatch(db);
+  b.update(doc(db, 'friendships', dmId(uid, otherUid)), { status: 'accepted', acceptedAt: serverTimestamp() });
+  b.set(doc(db, 'users', otherUid, 'notifications', `friendok_${uid}`), {
+    type: 'friend_accepted',
+    actorId: uid,
+    postId: null,
+    commentId: null,
+    read: false,
+    createdAt: serverTimestamp(),
+  });
+  await b.commit();
+}
+
+/** Cancel a sent request, decline a received one, or unfriend. */
+export async function removeFriendship(db: Firestore, uid: string, otherUid: string): Promise<void> {
+  await deleteDoc(doc(db, 'friendships', dmId(uid, otherUid)));
+}
+
 // ---------------- profile extras ----------------
 
 export async function updateBio(db: Firestore, uid: string, bio: string, vibe: string): Promise<void> {
@@ -614,6 +663,7 @@ export async function createStory(
   uid: string,
   townId: string,
   story: { type: 'image' | 'video' | 'text'; url: string | null; posterUrl: string | null; text: string; bg: StoryBg },
+  friendIds: string[],
 ): Promise<void> {
   const b = writeBatch(db);
   const now = Timestamp.now();
@@ -625,9 +675,22 @@ export async function createStory(
     createdAt: serverTimestamp(),
     // The server checks this is about 24 hours from now.
     expiresAt: Timestamp.fromMillis(now.toMillis() + 24 * 3600_000),
+    // Only you and your friends can see it.
+    audience: [uid, ...friendIds.filter((f) => f !== uid)].slice(0, 2000),
   });
   b.set(doc(db, 'rate_limits', uid), { lastStoryAt: serverTimestamp() }, { merge: true });
   await b.commit();
+}
+
+/** Lets the author see who viewed their story. */
+export async function recordStoryView(db: Firestore, uid: string, storyId: string): Promise<void> {
+  const ref = doc(db, 'stories', storyId, 'views', uid);
+  try {
+    if ((await getDoc(ref)).exists()) return;
+  } catch {
+    // Not viewed yet (reading a missing view is allowed, so errors mean offline): try to write.
+  }
+  await setDoc(ref, { viewedAt: serverTimestamp() });
 }
 
 export async function deleteStory(db: Firestore, id: string): Promise<void> {
@@ -648,16 +711,17 @@ export interface EntryInput {
   deadline: Date | null;
 }
 
-export async function saveEntry(db: Firestore, uid: string, e: EntryInput, imageUrl: string | null, id?: string): Promise<string> {
+export async function saveEntry(db: Firestore, uid: string, e: EntryInput, imageUrl: string | null, id?: string, staff = false): Promise<string> {
   if (id) {
     const { kind: _kind, ...rest } = e;
     void _kind;
-    await updateDoc(doc(db, 'directory', id), { ...rest, imageUrl, updatedAt: serverTimestamp() });
+    // A member's edit goes back to the moderators for approval.
+    await updateDoc(doc(db, 'directory', id), { ...rest, imageUrl, ...(staff ? {} : { status: 'pending' }), updatedAt: serverTimestamp() });
     return id;
   }
   const ref = doc(collection(db, 'directory'));
   const b = writeBatch(db);
-  b.set(ref, { ...e, ownerId: uid, imageUrl, status: 'active', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  b.set(ref, { ...e, ownerId: uid, imageUrl, status: staff ? 'active' : 'pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   b.set(doc(db, 'rate_limits', uid), { lastListingAt: serverTimestamp() }, { merge: true });
   await b.commit();
   return ref.id;

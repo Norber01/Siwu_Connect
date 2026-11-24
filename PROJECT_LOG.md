@@ -79,6 +79,26 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   - Explore page (search, trending, leaderboard, directory). Tests: unit 18, rules+API 82, e2e 12.
   - Not built (need paid providers or a budget decision): livestreaming, live audio rooms, in-app payments.
     Phone push notifications need a Firebase Web Push key from the founder — next step.
+- 2026-11-24 — **Approvals, friends, video and X-style redesign (founder feedback):**
+  - **Who can post what:** members post feeds and stories freely. **Events are admin-only.** Members ask an admin
+    with "Request event", which goes to the team's feedback inbox. **Marketplace listings and Businesses & jobs**
+    from members wait as "pending" until a moderator approves them in **Admin → Approvals**. The member gets an
+    "approved" or "not approved" notification with the moderator's note. Editing re-sends the item for approval.
+    Admins' own items go live at once. All of this is enforced in the security rules and the API, with an audit log.
+  - **Friends and chat requests:** to chat privately, send a friend request; once the other person accepts, you
+    can chat. Unfriending or blocking stops new messages. Requests show in Chat → Requests and as notifications.
+  - **Stories for friends only:** a story is visible only to the author's friends at the time it was posted. The
+    author sees **how many people viewed it, and who** (tap "N views").
+  - **Video:** space is reserved before a video loads (no jumping text), the preview frame shows at once, and
+    videos play muted when on screen and **stop when you scroll past**. Only one plays at a time, and none
+    autoplay in data-saver mode. Large phone videos are **shrunk to 720p on the phone** before upload (H.264, quick
+    start) for faster uploads and playback; the original is used if the phone can't.
+  - **X-inspired design:** edge-to-edge posts with an avatar column and an icon action row; underlined town tabs;
+    icon bottom bar (Home · Explore · Sports · Notifications · Chat); floating "+" button; side menu from your
+    avatar (Profile, Events, Marketplace, Businesses & jobs, Towns, Admin, Settings, theme, invite, sign out); and
+    a three-column layout on computers with "What's happening" and "Coming up".
+  - **Setup fix:** "Run setup" was failing with "Too many subrequests" (Cloudflare's free plan allows 50 outgoing
+    calls per request). Setup now runs in parts: the core steps first, then the indexes in batches of 20.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

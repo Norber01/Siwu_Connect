@@ -272,10 +272,9 @@ export async function fetchListing(id: string): Promise<Listing | null> {
   return snap.exists() ? toListing(snap) : null;
 }
 
-export async function fetchSellerListings(uid: string): Promise<Listing[]> {
-  const snap = await getDocs(
-    query(collection(db, 'listings'), where('sellerId', '==', uid), where('status', 'in', ['available', 'sold']), limit(50)),
-  );
+export async function fetchSellerListings(uid: string, mine = false): Promise<Listing[]> {
+  const statuses = mine ? ['available', 'sold', 'pending', 'rejected'] : ['available', 'sold'];
+  const snap = await getDocs(query(collection(db, 'listings'), where('sellerId', '==', uid), where('status', 'in', statuses), limit(50)));
   return snap.docs.map(toListing).sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 }
 

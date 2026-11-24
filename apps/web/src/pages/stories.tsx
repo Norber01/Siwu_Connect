@@ -6,7 +6,8 @@ import { EXTRA_LIMITS } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
-import { type StoryBg, createStory, deleteStory } from '../lib/ops';
+import { type StoryBg, createStory, deleteStory, recordStoryView } from '../lib/ops';
+import { fetchFriendIds } from '../lib/friends';
 import { friendlyError, isPermissionDenied, preparePhoto, timeAgo } from '../lib/util';
 import { inspectVideo, uploadWithProgress } from '../components/media';
 import { Icon } from '../components/Icon';
@@ -37,9 +38,16 @@ export const STORY_BGS: Record<StoryBg, string> = {
 
 const toDate = (v: unknown) => (v && typeof (v as Timestamp).toDate === 'function' ? (v as Timestamp).toDate() : null);
 
-async function fetchStories(): Promise<Story[]> {
+async function fetchStories(uid: string): Promise<Story[]> {
   const snap = await getDocs(
-    query(collection(db, 'stories'), where('status', '==', 'active'), where('expiresAt', '>', new Date()), orderBy('expiresAt', 'asc'), limit(150)),
+    query(
+      collection(db, 'stories'),
+      where('audience', 'array-contains', uid),
+      where('status', '==', 'active'),
+      where('expiresAt', '>', new Date()),
+      orderBy('expiresAt', 'asc'),
+      limit(150),
+    ),
   );
   return snap.docs.map((d) => {
     const x = d.data();
@@ -92,7 +100,7 @@ function Ring({ uid, unseen, label }: { uid: string; unseen: boolean; label?: st
 /** The row of story rings at the top of the home feed. */
 export function StoriesBar() {
   const { user, profile, blocked } = useMe();
-  const q = useQuery({ queryKey: ['stories'], queryFn: fetchStories, staleTime: 60_000 });
+  const q = useQuery({ queryKey: ['stories', user.uid], queryFn: () => fetchStories(user.uid), staleTime: 60_000 });
   const [seen, setSeen] = useState(loadSeen);
   const [open, setOpen] = useState<number | null>(null);
   const groups = groupStories(q.data ?? [], user.uid, seen, blocked);
@@ -189,7 +197,17 @@ function StoryViewer({
   useEffect(() => {
     onSeen(story.id);
     setProgress(0);
-  }, [story.id, onSeen]);
+    if (group.authorId !== user.uid) void recordStoryView(db, user.uid, story.id).catch(() => {});
+  }, [story.id, onSeen, group.authorId, user.uid]);
+  const mine = group.authorId === user.uid;
+  const [showViewers, setShowViewers] = useState(false);
+  const viewers = useQuery({
+    queryKey: ['storyViews', story.id],
+    queryFn: () => fetchStoryViews(story.id),
+    enabled: mine,
+    refetchInterval: mine ? 20_000 : false,
+  });
+  useEffect(() => setPaused(showViewers), [showViewers]);
 
   // Photos and text show for 5 seconds; videos play to the end.
   useEffect(() => {
@@ -246,6 +264,15 @@ function StoryViewer({
             <p className="whitespace-pre-wrap break-words text-center text-3xl font-black leading-tight text-white drop-shadow">{story.text}</p>
           </div>
         )}
+        {mine && (
+          <button
+            onClick={() => setShowViewers(true)}
+            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/50 px-4 py-2 text-sm font-bold text-white"
+            aria-label="See who viewed your story"
+          >
+            <Icon name="eye" className="h-4 w-4" /> {viewers.data ? viewers.data.length : '…'} {viewers.data?.length === 1 ? 'view' : 'views'}
+          </button>
+        )}
         {story.type !== 'text' && story.text && (
           <p className="absolute inset-x-0 bottom-16 bg-black/40 px-4 py-3 text-center text-lg font-semibold text-white">{story.text}</p>
         )}
@@ -288,6 +315,25 @@ function StoryViewer({
           </div>
         </div>
       </div>
+      {showViewers && (
+        <div className="absolute inset-x-0 bottom-0 z-20 mx-auto max-h-[60vh] max-w-md overflow-y-auto rounded-t-3xl bg-white p-4 text-gray-900 shadow-2xl">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-bold">
+              <Icon name="eye" className="mr-1 inline h-4 w-4" />
+              Viewed by {viewers.data?.length ?? 0}
+            </h2>
+            <button onClick={() => setShowViewers(false)} className="rounded-full p-2 hover:bg-sand-100" aria-label="Close viewers">
+              <Icon name="close" className="h-4 w-4" />
+            </button>
+          </div>
+          {viewers.data?.length === 0 && <p className="py-6 text-center text-sm text-gray-600">No views yet. Your friends will show here when they watch.</p>}
+          <ul className="divide-y divide-sand-200">
+            {(viewers.data ?? []).map((v) => (
+              <ViewerRow key={v.uid} uid={v.uid} at={v.viewedAt} />
+            ))}
+          </ul>
+        </div>
+      )}
       {reporting && (
         <ReportDialog
           open
@@ -296,6 +342,24 @@ function StoryViewer({
         />
       )}
     </div>
+  );
+}
+
+async function fetchStoryViews(storyId: string): Promise<{ uid: string; viewedAt: Date | null }[]> {
+  const snap = await getDocs(query(collection(db, 'stories', storyId, 'views'), orderBy('viewedAt', 'desc'), limit(500)));
+  return snap.docs.map((d) => ({ uid: d.id, viewedAt: toDate(d.data().viewedAt) }));
+}
+
+function ViewerRow({ uid, at }: { uid: string; at: Date | null }) {
+  const { data: p } = useProfileById(uid);
+  return (
+    <li className="flex items-center gap-3 py-2">
+      <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={40} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold">{p?.displayName ?? '…'}</span>
+        <span className="block text-xs text-gray-600">{p ? `@${p.username} · ` : ''}{timeAgo(at)}</span>
+      </span>
+    </li>
   );
 }
 
@@ -325,9 +389,10 @@ export function NewStoryPage() {
     setBusy(true);
     setError(null);
     try {
+      const friendIds = await fetchFriendIds(user.uid);
       if (mode === 'text') {
         if (!text.trim()) throw new Error('Write something for your story.');
-        await createStory(db, user.uid, profile.hometownId, { type: 'text', url: null, posterUrl: null, text: text.trim().slice(0, 200), bg });
+        await createStory(db, user.uid, profile.hometownId, { type: 'text', url: null, posterUrl: null, text: text.trim().slice(0, 200), bg }, friendIds);
       } else if (file) {
         const isVideo = file.type.startsWith('video/');
         let url: string;
@@ -342,7 +407,7 @@ export function NewStoryPage() {
           const blob = await preparePhoto(file, EXTRA_LIMITS.imageMaxPixels, EXTRA_LIMITS.imageMaxBytes);
           url = await uploadWithProgress('/uploads/image', blob, setProgress);
         }
-        await createStory(db, user.uid, profile.hometownId, { type: isVideo ? 'video' : 'image', url, posterUrl, text: text.trim().slice(0, 200), bg });
+        await createStory(db, user.uid, profile.hometownId, { type: isVideo ? 'video' : 'image', url, posterUrl, text: text.trim().slice(0, 200), bg }, friendIds);
       }
       void qc.invalidateQueries({ queryKey: ['stories'] });
       toast('Your story is up for 24 hours ✨');
@@ -406,7 +471,7 @@ export function NewStoryPage() {
       <Button className="w-full" busy={busy} onClick={share} disabled={mode === 'media' && !file}>
         Share to your story
       </Button>
-      <p className="text-center text-xs text-gray-600">Stories disappear after 24 hours.</p>
+      <p className="text-center text-xs text-gray-600">Only your friends can see your story. It disappears after 24 hours.</p>
     </div>
   );
 }

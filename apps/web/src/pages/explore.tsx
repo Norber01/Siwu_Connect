@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type Timestamp, collection, doc, getDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
-import { EXTRA_LIMITS, TOWNS, canModerate, isTownId, townName, townShortName } from '@siwu/shared';
+import { EXTRA_LIMITS, TOWNS, canModerate, hasAdminAccess, isTownId, townName, townShortName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
@@ -124,7 +124,7 @@ interface Entry extends EntryInput {
   id: string;
   ownerId: string;
   imageUrl: string | null;
-  status: 'active' | 'closed' | 'deleted' | 'removed';
+  status: 'active' | 'closed' | 'deleted' | 'removed' | 'pending' | 'rejected';
   createdAt: Date | null;
 }
 const toDate = (v: unknown) => (v && typeof (v as Timestamp).toDate === 'function' ? (v as Timestamp).toDate() : null);
@@ -237,6 +237,8 @@ export function EntryDetailPage() {
   const items: MenuItem[] = [];
   if (mine && e.status !== 'removed') {
     items.push({ label: 'Edit', icon: 'edit', onSelect: () => navigate(`/directory/${e.id}/edit`) });
+  }
+  if (mine && (e.status === 'active' || e.status === 'closed')) {
     items.push({
       label: e.status === 'closed' ? 'Reopen' : e.kind === 'business' ? 'Mark as closed' : 'Mark as filled / closed',
       icon: 'check',
@@ -262,6 +264,8 @@ export function EntryDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader title={`${k.emoji} ${k.title}`} back actions={<Menu items={items} label="Actions" />} />
+      {e.status === 'pending' && <Alert kind="info">⏳ Waiting for a moderator to approve this. Only you can see it for now.</Alert>}
+      {e.status === 'rejected' && <Alert kind="warning">A moderator did not approve this. Edit it to fix the problem and send it again.</Alert>}
       {e.status === 'closed' && <Alert kind="warning">{e.kind === 'business' ? 'This business is marked as closed.' : 'This opportunity is closed.'}</Alert>}
       <article className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-sand-200">
         {e.imageUrl && <img src={e.imageUrl} alt="" className="max-h-72 w-full object-cover" />}
@@ -318,7 +322,8 @@ export function EntryDetailPage() {
 export function EntryFormPage() {
   const { entryId } = useParams();
   const [params] = useSearchParams();
-  const { user, profile } = useMe();
+  const { user, profile, role } = useMe();
+  const staff = hasAdminAccess(role);
   const navigate = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
@@ -384,10 +389,11 @@ export function EntryFormPage() {
         },
         imageUrl,
         entryId,
+        staff,
       );
       void qc.invalidateQueries({ queryKey: ['directory'] });
       void qc.invalidateQueries({ queryKey: ['entry', id] });
-      toast(editing ? 'Saved.' : 'Listed! 🎉');
+      toast(staff ? (editing ? 'Saved.' : 'Listed! 🎉') : 'Sent for approval ✅ A moderator will check it soon.');
       navigate(`/directory/${id}`, { replace: true });
     } catch (x) {
       setError(isPermissionDenied(x) && !editing ? 'You can add one listing per minute. Please wait and try again.' : friendlyError(x));

@@ -39,6 +39,10 @@ service cloud.firestore {
         && (get(rolePath()).data.role == 'super_admin'
             || (get(rolePath()).data.role in ['town_admin', 'moderator'] && townId in get(rolePath()).data.townIds));
     }
+    // Admins (not sports reporters): Super Admin, Town Admin, Moderator.
+    function isStaff() {
+      return hasRole() && get(rolePath()).data.role in ['super_admin', 'town_admin', 'moderator'];
+    }
     // Sports reporters and every admin role may manage matches.
     function canReportSports() { return hasRole(); }
     function imageOk(url, uid) {
@@ -140,7 +144,8 @@ service cloud.firestore {
     match /rate_limits/{uid} {
       allow read: if signedIn() && uid == me();
       allow create: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt', 'lastFriendAt'])
+        && d().get('lastFriendAt', request.time) == request.time
         && d().get('lastMessageAt', request.time) == request.time
         && d().get('lastStoryAt', request.time) == request.time
         && d().get('lastPostAt', request.time) == request.time
@@ -148,7 +153,8 @@ service cloud.firestore {
         && d().get('lastEventAt', request.time) == request.time
         && d().get('lastListingAt', request.time) == request.time;
       allow update: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt', 'lastFriendAt'])
+        && (!('lastFriendAt' in changed()) || d().lastFriendAt == request.time)
         && (!('lastMessageAt' in changed()) || d().lastMessageAt == request.time)
         && (!('lastStoryAt' in changed()) || d().lastStoryAt == request.time)
         && (!('lastPostAt' in changed()) || d().lastPostAt == request.time)
@@ -169,7 +175,9 @@ service cloud.firestore {
         && url.matches('^https?://[^/]+(/[^/]+)*/videos/' + uid + '/[A-Za-z0-9_-]+[.](mp4|mov|webm)$');
     }
     function mediaItemOk(i, uid) {
-      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl'])
+      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl', 'width', 'height'])
+        && (!('width' in i) || (i.width is int && i.width > 0 && i.width <= 10000))
+        && (!('height' in i) || (i.height is int && i.height > 0 && i.height <= 10000))
         && ((i.type == 'image' && i.url != null && imageOk(i.url, uid))
             || (i.type == 'video' && videoOk(i.url, uid)))
         && imageOk(i.get('posterUrl', null), uid);
@@ -382,7 +390,16 @@ service cloud.firestore {
             || (d().type == 'mention' && nid == 'mention_' + d().postId && d().commentId == null
               && !exists(postPath(d().postId))
               && getAfter(postPath(d().postId)).data.authorId == me()
-              && uid in getAfter(postPath(d().postId)).data.get('mentions', [])));
+              && uid in getAfter(postPath(d().postId)).data.get('mentions', []))
+            // Friend request sent by the caller, or the caller accepting the person's request.
+            || (d().type == 'friend_request' && nid == 'friend_' + me() && d().postId == null && d().commentId == null
+              && !exists(friendPath(me(), uid))
+              && getAfter(friendPath(me(), uid)).data.requesterId == me()
+              && getAfter(friendPath(me(), uid)).data.status == 'pending')
+            || (d().type == 'friend_accepted' && nid == 'friendok_' + me() && d().postId == null && d().commentId == null
+              && get(friendPath(me(), uid)).data.status == 'pending'
+              && get(friendPath(me(), uid)).data.requesterId == uid
+              && getAfter(friendPath(me(), uid)).data.status == 'accepted'));
     }
     match /users/{uid}/notifications/{nid} {
       allow read, delete: if signedIn() && uid == me();
@@ -421,6 +438,7 @@ service cloud.firestore {
       allow create: if isActive()
         && exactKeys(['authorId', 'townId', 'title', 'description', 'category', 'location', 'startsAt', 'endsAt',
                       'imageUrl', 'status', 'goingCount', 'interestedCount', 'createdAt', 'updatedAt'])
+        && isStaff()
         && d().authorId == me()
         && validEvent(d(), me())
         && d().status == 'published'
@@ -483,15 +501,19 @@ service cloud.firestore {
                       'contactPhone', 'contactWhatsApp', 'status', 'searchTokens', 'createdAt', 'updatedAt'])
         && d().sellerId == me()
         && validListing(d(), me())
-        && d().status == 'available'
+        // Members' listings wait for a moderator; admins' go live at once.
+        && d().status == (isStaff() ? 'available' : 'pending')
         && d().createdAt == request.time && d().updatedAt == request.time
         && rateOk('lastListingAt', 60);
       allow update: if
-        (isActive() && resource.data.sellerId == me() && resource.data.status in ['available', 'sold']
+        (isActive() && resource.data.sellerId == me() && resource.data.status in ['available', 'sold', 'pending', 'rejected']
           && changed().hasOnly(['townId', 'title', 'description', 'category', 'price', 'priceUnit', 'imageUrl',
                                 'contactPhone', 'contactWhatsApp', 'status', 'searchTokens', 'updatedAt'])
-          && d().status in ['available', 'sold']
-          && validListing(d(), me()) && d().updatedAt == request.time)
+          && validListing(d(), me()) && d().updatedAt == request.time
+          && ((isStaff() && d().status in ['available', 'sold'])
+              // A member's edit goes back for approval; only switching sold/available needs none.
+              || d().status == 'pending'
+              || (changed().hasOnly(['status', 'updatedAt']) && resource.data.status in ['available', 'sold'] && d().status in ['available', 'sold'])))
         || (signedIn() && resource.data.sellerId == me() && resource.data.status != 'deleted'
           && changed().hasOnly(['status', 'updatedAt']) && d().status == 'deleted' && d().updatedAt == request.time);
       allow delete: if false;
@@ -575,6 +597,45 @@ service cloud.firestore {
       }
     }
 
+    // ---------- friends ----------
+    // friendships/{uidA_uidB} (sorted). Someone sends a request; the other person accepts it.
+    // Only friends can start a private chat or see each other's stories. Either friend can
+    // cancel, decline or unfriend by deleting the document.
+    function pairId(a, b) { return a < b ? a + '_' + b : b + '_' + a; }
+    function friendPath(a, b) { return /databases/$(database)/documents/friendships/$(pairId(a, b)); }
+    function areFriends(other) {
+      return exists(friendPath(me(), other)) && get(friendPath(me(), other)).data.status == 'accepted';
+    }
+    function notBlockedWith(other) {
+      return !exists(/databases/$(database)/documents/users/$(other)/blocks/$(me()))
+        && !exists(/databases/$(database)/documents/users/$(me())/blocks/$(other));
+    }
+    match /friendships/{id} {
+      allow get: if signedIn() && (resource == null || me() in resource.data.members);
+      allow list: if signedIn() && me() in resource.data.members;
+      allow create: if isActive()
+        && exactKeys(['members', 'requesterId', 'status', 'createdAt', 'acceptedAt'])
+        && d().members is list && d().members.size() == 2
+        && me() in d().members
+        && d().members[0] < d().members[1]
+        && id == d().members[0] + '_' + d().members[1]
+        && exists(userPath(d().members[0])) && exists(userPath(d().members[1]))
+        && notBlockedWith(d().members[0] == me() ? d().members[1] : d().members[0])
+        && d().requesterId == me()
+        && d().status == 'pending'
+        && d().acceptedAt == null
+        && d().createdAt == request.time
+        && rateOk('lastFriendAt', 2);
+      allow update: if isActive()
+        && me() in resource.data.members
+        && resource.data.requesterId != me()
+        && resource.data.status == 'pending'
+        && changed().hasOnly(['status', 'acceptedAt'])
+        && d().status == 'accepted'
+        && d().acceptedAt == request.time;
+      allow delete: if signedIn() && me() in resource.data.members;
+    }
+
     // ---------- chat ----------
     // Town rooms (room_all, room_<town>) are open to every member. Direct messages (id "<uidA>_<uidB>",
     // sorted) can only be read and written by their two members — not even admins can read them.
@@ -600,6 +661,7 @@ service cloud.firestore {
         && chatId == d().members[0] + '_' + d().members[1]
         && exists(userPath(d().members[0])) && exists(userPath(d().members[1]))
         && notBlockedDm(d())
+        && areFriends(d().members[0] == me() ? d().members[1] : d().members[0])
         && d().lastMessage == null
         && d().createdAt == request.time && d().updatedAt == request.time;
       // The chat preview moves together with a new message the caller just sent.
@@ -619,6 +681,7 @@ service cloud.firestore {
         allow create: if isActive()
           && canUseChat(get(chatPath(chatId)).data)
           && notBlockedDm(get(chatPath(chatId)).data)
+          && (get(chatPath(chatId)).data.type == 'room' || areFriends(dmOther(get(chatPath(chatId)).data)))
           && exactKeys(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
           && d().senderId == me()
           && str(d().text, 0, 2000)
@@ -643,11 +706,16 @@ service cloud.firestore {
     }
 
     // ---------- stories (disappear after 24 hours) ----------
+    // Only the author's friends see a story: "audience" is the author plus their friends when it was
+    // posted. Friends who view it leave a views/{uid} record that only the author can list.
+    function storyPath(id) { return /databases/$(database)/documents/stories/$(id); }
     match /stories/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() && me() in resource.data.get('audience', []);
       allow create: if isActive()
-        && exactKeys(['authorId', 'townId', 'type', 'url', 'posterUrl', 'text', 'bg', 'status', 'createdAt', 'expiresAt'])
+        && exactKeys(['authorId', 'townId', 'type', 'url', 'posterUrl', 'text', 'bg', 'status', 'createdAt', 'expiresAt', 'audience'])
         && d().authorId == me()
+        && d().audience is list && d().audience.size() >= 1 && d().audience.size() <= 2000
+        && me() in d().audience
         && isTown(d().townId)
         && ((d().type == 'image' && imageOk(d().url, me()) && d().url != null)
             || (d().type == 'video' && videoOk(d().url, me()))
@@ -664,6 +732,16 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.authorId == me() && resource.data.status == 'active'
         && changed().hasOnly(['status']) && d().status == 'deleted';
       allow delete: if false;
+
+      match /views/{viewerId} {
+        allow get: if signedIn() && (viewerId == me() || get(storyPath(id)).data.authorId == me());
+        allow list: if signedIn() && get(storyPath(id)).data.authorId == me();
+        allow create: if signedIn() && viewerId == me()
+          && get(storyPath(id)).data.authorId != me()
+          && me() in get(storyPath(id)).data.get('audience', [])
+          && exactKeys(['viewedAt']) && d().viewedAt == request.time;
+        allow update, delete: if false;
+      }
     }
 
     // ---------- businesses & opportunities directory ----------
@@ -685,12 +763,16 @@ service cloud.firestore {
         && exactKeys(['kind', 'ownerId', 'townId', 'title', 'description', 'category', 'contactPhone', 'link', 'deadline',
                       'imageUrl', 'status', 'createdAt', 'updatedAt'])
         && d().ownerId == me() && validEntry(d(), me())
-        && d().status == 'active' && d().createdAt == request.time && d().updatedAt == request.time
+        && d().status == (isStaff() ? 'active' : 'pending')
+        && d().createdAt == request.time && d().updatedAt == request.time
         && rateOk('lastListingAt', 60);
       allow update: if
-        (isActive() && resource.data.ownerId == me() && resource.data.status in ['active', 'closed']
+        (isActive() && resource.data.ownerId == me() && resource.data.status in ['active', 'closed', 'pending', 'rejected']
           && changed().hasOnly(['townId', 'title', 'description', 'category', 'contactPhone', 'link', 'deadline', 'imageUrl', 'status', 'updatedAt'])
-          && d().status in ['active', 'closed'] && validEntry(d(), me()) && d().kind == resource.data.kind && d().updatedAt == request.time)
+          && validEntry(d(), me()) && d().kind == resource.data.kind && d().updatedAt == request.time
+          && ((isStaff() && d().status in ['active', 'closed'])
+              || d().status == 'pending'
+              || (changed().hasOnly(['status', 'updatedAt']) && resource.data.status in ['active', 'closed'] && d().status in ['active', 'closed'])))
         || (signedIn() && resource.data.ownerId == me() && resource.data.status != 'deleted'
           && changed().hasOnly(['status', 'updatedAt']) && d().status == 'deleted' && d().updatedAt == request.time);
       allow delete: if false;

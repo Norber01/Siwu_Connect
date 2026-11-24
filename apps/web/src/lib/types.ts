@@ -21,7 +21,7 @@ export interface Post {
   townId: string;
   text: string;
   /** Photos and videos (older posts' single imageUrl is folded in here). */
-  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null }>;
+  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null; width?: number; height?: number }>;
   poll: { options: string[]; counts: number[] } | null;
   tags: string[];
   reactions: Record<string, number>;
@@ -204,7 +204,7 @@ export interface Listing {
   imageUrl: string | null;
   contactPhone: string | null;
   contactWhatsApp: boolean;
-  status: 'available' | 'sold' | 'removed' | 'deleted';
+  status: 'available' | 'sold' | 'removed' | 'deleted' | 'pending' | 'rejected';
   createdAt: Date | null;
 }
 
@@ -244,10 +244,14 @@ export interface MatchUpdate {
 
 export interface AppNotification {
   id: string;
-  type: 'like' | 'comment' | 'mention';
+  type: 'like' | 'comment' | 'mention' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected';
   actorId: string;
-  postId: string;
+  postId: string | null;
   commentId: string | null;
+  /** For approvals: the listing or directory entry, e.g. "listings/abc". */
+  targetPath?: string | null;
+  title?: string | null;
+  note?: string | null;
   read: boolean;
   createdAt: Date | null;
 }
@@ -329,7 +333,18 @@ export function toMatchUpdate(s: DocumentSnapshot): MatchUpdate {
 
 export function toNotification(s: DocumentSnapshot): AppNotification {
   const d = s.data()!;
-  return { id: s.id, type: d.type, actorId: d.actorId, postId: d.postId, commentId: d.commentId ?? null, read: !!d.read, createdAt: date(d.createdAt) };
+  return {
+    id: s.id,
+    type: d.type,
+    actorId: d.actorId,
+    postId: d.postId ?? null,
+    commentId: d.commentId ?? null,
+    targetPath: d.targetPath ?? null,
+    title: d.title ?? null,
+    note: d.note ?? null,
+    read: !!d.read,
+    createdAt: date(d.createdAt),
+  };
 }
 
 export function toFeedback(s: DocumentSnapshot): Feedback {

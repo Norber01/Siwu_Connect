@@ -93,12 +93,16 @@ async function deployRules(env: Env): Promise<string> {
   return 'Security rules are active.';
 }
 
-async function deployIndexes(env: Env): Promise<string> {
+/** Indexes are created a batch at a time: Cloudflare allows ~50 outgoing requests per call. */
+export const INDEX_BATCH = 20;
+
+async function deployIndexes(env: Env, from: number): Promise<{ detail: string; created: number; existing: number; next: number | null }> {
   const base = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/collectionGroups`;
   let created = 0;
   let existing = 0;
   const failed: string[] = [];
-  for (const idx of FIRESTORE_INDEXES) {
+  const batch = FIRESTORE_INDEXES.slice(from, from + INDEX_BATCH);
+  for (const idx of batch) {
     const res = await google(env, `${base}/${idx.collectionGroup}/indexes`, {
       method: 'POST',
       body: JSON.stringify({ queryScope: idx.queryScope, fields: idx.fields }),
@@ -108,7 +112,13 @@ async function deployIndexes(env: Env): Promise<string> {
     else failed.push(`${idx.collectionGroup}: ${await errorText(res)}`);
   }
   if (failed.length) throw new Error(`${failed.length} of ${FIRESTORE_INDEXES.length} indexes failed. First error — ${failed[0]}`);
-  return `${created} indexes started building, ${existing} already existed. Building can take a few minutes.`;
+  const end = from + batch.length;
+  return {
+    detail: `${created} indexes started building, ${existing} already existed. Building can take a few minutes.`,
+    created,
+    existing,
+    next: end < FIRESTORE_INDEXES.length ? end : null,
+  };
 }
 
 async function authorizeDomains(env: Env): Promise<string> {
@@ -166,7 +176,22 @@ async function grantFounder(fs: Firestore, caller: Caller): Promise<string> {
   return 'Your account is now Super Admin.';
 }
 
-export async function runSetup(env: Env, caller: Caller): Promise<{ ok: boolean; steps: SetupStep[] }> {
+export interface SetupResult {
+  ok: boolean;
+  steps: SetupStep[];
+  /** For the "indexes" part: where the next batch starts, or null when all are done. */
+  next?: number | null;
+  created?: number;
+  existing?: number;
+  total?: number;
+}
+
+/**
+ * Runs one part of the setup. The page calls "core" first, then "indexes" in batches
+ * (each call stays under Cloudflare's per-request limit on outgoing calls).
+ * Calling without a part runs everything (used by tests and the local emulators).
+ */
+export async function runSetup(env: Env, caller: Caller, part: 'core' | 'indexes' | 'all' = 'all', from = 0): Promise<SetupResult> {
   const steps: SetupStep[] = [];
   const run = async (id: SetupStep['id'], label: string, fn: () => Promise<string>) => {
     try {
@@ -186,10 +211,35 @@ export async function runSetup(env: Env, caller: Caller): Promise<{ ok: boolean;
   });
   if (!steps[0]!.ok) return { ok: false, steps };
 
-  await run('rules', 'Security rules', () => (emulator ? Promise.resolve('Skipped in local test mode.') : deployRules(env)));
-  await run('indexes', 'Database indexes', () => (emulator ? Promise.resolve('Skipped in local test mode.') : deployIndexes(env)));
-  await run('towns', 'Five towns', () => seedTowns(fs));
-  await run('domains', 'Website sign-in', () => (emulator ? Promise.resolve('Skipped in local test mode.') : authorizeDomains(env)));
-  await run('superAdmin', 'Super Admin', () => grantFounder(fs, caller));
-  return { ok: steps.every((s) => s.ok), steps };
+  let indexInfo: Pick<SetupResult, 'next' | 'created' | 'existing' | 'total'> = {};
+  const indexes = async () => {
+    if (emulator) {
+      indexInfo = { next: null, created: 0, existing: 0, total: FIRESTORE_INDEXES.length };
+      return 'Skipped in local test mode.';
+    }
+    if (part === 'all') {
+      let created = 0;
+      let existing = 0;
+      let next: number | null = 0;
+      while (next !== null) {
+        const r = await deployIndexes(env, next);
+        created += r.created;
+        existing += r.existing;
+        next = r.next;
+      }
+      return `${created} indexes started building, ${existing} already existed. Building can take a few minutes.`;
+    }
+    const r = await deployIndexes(env, from);
+    indexInfo = { next: r.next, created: r.created, existing: r.existing, total: FIRESTORE_INDEXES.length };
+    return r.detail;
+  };
+
+  if (part !== 'indexes') await run('rules', 'Security rules', () => (emulator ? Promise.resolve('Skipped in local test mode.') : deployRules(env)));
+  if (part !== 'core') await run('indexes', 'Database indexes', indexes);
+  if (part !== 'indexes') {
+    await run('towns', 'Five towns', () => seedTowns(fs));
+    await run('domains', 'Website sign-in', () => (emulator ? Promise.resolve('Skipped in local test mode.') : authorizeDomains(env)));
+    await run('superAdmin', 'Super Admin', () => grantFounder(fs, caller));
+  }
+  return { ok: steps.every((s) => s.ok), steps, ...indexInfo };
 }

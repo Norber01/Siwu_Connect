@@ -74,7 +74,7 @@ export function Feed({ feed, emptyTitle, emptyText }: { feed: FeedSpec; emptyTit
   }
 
   return (
-    <div className="space-y-3">
+    <div className="-mx-4 border-t border-sand-200 px-4">
       {pinnedItems.map((p) => (
         <PostCard key={`pin-${p.id}`} post={p} liked={pinned.data!.liked.get(p.id) ?? null} />
       ))}

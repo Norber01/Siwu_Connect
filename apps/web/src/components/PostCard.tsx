@@ -144,6 +144,48 @@ export function AuthorLine({ uid, townId, date, edited }: { uid: string; townId?
   );
 }
 
+function PostAvatar({ uid }: { uid: string }) {
+  const { data: author } = useProfileById(uid);
+  const name = author?.displayName ?? '…';
+  return author ? (
+    <Link to={`/u/${author.username}`} className="shrink-0 self-start">
+      <Avatar url={author.photoUrl} name={name} size={42} />
+    </Link>
+  ) : (
+    <span className="shrink-0 self-start">
+      <Avatar url={null} name={author === null ? 'Deleted account' : '…'} size={42} />
+    </span>
+  );
+}
+
+/** X-style header line: Name @username · 2h · Town */
+function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string; date: Date | null; edited: boolean }) {
+  const { data: author } = useProfileById(uid);
+  const name = author?.displayName ?? (author === null ? 'Deleted account' : '…');
+  return (
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-1 text-[15px] leading-5">
+      {author ? (
+        <Link to={`/u/${author.username}`} className="truncate font-bold text-gray-900 hover:underline">
+          {name}
+          {author.vibe && <span className="ml-1 font-normal">{author.vibe}</span>}
+        </Link>
+      ) : (
+        <span className="font-bold text-gray-500">{name}</span>
+      )}
+      {author && <span className="truncate text-gray-600">@{author.username}</span>}
+      <span className="text-gray-600">·</span>
+      <time dateTime={date?.toISOString()} title={fullDate(date)} className="text-gray-600">
+        {timeAgo(date)}
+      </time>
+      <span className="text-gray-600">·</span>
+      <Link to={`/towns/${townId}`} className="text-[13px] font-semibold text-brand-700 hover:underline">
+        {townShortName(townId)}
+      </Link>
+      {edited && <span className="text-xs text-gray-500">· edited</span>}
+    </div>
+  );
+}
+
 /** Opens the phone's share sheet (WhatsApp etc.), or copies the link on desktop. */
 async function sharePost(post: Post, toast: (m: string, k?: 'success' | 'error') => void) {
   const url = `${window.location.origin}/p/${post.id}`;
@@ -250,104 +292,107 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
     items.push({ label: 'Remove post (moderator)', icon: 'shield', danger: true, onSelect: () => setConfirm('remove') });
 
   return (
-    <article className="rounded-2xl border border-sand-200 bg-white shadow-sm" aria-label="Post">
-      <div className="p-4 pb-2">
-        {post.pinned && (
-          <div className="mb-2 inline-flex items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-xs font-bold text-gold-800">
-            <Icon name="pin" className="h-3.5 w-3.5" /> Pinned
+    <article className="-mx-4 border-b border-sand-200 px-4 pb-1 pt-3 transition-colors hover:bg-sand-100/40" aria-label="Post">
+      {post.pinned && (
+        <div className="mb-1 ml-8 flex items-center gap-1 text-[13px] font-bold text-gray-600">
+          <Icon name="pin" className="h-3.5 w-3.5" /> Pinned
+        </div>
+      )}
+      <div className="flex gap-3">
+        <PostAvatar uid={post.authorId} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <PostHeader uid={post.authorId} townId={post.townId} date={post.createdAt} edited={!!post.editedAt} />
+            <div className="-mr-2 -mt-1.5">
+              <Menu items={items} label="Post actions" />
+            </div>
           </div>
-        )}
-        <div className="flex items-start justify-between gap-2">
-          <AuthorLine uid={post.authorId} townId={post.townId} date={post.createdAt} edited={!!post.editedAt} />
-          <Menu items={items} label="Post actions" />
-        </div>
-        <div className="mt-3">
-          {linkToDetail ? (
-            <Link to={`/p/${post.id}`} className="block">
-              <RichText text={post.text.length > 600 ? `${post.text.slice(0, 600)}…` : post.text} />
-            </Link>
-          ) : (
-            <RichText text={post.text} />
-          )}
-          <MediaGallery media={post.media} />
-          {post.poll && <PollView post={post} />}
-          {post.visibility === 'town' && <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>}
-        </div>
-        {(likes > 0 || post.commentCount > 0) && (
-          <div className="mt-3 flex items-center justify-between text-[13px] text-gray-600">
-            <span className="inline-flex items-center gap-1">
-              {likes > 0 && (
-                <>
-                  <span className="text-base leading-none tracking-tighter">{top.length ? top.join('') : '👍'}</span>
-                  {likes}
-                </>
-              )}
-            </span>
-            {post.commentCount > 0 && (
-              <Link to={`/p/${post.id}#comments`} className="hover:underline">
-                {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
+          <div className="mt-0.5">
+            {linkToDetail ? (
+              <Link to={`/p/${post.id}`} className="block">
+                <RichText text={post.text.length > 600 ? `${post.text.slice(0, 600)}…` : post.text} />
               </Link>
+            ) : (
+              <RichText text={post.text} />
             )}
+            <MediaGallery media={post.media} />
+            {post.poll && <PollView post={post} />}
+            {post.visibility === 'town' && <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>}
           </div>
-        )}
-      </div>
-      <div className="relative grid grid-cols-3 border-t border-sand-200 px-2 py-1">
-        {picker && (
-          <div className="absolute -top-14 left-2 z-10 flex gap-1 rounded-full bg-white px-2 py-1.5 shadow-xl ring-1 ring-sand-200" role="menu" aria-label="Reactions">
-            {REACTIONS.map((r) => (
+
+          <div className="relative -ml-2 mt-1 flex max-w-md items-center justify-between text-[13px] text-gray-600">
+            {picker && (
+              <div className="absolute -top-14 left-0 z-10 flex gap-1 rounded-full bg-white px-2 py-1.5 shadow-xl ring-1 ring-sand-200" role="menu" aria-label="Reactions">
+                {REACTIONS.map((r) => (
+                  <button
+                    key={r.id}
+                    role="menuitem"
+                    onClick={() => react(r.id)}
+                    className={`rounded-full p-1 text-2xl transition-transform hover:scale-125 ${reaction === r.id ? 'bg-brand-50' : ''}`}
+                    aria-label={`React ${r.id}`}
+                  >
+                    {r.emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Link
+              to={`/p/${post.id}#comments`}
+              className="group inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-2 hover:text-blue-600"
+              aria-label={`Comment${post.commentCount ? `, ${post.commentCount} comments` : ''}`}
+            >
+              <span className="rounded-full p-1.5 group-hover:bg-blue-50">
+                <Icon name="comment" className="h-[18px] w-[18px]" />
+              </span>
+              {post.commentCount > 0 && <span className="tabular-nums">{post.commentCount}</span>}
+            </Link>
+            <span className="inline-flex items-center">
               <button
-                key={r.id}
-                role="menuitem"
-                onClick={() => react(r.id)}
-                className={`rounded-full p-1 text-2xl transition-transform hover:scale-125 ${reaction === r.id ? 'bg-brand-50' : ''}`}
-                aria-label={`React ${r.id}`}
+                onClick={toggleLike}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setPicker(true);
+                }}
+                disabled={!active}
+                aria-pressed={liked}
+                aria-label={liked ? 'Unlike' : 'Like'}
+                className={`group inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-2 disabled:opacity-50 ${liked ? 'text-pink-600' : 'hover:text-pink-600'}`}
               >
-                {r.emoji}
+                <span className="rounded-full p-1.5 group-hover:bg-pink-50">
+                  {current && current.id !== 'like' ? (
+                    <span className="block h-[18px] w-[18px] text-[16px] leading-[18px]">{current.emoji}</span>
+                  ) : (
+                    <Icon name="heart" filled={liked} className="h-[18px] w-[18px]" />
+                  )}
+                </span>
+                {likes > 0 && (
+                  <span className="tabular-nums">
+                    {top.length > 1 && <span className="mr-0.5 tracking-tighter">{top.join('')}</span>}
+                    {likes}
+                  </span>
+                )}
               </button>
-            ))}
+              <button
+                onClick={() => setPicker((x) => !x)}
+                disabled={!active}
+                className="rounded-full p-1.5 text-base grayscale hover:bg-gold-100 hover:grayscale-0 disabled:opacity-50"
+                aria-label="Choose a reaction"
+                aria-expanded={picker}
+              >
+                😊
+              </button>
+            </span>
+            <button
+              onClick={() => sharePost(post, toast)}
+              className="group inline-flex min-h-[40px] items-center rounded-full px-2 hover:text-brand-600"
+              aria-label="Share"
+            >
+              <span className="rounded-full p-1.5 group-hover:bg-brand-50">
+                <Icon name="share" className="h-[18px] w-[18px]" />
+              </span>
+            </button>
           </div>
-        )}
-        <div className="flex">
-          <button
-            onClick={toggleLike}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setPicker(true);
-            }}
-            disabled={!active}
-            aria-pressed={liked}
-            aria-label={liked ? 'Unlike' : 'Like'}
-            className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold hover:bg-sand-100 disabled:opacity-50 ${
-              liked ? 'text-brand-600' : 'text-gray-700'
-            }`}
-          >
-            {current && current.id !== 'like' ? <span className="text-lg leading-none">{current.emoji}</span> : <Icon name="thumb" filled={liked} />}
-            {liked ? (current?.id === 'like' ? 'Liked' : 'Reacted') : 'Like'}
-          </button>
-          <button
-            onClick={() => setPicker((x) => !x)}
-            disabled={!active}
-            className="rounded-lg px-1.5 text-lg hover:bg-sand-100 disabled:opacity-50"
-            aria-label="Choose a reaction"
-            aria-expanded={picker}
-          >
-            😊
-          </button>
         </div>
-        <Link
-          to={`/p/${post.id}#comments`}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-sand-100"
-        >
-          <Icon name="comment" />
-          Comment
-        </Link>
-        <button
-          onClick={() => sharePost(post, toast)}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-sand-100"
-        >
-          <Icon name="share" />
-          Share
-        </button>
       </div>
 
       <ReportDialog
