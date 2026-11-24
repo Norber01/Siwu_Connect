@@ -158,6 +158,16 @@ export function ProfilePage() {
               <FriendActions uid={p.uid} name={p.displayName} />
             </div>
           )}
+          {canSuspend(role, p.hometownId) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-sand-100 p-2">
+              <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-gray-600">
+                <Icon name="shield" className="h-4 w-4" /> Admin
+              </span>
+              <Button small variant={p.verified ? 'secondary' : 'primary'} onClick={toggleVerified}>
+                {p.verified ? 'Remove verified badge' : '✔ Verify account'}
+              </Button>
+            </div>
+          )}
           {isMe && (
             <div className="mt-4 flex gap-2">
               <Button small icon="edit" onClick={() => navigate('/settings')}>

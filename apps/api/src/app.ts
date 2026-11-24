@@ -484,8 +484,7 @@ export function createApp() {
       const rows = await fs.query<Record<string, unknown> & { townId: string }>({
         collection,
         where: [['status', 'EQUAL', 'pending']],
-        orderBy: [['createdAt', 'ASCENDING']],
-        limit: 100,
+        limit: 200, // no ordering here: that would need an extra database index; sorted below
       });
       for (const r of rows) {
         if (!canModerate(role, r.data.townId)) continue;
@@ -506,6 +505,7 @@ export function createApp() {
         });
       }
     }
+    out.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
     return c.json({ items: out });
   });
 

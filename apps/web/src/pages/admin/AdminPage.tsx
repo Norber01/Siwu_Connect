@@ -16,6 +16,7 @@ import {
   townName,
 } from '@siwu/shared';
 import { useMe } from '../../auth/AuthProvider';
+import { VerifiedBadge } from '../../components/VerifiedBadge';
 import { api } from '../../lib/api';
 import { useProfileById } from '../../lib/hooks';
 import {
@@ -372,11 +373,13 @@ function UsersTab() {
   });
   const found = useQuery({ queryKey: ['admin', 'userSearch', search.trim()], queryFn: () => searchPeople(search), enabled: search.trim().length >= 2 });
 
-  const act = async (uid: string, action: 'suspend' | 'restore') => {
+  const act = async (uid: string, action: 'suspend' | 'restore' | 'verify' | 'unverify') => {
     setBusy(uid);
     try {
       await api(`/admin/users/${uid}/${action}`, { json: { note: '' } });
-      toast(action === 'suspend' ? 'User suspended.' : 'User restored.');
+      toast(
+        { suspend: 'User suspended.', restore: 'User restored.', verify: 'Account verified ✔', unverify: 'Verified badge removed.' }[action],
+      );
       void list.refetch();
       void found.refetch();
     } catch (e) {
@@ -390,12 +393,19 @@ function UsersTab() {
     <li key={p.uid} className="flex items-center gap-3 py-2">
       <Avatar url={p.photoUrl} name={p.displayName} size={40} />
       <Link to={`/u/${p.username}`} className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{p.displayName}</span>
+        <span className="block truncate text-sm font-semibold">
+          {p.displayName} {p.verified && <VerifiedBadge className="h-4 w-4" />}
+        </span>
         <span className="block truncate text-xs text-gray-600">
           @{p.username} · {townName(p.hometownId)} · joined {p.createdAt ? p.createdAt.toLocaleDateString('en-GB') : '—'}
         </span>
         {p.status === 'suspended' && <span className="mt-0.5 inline-block rounded-full bg-red-50 px-2 text-[11px] font-bold text-red-700">Suspended</span>}
       </Link>
+      {canSuspend(role, p.hometownId) && (
+        <Button small variant="secondary" disabled={busy === p.uid} onClick={() => act(p.uid, p.verified ? 'unverify' : 'verify')}>
+          {p.verified ? 'Unverify' : 'Verify'}
+        </Button>
+      )}
       {canSuspend(role, p.hometownId) && (
         <Button small variant={p.status === 'active' ? 'danger' : 'secondary'} busy={busy === p.uid} onClick={() => act(p.uid, p.status === 'active' ? 'suspend' : 'restore')}>
           {p.status === 'active' ? 'Suspend' : 'Restore'}
