@@ -745,16 +745,32 @@ service cloud.firestore {
     }
 
     // ---------- stories (disappear after 24 hours) ----------
-    // Only the author's friends see a story: "audience" is the author plus their friends when it was
-    // posted. Friends who view it leave a views/{uid} record that only the author can list.
+    // Normally only the author's friends see a story: "audience" is the author plus their friends when it
+    // was posted. Admins can also post to everyone ("public:all") or to everyone from one town
+    // ("public:<town>"), for announcements and promotions. Viewers leave a views/{uid} record that only the
+    // author can list.
     function storyPath(id) { return /databases/$(database)/documents/stories/$(id); }
+    function publicTokens() {
+      return ['public:all', 'public:odomi', 'public:mempeasem', 'public:todzi', 'public:adokor', 'public:sokpo'];
+    }
+    function myStoryKeys() {
+      return [me(), 'public:all', 'public:' + get(userPath(me())).data.hometownId];
+    }
+    // A story for everyone: exactly [author, token], and only admins of that audience may post it.
+    function broadcastOk(a) {
+      return !a.hasAny(publicTokens())
+        || (a.size() == 2 && a[0] == me()
+            && ((a[1] == 'public:all' && isSuper())
+                || (a[1] in publicTokens() && a[1] != 'public:all' && canModerate(a[1].split(':')[1]))));
+    }
     match /stories/{id} {
-      allow read: if signedIn() && me() in resource.data.get('audience', []);
+      allow read: if signedIn() && resource.data.get('audience', []).hasAny(myStoryKeys());
       allow create: if isActive()
         && exactKeys(['authorId', 'townId', 'type', 'url', 'posterUrl', 'text', 'bg', 'status', 'createdAt', 'expiresAt', 'audience'])
         && d().authorId == me()
         && d().audience is list && d().audience.size() >= 1 && d().audience.size() <= 2000
         && me() in d().audience
+        && broadcastOk(d().audience)
         && isTown(d().townId)
         && ((d().type == 'image' && imageOk(d().url, me()) && d().url != null)
             || (d().type == 'video' && videoOk(d().url, me()))
@@ -777,7 +793,7 @@ service cloud.firestore {
         allow list: if signedIn() && get(storyPath(id)).data.authorId == me();
         allow create: if signedIn() && viewerId == me()
           && get(storyPath(id)).data.authorId != me()
-          && me() in get(storyPath(id)).data.get('audience', [])
+          && get(storyPath(id)).data.get('audience', []).hasAny(myStoryKeys())
           && exactKeys(['viewedAt']) && d().viewedAt == request.time;
         allow update, delete: if false;
       }

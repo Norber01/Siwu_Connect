@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type Timestamp, collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
-import { EXTRA_LIMITS } from '@siwu/shared';
+import { EXTRA_LIMITS, TOWNS, canModerate, isSuperAdmin, townShortName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
@@ -13,7 +13,7 @@ import { inspectVideo, uploadWithProgress } from '../components/media';
 import { Icon } from '../components/Icon';
 import { ReportDialog } from '../components/ReportDialog';
 import { useToast } from '../components/Toast';
-import { Alert, Avatar, Button, PageHeader } from '../components/ui';
+import { Alert, Avatar, Button, PageHeader, SelectField } from '../components/ui';
 
 export interface Story {
   id: string;
@@ -26,6 +26,13 @@ export interface Story {
   bg: StoryBg;
   createdAt: Date | null;
   expiresAt: Date;
+  audience?: string[];
+}
+
+/** 'all', a town id, or null for a friends-only story. */
+export function storyBroadcast(s: Pick<Story, 'audience'>): string | null {
+  const t = (s.audience ?? []).find((a) => a.startsWith('public:'));
+  return t ? t.slice('public:'.length) : null;
 }
 
 export const STORY_BGS: Record<StoryBg, string> = {
@@ -38,11 +45,12 @@ export const STORY_BGS: Record<StoryBg, string> = {
 
 const toDate = (v: unknown) => (v && typeof (v as Timestamp).toDate === 'function' ? (v as Timestamp).toDate() : null);
 
-async function fetchStories(uid: string): Promise<Story[]> {
+/** My friends' stories, plus admins' stories for everyone or for my hometown. */
+async function fetchStories(uid: string, hometownId: string): Promise<Story[]> {
   const snap = await getDocs(
     query(
       collection(db, 'stories'),
-      where('audience', 'array-contains', uid),
+      where('audience', 'array-contains-any', [uid, 'public:all', `public:${hometownId}`]),
       where('status', '==', 'active'),
       where('expiresAt', '>', new Date()),
       orderBy('expiresAt', 'asc'),
@@ -79,18 +87,35 @@ function groupStories(stories: Story[], me: string, seen: Set<string>, blocked: 
     by.set(s.authorId, [...(by.get(s.authorId) ?? []), s]);
   }
   return [...by.entries()]
-    .map(([authorId, items]) => ({ authorId, items, unseen: items.some((i) => !seen.has(i.id)) }))
-    .sort((a, b) => (a.authorId === me ? -1 : b.authorId === me ? 1 : Number(b.unseen) - Number(a.unseen)));
+    .map(([authorId, items]) => ({
+      authorId,
+      items,
+      unseen: items.some((i) => !seen.has(i.id)),
+      official: items.some((i) => storyBroadcast(i) !== null),
+    }))
+    // Mine first, then admins' announcements, then unseen friends' stories.
+    .sort((a, b) =>
+      a.authorId === me ? -1 : b.authorId === me ? 1 : Number(b.official) - Number(a.official) || Number(b.unseen) - Number(a.unseen),
+    );
 }
 
-function Ring({ uid, unseen, label }: { uid: string; unseen: boolean; label?: string }) {
+function Ring({ uid, unseen, label, official }: { uid: string; unseen: boolean; label?: string; official?: boolean }) {
   const { data: p } = useProfileById(uid);
   return (
     <>
-      <span className={`rounded-full p-[3px] ${unseen ? 'bg-gradient-to-tr from-gold-400 via-orange-500 to-brand-600' : 'bg-sand-200'}`}>
+      <span
+        className={`relative rounded-full p-[3px] ${
+          official ? (unseen ? 'bg-gradient-to-b from-gold-400 to-gold-600' : 'bg-gold-100') : unseen ? 'bg-gradient-to-tr from-gold-400 via-orange-500 to-brand-600' : 'bg-sand-200'
+        }`}
+      >
         <span className="block rounded-full bg-white p-[2px]">
           <Avatar url={p?.photoUrl} name={p?.displayName ?? '?'} size={56} />
         </span>
+        {official && (
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-gold-400 text-xs ring-2 ring-white" aria-label="Announcement">
+            📢
+          </span>
+        )}
       </span>
       <span className="mt-1 block w-16 truncate text-center text-xs font-semibold text-gray-800">{label ?? p?.displayName.split(' ')[0] ?? '…'}</span>
     </>
@@ -100,7 +125,7 @@ function Ring({ uid, unseen, label }: { uid: string; unseen: boolean; label?: st
 /** The row of story rings at the top of the home feed. */
 export function StoriesBar() {
   const { user, profile, blocked } = useMe();
-  const q = useQuery({ queryKey: ['stories', user.uid], queryFn: () => fetchStories(user.uid), staleTime: 60_000 });
+  const q = useQuery({ queryKey: ['stories', user.uid], queryFn: () => fetchStories(user.uid, profile.hometownId), staleTime: 60_000 });
   const [seen, setSeen] = useState(loadSeen);
   const [open, setOpen] = useState<number | null>(null);
   const groups = groupStories(q.data ?? [], user.uid, seen, blocked);
@@ -136,7 +161,7 @@ export function StoriesBar() {
         {groups.map((g, i) => (
           <li key={g.authorId} className="shrink-0">
             <button onClick={() => setOpen(i)} className="flex flex-col items-center" aria-label="View story">
-              <Ring uid={g.authorId} unseen={g.unseen} label={i === mineIndex ? 'You' : undefined} />
+              <Ring uid={g.authorId} unseen={g.unseen} official={g.official} label={i === mineIndex ? 'You' : undefined} />
             </button>
           </li>
         ))}
@@ -299,6 +324,11 @@ function StoryViewer({
             <Avatar url={author?.photoUrl} name={author?.displayName ?? '?'} size={32} />
             <span className="text-sm font-bold">{author?.displayName ?? '…'}</span>
             <span className="text-xs text-white/75">{timeAgo(story.createdAt)}</span>
+            {storyBroadcast(story) && (
+              <span className="rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-bold text-[#0f2f41]">
+                📢 {storyBroadcast(story) === 'all' ? 'All towns' : townShortName(storyBroadcast(story)!)}
+              </span>
+            )}
             <span className="flex-1" />
             {group.authorId === user.uid ? (
               <button onClick={remove} className="relative z-10 rounded-full bg-white/15 p-2" aria-label="Delete story">
@@ -364,7 +394,14 @@ function ViewerRow({ uid, at }: { uid: string; at: Date | null }) {
 }
 
 export function NewStoryPage() {
-  const { user, profile } = useMe();
+  const { user, profile, role } = useMe();
+  // Admins can post a story for everyone (all towns) or everyone from one town, e.g. announcements.
+  const audiences: { id: string; label: string }[] = [
+    { id: '', label: '👥 My friends' },
+    ...(isSuperAdmin(role) ? [{ id: 'all', label: '📢 Everyone — all towns' }] : []),
+    ...TOWNS.filter((t) => canModerate(role, t.id)).map((t) => ({ id: t.id as string, label: `📢 Everyone from ${t.shortName}` })),
+  ];
+  const [audience, setAudience] = useState('');
   const navigate = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
@@ -389,10 +426,10 @@ export function NewStoryPage() {
     setBusy(true);
     setError(null);
     try {
-      const friendIds = await fetchFriendIds(user.uid);
+      const friendIds = audience ? [] : await fetchFriendIds(user.uid);
       if (mode === 'text') {
         if (!text.trim()) throw new Error('Write something for your story.');
-        await createStory(db, user.uid, profile.hometownId, { type: 'text', url: null, posterUrl: null, text: text.trim().slice(0, 200), bg }, friendIds);
+        await createStory(db, user.uid, profile.hometownId, { type: 'text', url: null, posterUrl: null, text: text.trim().slice(0, 200), bg }, friendIds, audience || null);
       } else if (file) {
         const isVideo = file.type.startsWith('video/');
         let url: string;
@@ -407,7 +444,7 @@ export function NewStoryPage() {
           const blob = await preparePhoto(file, EXTRA_LIMITS.imageMaxPixels, EXTRA_LIMITS.imageMaxBytes);
           url = await uploadWithProgress('/uploads/image', blob, setProgress);
         }
-        await createStory(db, user.uid, profile.hometownId, { type: isVideo ? 'video' : 'image', url, posterUrl, text: text.trim().slice(0, 200), bg }, friendIds);
+        await createStory(db, user.uid, profile.hometownId, { type: isVideo ? 'video' : 'image', url, posterUrl, text: text.trim().slice(0, 200), bg }, friendIds, audience || null);
       }
       void qc.invalidateQueries({ queryKey: ['stories'] });
       toast('Your story is up for 24 hours ✨');
@@ -471,7 +508,20 @@ export function NewStoryPage() {
       <Button className="w-full" busy={busy} onClick={share} disabled={mode === 'media' && !file}>
         Share to your story
       </Button>
-      <p className="text-center text-xs text-gray-600">Only your friends can see your story. It disappears after 24 hours.</p>
+      {audiences.length > 1 && (
+        <SelectField label="Who can see this story?" value={audience} onChange={(e) => setAudience(e.target.value)}>
+          {audiences.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label}
+            </option>
+          ))}
+        </SelectField>
+      )}
+      <p className="text-center text-xs text-gray-600">
+        {audience
+          ? `Everyone ${audience === 'all' ? 'in all five towns' : `from ${townShortName(audience)}`} will see this story, friends or not. It disappears after 24 hours.`
+          : 'Only your friends can see your story. It disappears after 24 hours.'}
+      </p>
     </div>
   );
 }

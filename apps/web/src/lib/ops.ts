@@ -719,6 +719,8 @@ export async function createStory(
   townId: string,
   story: { type: 'image' | 'video' | 'text'; url: string | null; posterUrl: string | null; text: string; bg: StoryBg },
   friendIds: string[],
+  /** Admins: show to everyone ('all') or to everyone from one town, instead of friends. */
+  broadcast: string | null = null,
 ): Promise<void> {
   const b = writeBatch(db);
   const now = Timestamp.now();
@@ -731,7 +733,7 @@ export async function createStory(
     // The server checks this is about 24 hours from now.
     expiresAt: Timestamp.fromMillis(now.toMillis() + 24 * 3600_000),
     // Only you and your friends can see it.
-    audience: [uid, ...friendIds.filter((f) => f !== uid)].slice(0, 2000),
+    audience: broadcast ? [uid, `public:${broadcast}`] : [uid, ...friendIds.filter((f) => f !== uid)].slice(0, 2000),
   });
   b.set(doc(db, 'rate_limits', uid), { lastStoryAt: serverTimestamp() }, { merge: true });
   await b.commit();

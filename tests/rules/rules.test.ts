@@ -797,6 +797,29 @@ describe('Gen Z features', () => {
     await assertFails(ops.createPost(db('carol'), 'carol', { townId: 'odomi', text: '', visibility: 'akpafu' }, [])); // empty post
   });
 
+  it('admin stories can go to everyone, or everyone from one town; members cannot do this', async () => {
+    await seedUser('boss', 'odomi');
+    await seedRole('boss', 'super_admin');
+    await seedUser('tadmin', 'todzi');
+    await seedRole('tadmin', 'town_admin', ['todzi']);
+    await seedUser('tina', 'todzi');
+    const story = { type: 'text' as const, url: null, posterUrl: null, text: 'Festival on Saturday 🎉', bg: 'gold' as const };
+    await assertFails(ops.createStory(db('bob'), 'bob', 'odomi', story, [], 'all')); // member
+    await assertFails(ops.createStory(db('tadmin'), 'tadmin', 'todzi', story, [], 'all')); // town admin: not all towns
+    await assertFails(ops.createStory(db('tadmin'), 'tadmin', 'todzi', story, [], 'odomi')); // not their town
+    await assertSucceeds(ops.createStory(db('tadmin'), 'tadmin', 'todzi', story, [], 'todzi'));
+    await assertSucceeds(ops.createStory(db('boss'), 'boss', 'odomi', story, [], 'all'));
+    const mine = (uid: string, town: string) =>
+      getDocs(query(collection(db(uid), 'stories'), where('audience', 'array-contains-any', [uid, 'public:all', `public:${town}`]), where('status', '==', 'active')));
+    expect((await mine('carol', 'odomi')).size).toBe(1); // only the all-towns one
+    expect((await mine('tina', 'todzi')).size).toBe(2); // all towns + Todzi
+    // Faking a hometown in the query is refused.
+    await assertFails(getDocs(query(collection(db('carol'), 'stories'), where('audience', 'array-contains-any', ['carol', 'public:all', 'public:todzi']))));
+    // Anyone it was shown to can record a view.
+    const all = (await mine('carol', 'odomi')).docs[0]!.id;
+    await assertSucceeds(ops.recordStoryView(db('carol'), 'carol', all));
+  });
+
   it('photo previews: own uploads only', async () => {
     const own = { type: 'image' as const, url: 'https://x.example/images/bob/a.webp', posterUrl: null, thumbUrl: 'https://x.example/images/bob/a-small.webp' };
     await assertSucceeds(ops.createPost(db('bob'), 'bob', { townId: 'odomi', text: 'Photo', visibility: 'akpafu' }, [own]));
