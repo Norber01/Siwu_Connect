@@ -2,7 +2,8 @@
 
 ## Status
 **2026-11-24: LIVE** at https://siwu-connect.fnorxx.workers.dev (API https://siwu-connect-api.fnorxx.workers.dev).
-Remaining before first use: add Firebase key + founder email on the API Worker, then run /setup.
+Setup completed 2026-11-24 from the founder's laptop: key + founder email added, /setup ran all steps green
+(rules, 29 indexes, five towns, sign-in domain, Super Admin = fnorxx@gmail.com account).
 
 **Stage:** Phase 1 built and passing all automated tests locally (emulators). **Not yet deployed** —
 needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).

@@ -20,6 +20,9 @@ npm run gen:assets    # after changing firestore.rules/indexes, then deploy:api 
 Secrets on the API Worker (Cloudflare dashboard → Workers & Pages → siwu-connect-api → Settings →
 Variables and Secrets): `GOOGLE_SERVICE_ACCOUNT_JSON` (Firebase private key) and `FOUNDER_EMAIL`.
 First-time setup is done from the phone at `/setup` (rules, indexes, towns, sign-in domain, Super Admin).
+The Firebase service account (`firebase-adminsdk-…`) needs the extra IAM role **Cloud Datastore Index Admin**
+(Google Cloud → IAM → Grant access) for the index step; allow ~5–10 minutes for it to take effect.
+Add the site domain under Firebase → Authentication → Settings → Authorized domains before signing in with Google.
 
 Note: Cloudflare Pages was not used because its separate asset-upload step could not run from the
 deployment environment; serving the built files from a Worker is equivalent for users.
