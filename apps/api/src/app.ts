@@ -19,6 +19,7 @@ import {
 } from '@siwu/shared';
 import { type Caller, deleteAuthUser, verifyIdToken } from './auth';
 import { runSetup, setupStatus } from './setup';
+import { runBackup } from './backup';
 import type { Env } from './env';
 import { type Data, FieldValue, Firestore, type Write } from './firestore';
 
@@ -337,8 +338,9 @@ export function createApp() {
     const user = await fs.get<UserDoc>(`users/${uid}`);
     if (!user) fail(403, 'Finish setting up your profile first');
     if (user!.data.status !== 'active') fail(403, 'Your account is suspended');
-    const existing = await c.env.AVATARS.list({ prefix: `images/${uid}/`, limit: 201 });
-    if (existing.objects.length >= 200) fail(409, 'You have reached the photo limit. Delete old listings or events first.');
+    // Each photo may come with a small preview, so up to two files per photo.
+    const existing = await c.env.AVATARS.list({ prefix: `images/${uid}/`, limit: 401 });
+    if (existing.objects.length >= 400) fail(409, 'You have reached the photo limit. Delete old listings or events first.');
     const { bytes, type, ext } = await readImage(c, EXTRA_LIMITS.imageMaxBytes);
     const key = `images/${uid}/${fs.newId()}.${ext}`;
     await c.env.AVATARS.put(key, bytes, { httpMetadata: { contentType: type } });
@@ -546,6 +548,32 @@ export function createApp() {
       return c.json({ ok: true });
     });
   }
+
+  // ---------- backups (Super Admin) ----------
+  admin.get('/backups', async (c) => {
+    if (!isSuperAdmin(c.get('role'))) fail(403, 'Only a Super Admin can see backups');
+    const list = await c.env.AVATARS.list({ prefix: 'backups/', limit: 1000 });
+    const items = list.objects
+      .map((o) => ({ file: o.key.slice('backups/'.length), size: o.size ?? null, uploaded: o.uploaded ? new Date(o.uploaded).toISOString() : null }))
+      .sort((a, b) => b.file.localeCompare(a.file));
+    return c.json({ items });
+  });
+  admin.post('/backups', async (c) => {
+    if (!isSuperAdmin(c.get('role'))) fail(403, 'Only a Super Admin can make backups');
+    const result = await runBackup(c.env);
+    await c.get('fs').commit([audit(c.get('fs'), c.get('uid'), 'backup.create', result.key, 'all', { documents: result.documents })]);
+    return c.json(result);
+  });
+  admin.get('/backups/:file', async (c) => {
+    if (!isSuperAdmin(c.get('role'))) fail(403, 'Only a Super Admin can download backups');
+    const file = c.req.param('file');
+    if (!/^[0-9TZ-]+\.json\.gz$/.test(file)) fail(404, 'Not found');
+    const obj = await c.env.AVATARS.get(`backups/${file}`);
+    if (!obj) fail(404, 'Not found');
+    return new Response(obj!.body, {
+      headers: { 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="siwu-connect-${file}"`, 'cache-control': 'no-store' },
+    });
+  });
 
   // ---------- approvals: members' marketplace listings and directory entries ----------
   /** Items waiting for approval in the towns this admin looks after (oldest first). */

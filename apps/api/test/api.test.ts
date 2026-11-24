@@ -341,6 +341,11 @@ describe('one-time setup', () => {
     expect((await fs().get<{ type: string }>('chats/room_sokpo'))!.data.type).toBe('room');
     expect((await fs().get<{ role: string }>('admin_roles/founder'))!.data.role).toBe('super_admin');
     expect((await fs().query({ collection: 'towns' })).length).toBe(5);
+    const status = await app.request('/setup/status', { headers: { authorization: `Bearer ${token('founder', 'founder@example.com')}` } }, e);
+    expect(((await status.json()) as { setupNeeded: boolean }).setupNeeded).toBe(false);
+    await fs().commit([{ kind: 'set', path: 'settings/setup', data: { version: 'old' } }]);
+    const stale = await app.request('/setup/status', { headers: { authorization: `Bearer ${token('founder', 'founder@example.com')}` } }, e);
+    expect(((await stale.json()) as { setupNeeded: boolean }).setupNeeded).toBe(true);
     // Afterwards nobody else can take over; the Super Admin may re-run it.
     expect((await run('stranger', 'founder@example.com', e)).status).toBe(403);
     expect((await run('founder', 'founder@example.com', e)).status).toBe(200);
@@ -368,6 +373,28 @@ describe('friend requests', () => {
     const blocked = await f('alice', 'mod');
     expect(blocked.status).toBe(403);
     expect(((await blocked.json()) as { error: string }).error).toMatch(/cannot send a request/);
+  });
+});
+
+describe('backups', () => {
+  it('Super Admin backs up every collection to private storage; others cannot', async () => {
+    await seedPost('pb1', 'alice');
+    expect((await call('POST', '/admin/backups', 'mod', {})).status).toBe(403);
+    const res = await call('POST', '/admin/backups', 'boss', {});
+    expect(res.status).toBe(200);
+    const r = (await res.json()) as { key: string; documents: number; complete: boolean };
+    expect(r.complete).toBe(true);
+    expect(r.documents).toBeGreaterThan(5);
+    const list = (await (await call('GET', '/admin/backups', 'boss')).json()) as { items: { file: string }[] };
+    expect(list.items).toHaveLength(1);
+    const dl = await call('GET', `/admin/backups/${list.items[0]!.file}`, 'boss');
+    expect(dl.status).toBe(200);
+    const { gunzipSync } = await import('node:zlib');
+    const data = JSON.parse(gunzipSync(Buffer.from((await dl.arrayBuffer()) as ArrayBuffer)).toString('utf8')) as { collections: Record<string, { name: string }[]> };
+    expect(data.collections.posts!.map((d) => d.name.split('/').pop())).toContain('pb1');
+    expect(data.collections.admin_roles!.length).toBeGreaterThan(0);
+    // Not reachable through the public photo routes.
+    expect((await app.request(`/images/backups/${list.items[0]!.file}`, {}, env())).status).toBe(404);
   });
 });
 

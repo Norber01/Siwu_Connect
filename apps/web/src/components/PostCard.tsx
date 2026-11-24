@@ -223,7 +223,7 @@ export function QuotedPost({ id }: { id: string }) {
       </div>
       {thumb &&
         (thumb.type === 'image' ? (
-          <img src={thumb.url} alt="" loading="lazy" className="max-h-56 w-full object-cover" />
+          <img src={thumb.thumbUrl ?? thumb.url} alt="" loading="lazy" className="max-h-56 w-full object-cover" />
         ) : (
           <div className="relative">
             {thumb.posterUrl ? <img src={thumb.posterUrl} alt="" loading="lazy" className="max-h-56 w-full object-cover" /> : <div className="h-32 bg-black" />}

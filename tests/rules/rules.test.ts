@@ -797,6 +797,17 @@ describe('Gen Z features', () => {
     await assertFails(ops.createPost(db('carol'), 'carol', { townId: 'odomi', text: '', visibility: 'akpafu' }, [])); // empty post
   });
 
+  it('photo previews: own uploads only', async () => {
+    const own = { type: 'image' as const, url: 'https://x.example/images/bob/a.webp', posterUrl: null, thumbUrl: 'https://x.example/images/bob/a-small.webp' };
+    await assertSucceeds(ops.createPost(db('bob'), 'bob', { townId: 'odomi', text: 'Photo', visibility: 'akpafu' }, [own]));
+    await new Promise((r) => setTimeout(r, 0));
+    await assertFails(
+      ops.createPost(db('carol'), 'carol', { townId: 'odomi', text: 'Photo', visibility: 'akpafu' }, [
+        { type: 'image', url: 'https://x.example/images/carol/a.webp', posterUrl: null, thumbUrl: 'https://x.example/images/bob/a-small.webp' },
+      ]),
+    );
+  });
+
   it('Siwu words: admins add and delete; members only read', async () => {
     await seedRole('carol', 'moderator', ['odomi']);
     const w = { word: 'Test word', meaning: 'A test meaning', example: '', audioUrl: null };

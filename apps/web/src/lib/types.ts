@@ -25,7 +25,7 @@ export interface Post {
   /** Photos and videos (older posts' single imageUrl is folded in here). */
   /** Id of the post this one reposts or quotes. */
   quoteOf: string | null;
-  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null; width?: number; height?: number; lowUrl?: string }>;
+  media: Array<{ type: 'image' | 'video'; url: string; posterUrl: string | null; width?: number; height?: number; lowUrl?: string; thumbUrl?: string }>;
   poll: { options: string[]; counts: number[] } | null;
   tags: string[];
   reactions: Record<string, number>;

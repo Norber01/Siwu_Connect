@@ -84,6 +84,8 @@ export interface MediaItem {
   height?: number;
   /** Light 360p copy of a video for slow connections. */
   lowUrl?: string;
+  /** Small preview of a photo for the feed (full size opens on tap). */
+  thumbUrl?: string;
 }
 
 export interface PostExtras {

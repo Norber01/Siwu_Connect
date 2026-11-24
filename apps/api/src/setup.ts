@@ -10,7 +10,7 @@ import { TOWNS, nameTokens } from '@siwu/shared';
 import type { Caller } from './auth';
 import { type Env, isEmulator } from './env';
 import { FieldValue, Firestore } from './firestore';
-import { FIRESTORE_INDEXES, FIRESTORE_RULES } from './generated/firebase-assets';
+import { FIRESTORE_INDEXES, FIRESTORE_RULES, SETUP_VERSION } from './generated/firebase-assets';
 import { googleAccessToken } from './google-auth';
 
 export interface SetupStep {
@@ -26,6 +26,8 @@ export interface SetupStatus {
   keyConfigured: boolean;
   superAdminExists: boolean;
   callerIsSuperAdmin: boolean;
+  /** True when this version of the app has rules or indexes that setup has not installed yet. */
+  setupNeeded: boolean;
 }
 
 async function superAdminExists(fs: Firestore): Promise<boolean> {
@@ -38,11 +40,17 @@ export async function setupStatus(env: Env, caller: Caller): Promise<SetupStatus
   const keyConfigured = isEmulator(env) || !!env.GOOGLE_SERVICE_ACCOUNT_JSON;
   let exists = false;
   let callerIsSuperAdmin = false;
+  let setupNeeded = false;
   if (keyConfigured) {
     const fs = new Firestore(env);
-    exists = await superAdminExists(fs);
-    const role = await fs.get<{ role: string }>(`admin_roles/${caller.uid}`);
+    const [found, role, installed] = await Promise.all([
+      superAdminExists(fs),
+      fs.get<{ role: string }>(`admin_roles/${caller.uid}`),
+      fs.get<{ version?: string }>('settings/setup'),
+    ]);
+    exists = found;
     callerIsSuperAdmin = role?.data.role === 'super_admin';
+    setupNeeded = installed?.data.version !== SETUP_VERSION;
   }
   return {
     founderEmailConfigured: !!founder,
@@ -50,6 +58,7 @@ export async function setupStatus(env: Env, caller: Caller): Promise<SetupStatus
     keyConfigured,
     superAdminExists: exists,
     callerIsSuperAdmin,
+    setupNeeded,
   };
 }
 
@@ -251,6 +260,12 @@ export async function runSetup(env: Env, caller: Caller, part: 'core' | 'indexes
     await run('search', 'People search', () => backfillNameTokens(fs));
     await run('domains', 'Website sign-in', () => (emulator ? Promise.resolve('Skipped in local test mode.') : authorizeDomains(env)));
     await run('superAdmin', 'Super Admin', () => grantFounder(fs, caller));
+  }
+  // Remember which rules and indexes are installed, once everything has gone through (setup from the
+  // phone runs in parts: this happens with the last batch of indexes).
+  const finished = part === 'all' || (part === 'indexes' && indexInfo.next === null);
+  if (finished && steps.every((x) => x.ok)) {
+    await fs.commit([{ kind: 'set', path: 'settings/setup', data: { version: SETUP_VERSION, at: FieldValue.serverTimestamp(), by: caller.uid } }]);
   }
   return { ok: steps.every((s) => s.ok), steps, ...indexInfo };
 }

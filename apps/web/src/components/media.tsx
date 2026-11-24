@@ -196,8 +196,14 @@ export function MediaPicker({
       } else {
         const blob = await preparePhoto(file, EXTRA_LIMITS.imageMaxPixels, EXTRA_LIMITS.imageMaxBytes);
         const dims = await imageSize(blob);
-        const url = await uploadWithProgress('/uploads/image', blob, (f) => update(id, { progress: f }));
-        item = { type: 'image', url, posterUrl: null, ...dims };
+        const url = await uploadWithProgress('/uploads/image', blob, (f) => update(id, { progress: f * 0.85 }));
+        // A small preview for the feed (about 70 KB); the full photo opens on tap.
+        let thumbUrl: string | null = null;
+        if (blob.size > 90 * 1024) {
+          const small = await preparePhoto(file, 720, 90 * 1024).catch(() => null);
+          if (small && small.size < blob.size) thumbUrl = await uploadWithProgress('/uploads/image', small, () => {}).catch(() => null);
+        }
+        item = { type: 'image', url, posterUrl: null, ...dims, ...(thumbUrl ? { thumbUrl } : {}) };
       }
       onChange([...latest.current, item]);
       setPending((ps) => ps.filter((p) => p.id !== id));
@@ -391,6 +397,7 @@ export function MediaGallery({ media }: { media: MediaItem[] }) {
   if (!media.length) return null;
   const images = media.filter((m) => m.type === 'image');
   const single = media.length === 1;
+  const slow = slowConnection();
   const grid = single ? 'grid-cols-1' : 'grid-cols-2';
   return (
     <>
@@ -400,7 +407,9 @@ export function MediaGallery({ media }: { media: MediaItem[] }) {
             {m.type === 'image' ? (
               <button type="button" className="block w-full" onClick={() => setOpen(images.indexOf(m))} aria-label="View photo">
                 <img
-                  src={m.url}
+                  src={m.thumbUrl ?? m.url}
+                  srcSet={m.thumbUrl && single && !slow ? `${m.thumbUrl} 720w, ${m.url} 1280w` : undefined}
+                  sizes={m.thumbUrl && single && !slow ? '(max-width: 600px) 100vw, 560px' : undefined}
                   alt=""
                   loading="lazy"
                   decoding="async"

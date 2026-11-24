@@ -176,7 +176,8 @@ service cloud.firestore {
         && url.matches('^https?://[^/]+(/[^/]+)*/videos/' + uid + '/[A-Za-z0-9_-]+[.](mp4|mov|webm)$');
     }
     function mediaItemOk(i, uid) {
-      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl', 'width', 'height', 'lowUrl'])
+      return i is map && i.keys().hasOnly(['type', 'url', 'posterUrl', 'width', 'height', 'lowUrl', 'thumbUrl'])
+        && (!('thumbUrl' in i) || (i.type == 'image' && i.thumbUrl != null && imageOk(i.thumbUrl, uid)))
         && (!('lowUrl' in i) || (i.type == 'video' && videoOk(i.lowUrl, uid)))
         && (!('width' in i) || (i.width is int && i.width > 0 && i.width <= 10000))
         && (!('height' in i) || (i.height is int && i.height > 0 && i.height <= 10000))

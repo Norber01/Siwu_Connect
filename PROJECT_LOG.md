@@ -124,6 +124,19 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     The X-style feed and the original logo are kept.
   - Lesson: after each update that changes the security rules, the founder must tap **Run setup again**.
     Private chat failed until this was done.
+- 2026-11-24 — **Maintenance round:**
+  - **Setup reminder:** when an update brings new security rules or indexes, Super Admins see a gold bar
+    "An update needs setup — tap to run it" until setup has run. Setup records a version stamp of the rules and
+    indexes in `settings/setup`.
+  - **Daily backups:** at 02:23 UTC every night the API copies every collection to a gzipped JSON file in the
+    private R2 bucket (`backups/`) and keeps the newest 14. Admin → Backups offers "Back up now" and downloads.
+    `scripts/restore-backup.mjs` writes a backup back (tested: a deleted post came back). The free plan's limit
+    on outgoing calls per run caps very large databases; a partial backup says so.
+  - **Photo previews:** each post photo also gets a ~70 KB preview. The feed shows the preview, the full photo
+    opens on tap, and slow connections always get the preview.
+  - **Housekeeping:** Wrangler 3 → 4.159.0. React Router: `v7_relativeSplatPath` is on, so admin links are
+    absolute. `v7_startTransition` stays off: with it, a page could still show briefly after a tap, and quick
+    typing went into the old page (caught by the password-reset test).
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

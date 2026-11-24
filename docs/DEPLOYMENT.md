@@ -117,3 +117,19 @@ FIREBASE_PROJECT_ID=<project-id> GOOGLE_APPLICATION_CREDENTIALS=/secure/path/key
 - Review Ghana Data Protection Act obligations (registration with the Data Protection Commission may apply).
 - Set a Google Cloud **budget alert** even on the free plan.
 - Pilot with a small group from all five towns.
+
+
+## Backups
+
+- Automatic: every night at 02:23 UTC (Cron Trigger in `apps/api/wrangler.toml`), saved in the R2 bucket under
+  `backups/` (private: not reachable through the photo URLs). The newest 14 are kept.
+- Manual: Admin → Backups → **Back up now**; **Download** saves a copy to your phone or computer. Keep one
+  somewhere else from time to time.
+- Restore: `node scripts/restore-backup.mjs <file.json.gz> --project <firebase-project-id>` with `ACCESS_TOKEN`
+  set to a Google access token that has Firestore admin rights. Try it on the emulator first with `--emulator`;
+  `--only users,posts` restores only some collections.
+
+## After every update
+
+If the update changed the security rules or indexes, Super Admins see "An update needs setup". Tap it and run
+setup again. Until then, some features can be refused (for example private chat).

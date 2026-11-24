@@ -35,7 +35,7 @@ export interface R2BucketLike {
     options?: { range?: { offset: number; length?: number } },
   ): Promise<{ body: ReadableStream; size?: number; httpMetadata?: { contentType?: string }; range?: { offset?: number; length?: number } } | null>;
   delete(keys: string | string[]): Promise<void>;
-  list(options?: { prefix?: string; limit?: number }): Promise<{ objects: { key: string }[] }>;
+  list(options?: { prefix?: string; limit?: number }): Promise<{ objects: { key: string; size?: number; uploaded?: Date }[] }>;
 }
 
 /**

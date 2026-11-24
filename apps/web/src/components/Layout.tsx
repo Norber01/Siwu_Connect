@@ -10,6 +10,7 @@ import { useChats } from '../pages/chat';
 import { CountBadge, NotificationBell, useUnreadNotifications } from '../pages/notifications';
 import { LogoMark, Wordmark } from './Brand';
 import { LiveBanner } from './LiveBanner';
+import { SetupNeeded } from './SetupNeeded';
 import { PeopleSuggest } from './PeopleSuggest';
 import { CreateSheet, FeedbackDialog, InviteButton } from './extras';
 import { Icon, type IconName } from './Icon';
@@ -69,17 +70,23 @@ export function AppLayout() {
               <Link to="/" aria-label="Siwu Connect home" className="flex min-w-0 flex-1 items-center gap-2">
                 <LogoMark size={38} />
                 <span className="min-w-0">
-                  <span className="block whitespace-nowrap text-[19px] font-black uppercase leading-tight tracking-wide text-brand-900">Siwu Connect</span>
-                  <span className="block truncate text-[10.5px] font-semibold text-brand-700/80">Five towns · One community</span>
+                  <span className="block whitespace-nowrap text-[18px] font-black uppercase leading-tight tracking-wide text-brand-900">Siwu Connect</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-[10.5px] font-semibold text-brand-700/80">Five towns · One community</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setFeedback(true);
+                      }}
+                      className="shrink-0 rounded-full bg-gold-400 px-1.5 text-[9px] font-black uppercase leading-[15px] tracking-wide text-[#0f2f41]"
+                      title="This is an early test version — tap to send feedback"
+                    >
+                      Beta
+                    </button>
+                  </span>
                 </span>
               </Link>
-              <button
-                onClick={() => setFeedback(true)}
-                className="rounded-full bg-gold-400 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#0f2f41]"
-                title="This is an early test version — tap to send feedback"
-              >
-                Beta
-              </button>
               {hasAdminAccess(role) && (
                 <NavLink to="/admin" aria-label="Admin area" className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-brand-900 shadow-sm aria-[current=page]:text-gold-600">
                   <Icon name="shield" className="h-5 w-5" />
@@ -96,6 +103,7 @@ export function AppLayout() {
             </div>
           </header>
 
+          {profile && <SetupNeeded />}
           {profile && <LiveBanner />}
 
           {profile?.status === 'suspended' && (

@@ -32,7 +32,7 @@ import {
   fetchWords,
   wordOfTheDay,
 } from '../../lib/queries';
-import { db } from '../../lib/firebase';
+import { API_URL, auth, db } from '../../lib/firebase';
 import { addWord, deleteWord } from '../../lib/ops';
 import { VoicePlayer, VoiceRecorder, canRecordVoice } from '../../components/voice';
 import type { Profile, Report } from '../../lib/types';
@@ -72,7 +72,14 @@ export function AdminPage() {
     { to: 'words', label: 'Siwu words' },
     ...(showUsers ? [{ to: 'users', label: 'Users' }] : []),
     ...(showAnnouncements ? [{ to: 'announcements', label: 'Announcements' }] : []),
-    ...(superAdmin ? [{ to: 'feedback', label: 'Feedback' }, { to: 'roles', label: 'Roles' }, { to: 'audit', label: 'Audit log' }] : []),
+    ...(superAdmin
+      ? [
+          { to: 'feedback', label: 'Feedback' },
+          { to: 'roles', label: 'Roles' },
+          { to: 'audit', label: 'Audit log' },
+          { to: 'backups', label: 'Backups' },
+        ]
+      : []),
   ];
 
   return (
@@ -88,7 +95,7 @@ export function AdminPage() {
           {tabs.map((t) => (
             <li key={t.to}>
               <NavLink
-                to={t.to}
+                to={`/admin/${t.to}`}
                 className={({ isActive }) =>
                   `block whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold ${isActive ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-gray-700 ring-1 ring-sand-200'}`
                 }
@@ -100,7 +107,7 @@ export function AdminPage() {
         </ul>
       </nav>
       <Routes>
-        <Route index element={<Navigate to="reports" replace />} />
+        <Route index element={<Navigate to="/admin/reports" replace />} />
         <Route path="reports" element={<ReportsTab />} />
         <Route path="approvals" element={<ApprovalsTab />} />
         <Route path="words" element={<WordsTab />} />
@@ -109,8 +116,81 @@ export function AdminPage() {
         {superAdmin && <Route path="feedback" element={<FeedbackTab />} />}
         {superAdmin && <Route path="roles" element={<RolesTab />} />}
         {superAdmin && <Route path="audit" element={<AuditTab />} />}
-        <Route path="*" element={<Navigate to="reports" replace />} />
+        {superAdmin && <Route path="backups" element={<BackupsTab />} />}
+        <Route path="*" element={<Navigate to="/admin/reports" replace />} />
       </Routes>
+    </div>
+  );
+}
+
+// ---------------- Backups ----------------
+
+function BackupsTab() {
+  const toast = useToast();
+  const q = useQuery({
+    queryKey: ['admin', 'backups'],
+    queryFn: () => api<{ items: { file: string; size: number | null; uploaded: string | null }[] }>('/admin/backups', { method: 'GET' }),
+  });
+  const [busy, setBusy] = useState(false);
+  const backupNow = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ documents: number; complete: boolean; note?: string }>('/admin/backups', { json: {} });
+      toast(r.complete ? `Backup saved: ${r.documents} documents.` : `Saved, but incomplete: ${r.note ?? ''}`, r.complete ? 'success' : 'error');
+      void q.refetch();
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const download = async (file: string) => {
+    try {
+      const token = await auth.currentUser!.getIdToken();
+      const res = await fetch(`${API_URL}/admin/backups/${file}`, { headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Download failed');
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `siwu-connect-${file}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Download failed', 'error');
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-700">
+        A copy of the whole database is saved automatically every night (02:23 Ghana time). The latest 14 copies are kept in your private
+        Cloudflare storage. Download one to keep it safe somewhere else too.
+      </p>
+      <Button icon="check" busy={busy} onClick={backupNow}>
+        Back up now
+      </Button>
+      {q.isPending ? (
+        <PageSpinner />
+      ) : q.isError ? (
+        <ErrorState message={friendlyError(q.error)} onRetry={() => q.refetch()} />
+      ) : q.data.items.length === 0 ? (
+        <EmptyState title="No backups yet" icon="check">
+          The first one is made tonight, or tap Back up now.
+        </EmptyState>
+      ) : (
+        <ul className="divide-y divide-sand-200 rounded-2xl bg-white ring-1 ring-sand-200">
+          {q.data.items.map((b) => (
+            <li key={b.file} className="flex items-center gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-gray-900">{b.uploaded ? fullDate(new Date(b.uploaded)) : b.file}</p>
+                <p className="text-xs text-gray-600">{b.size != null ? `${Math.max(1, Math.round(b.size / 1024))} KB` : ''}</p>
+              </div>
+              <Button small variant="secondary" onClick={() => download(b.file)}>
+                Download
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

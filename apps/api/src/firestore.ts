@@ -153,6 +153,24 @@ export class Firestore {
       });
   }
 
+  /**
+   * Every document in a collection group, exactly as Firestore stores it (typed fields), for backups.
+   * Ordered by document name so it can continue after `afterName`.
+   */
+  async exportGroup(collectionId: string, pageSize: number, afterName?: string): Promise<{ name: string; fields: Record<string, FsValue> }[]> {
+    const structuredQuery: Record<string, unknown> = {
+      from: [{ collectionId, allDescendants: true }],
+      orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+      limit: pageSize,
+    };
+    if (afterName) structuredQuery.startAt = { values: [{ referenceValue: afterName }], before: false };
+    const rows = await this.request<{ document?: { name: string; fields?: Record<string, FsValue> } }[]>(`${this.root}:runQuery`, {
+      method: 'POST',
+      body: JSON.stringify({ structuredQuery }),
+    });
+    return rows.filter((r) => r.document).map((r) => ({ name: r.document!.name, fields: r.document!.fields ?? {} }));
+  }
+
   /** Atomically applies all writes (max 500). */
   async commit(writes: Write[]): Promise<void> {
     const body = writes.map((w) => this.toRestWrite(w));
