@@ -149,6 +149,11 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   - "Town spirit this week" on Explore is now for admins only.
   - Removed the "Photos are made smaller on your phone" sentences.
   - Fixtures show a gold "🔮 Predict the score" button (or "Your prediction: 2 – 1") on upcoming matches.
+- 2026-11-24 — **Voice notes fix:** the site's `Permissions-Policy` header turned the microphone off
+  (`microphone=()`), so the phone refused it; it now allows it for the site itself (`microphone=(self)`). The
+  offline app cache kept serving the old page with the old header, so pages are now loaded network-first (cached
+  copy only when offline) and header changes apply at once. Lesson: browser tests run on the dev server, which
+  doesn't send the site Worker's headers; check headers on the live site after such changes.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
