@@ -154,6 +154,21 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   offline app cache kept serving the old page with the old header, so pages are now loaded network-first (cached
   copy only when offline) and header changes apply at once. Lesson: browser tests run on the dev server, which
   doesn't send the site Worker's headers; check headers on the live site after such changes.
+- 2026-11-24 — **Chat upgrades, social extras, safety net:**
+  - Chat: "typing…" and ✓ Sent / ✓✓ Seen in private and group chats (`chats/{id}/presence/{uid}`, not town
+    rooms); "Active now" and green dots from `users.lastActiveAt`, refreshed while the app is open. Members can hide
+    it in Settings → Privacy (then they don't see others' either). Reply to a message (quoted) and react with one
+    emoji (❤️😂👍🔥😮😢🙏🏾), on every message.
+  - Group chats made by members (only with their friends; up to 50), created through the API. Add friends,
+    rename (group admin), members list, leave (the group keeps an admin). Chat → Groups.
+  - Saved posts (⋯ → Save post; More → Saved; private). Reply to a friend's story straight into private chat.
+    Shared photo album on every event (anyone adds; the author deletes; the town moderator removes).
+    Birthdays (opt-in, day and month only: "🎂 Birthdays today" on the home feed). "I'm home" visits (town + until
+    date, up to 90 days: "🏡 Home right now").
+  - Safety net: website security-header tests (`apps/site/test`) and `npm run check:live` (live site + API
+    checks after each deploy, all passing). Fixed along the way: message menus could go off-screen or hide
+    under the header, and all pop-up windows shared one title id (screen readers read the wrong title).
+  - Needs **Run setup again** (new rules and an index for album photos).
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

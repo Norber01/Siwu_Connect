@@ -521,6 +521,21 @@ describe('events', () => {
     await assertSucceeds(ops.createEvent(db('alice'), 'alice', input(), null));
     await assertFails(ops.createEvent(db('alice'), 'alice', input(), null));
   });
+
+  it('event photo albums: anyone adds own photos; author deletes; town moderator removes', async () => {
+    await seedUser('dan');
+    const id = await ops.createEvent(db('alice'), 'alice', input(), null);
+    await assertSucceeds(ops.addEventPhoto(db('dan'), 'dan', id, 'https://x.example/images/dan/a.webp', 'https://x.example/images/dan/a-s.webp'));
+    await assertFails(ops.addEventPhoto(db('dan'), 'dan', id, 'https://x.example/images/dan/b.webp', null)); // too fast
+    await assertFails(ops.addEventPhoto(db('bob'), 'bob', id, 'https://x.example/images/dan/a.webp', null)); // someone else's photo
+    const photos = await getDocs(query(collection(db('bob'), 'events', id, 'photos'), where('status', '==', 'published')));
+    expect(photos.size).toBe(1);
+    const pid = photos.docs[0]!.id;
+    await seedUser('eve');
+    await assertFails(ops.takeDownEventPhoto(db('eve'), id, pid, 'removed')); // not a moderator
+    await assertSucceeds(ops.takeDownEventPhoto(db('bob'), id, pid, 'removed')); // moderator of Todzi
+  });
+
 });
 
 describe('marketplace', () => {
@@ -717,6 +732,50 @@ describe('chat', () => {
     await assertSucceeds(ops.deleteMessage(db('alice'), 'room_odomi', msgs.docs[0]!.id, true));
   });
 
+  it('typing, seen, replies and reactions', async () => {
+    await befriend('alice', 'bob');
+    const id = await ops.openDm(db('alice'), 'alice', 'bob');
+    await assertSucceeds(ops.setTyping(db('alice'), 'alice', id, true));
+    await assertSucceeds(ops.markChatRead(db('bob'), 'bob', id));
+    const pres = await getDocs(collection(db('bob'), 'chats', id, 'presence'));
+    expect(pres.docs.map((d) => d.id).sort()).toEqual(['alice', 'bob']);
+    await assertFails(getDocs(collection(db('carol'), 'chats', id, 'presence'))); // not in the chat
+    await assertFails(setDoc(doc(db('alice'), 'chats', id, 'presence', 'bob'), { typingAt: serverTimestamp() })); // someone else's
+    await assertFails(ops.setTyping(db('alice'), 'alice', 'room_odomi', true).then(() => setDoc(doc(db('alice'), 'chats', 'room_odomi', 'presence', 'alice'), { typingAt: serverTimestamp() })));
+
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', id, 'Are you coming?', null));
+    const first = (await getDocs(collection(db('bob'), 'chats', id, 'messages'))).docs[0]!;
+    await assertSucceeds(ops.sendMessage(db('bob'), 'bob', id, 'Yes!', null, null, { replyTo: { id: first.id, senderId: 'alice', text: 'Are you coming?' } }));
+    await assertSucceeds(ops.reactToMessage(db('bob'), 'bob', id, first.id, '❤️'));
+    await assertFails(ops.reactToMessage(db('bob'), 'bob', id, first.id, '💩')); // not an allowed emoji
+    await assertFails(updateDoc(doc(db('bob'), 'chats', id, 'messages', first.id), { 'reactions.alice': '😂' })); // someone else's reaction
+    await assertFails(ops.reactToMessage(db('carol'), 'carol', id, first.id, '❤️')); // not in the chat
+    await assertSucceeds(ops.reactToMessage(db('bob'), 'bob', id, first.id, null));
+    expect((await getDoc(doc(db('alice'), 'chats', id, 'messages', first.id))).data()?.reactions).toEqual({});
+  });
+
+  it('"active" time: only your own, now or cleared', async () => {
+    await assertSucceeds(ops.setActive(db('alice'), 'alice', true));
+    await assertSucceeds(ops.setActive(db('alice'), 'alice', false));
+    await assertFails(ops.setActive(db('bob'), 'alice', true));
+    await assertFails(updateDoc(doc(db('alice'), 'users', 'alice'), { lastActiveAt: new Date(Date.now() + 86400_000) }));
+  });
+
+  it('group chats: members talk, outsiders cannot read; clients cannot create groups', async () => {
+    await seed((a) =>
+      setDoc(doc(a, 'chats', 'grp_1'), { type: 'group', name: 'Family', members: ['alice', 'bob'], admins: ['alice'], lastMessage: null }),
+    );
+    await assertSucceeds(ops.sendMessage(db('bob'), 'bob', 'grp_1', 'Hello family', null));
+    await assertSucceeds(getDocs(collection(db('alice'), 'chats', 'grp_1', 'messages')));
+    await assertFails(getDocs(collection(db('carol'), 'chats', 'grp_1', 'messages')));
+    await assertFails(ops.sendMessage(db('carol'), 'carol', 'grp_1', 'sneaky', null));
+    await assertFails(
+      setDoc(doc(db('carol'), 'chats', 'grp_2'), { type: 'group', name: 'Mine', members: ['carol', 'alice'], admins: ['carol'], lastMessage: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }),
+    );
+    const mine = await getDocs(query(collection(db('alice'), 'chats'), where('members', 'array-contains', 'alice')));
+    expect(mine.docs.map((d) => d.id)).toContain('grp_1');
+  });
+
   it('read markers are private', async () => {
     await assertSucceeds(ops.markChatRead(db('alice'), 'alice', 'room_odomi'));
     await assertFails(getDoc(doc(db('bob'), 'users', 'alice', 'chatState', 'room_odomi')));
@@ -848,6 +907,20 @@ describe('Gen Z features', () => {
     await assertFails(updateDoc(doc(db('bob'), 'users', 'bob'), { nameTokens: Array.from({ length: 101 }, (_, i) => `t${i}`), updatedAt: serverTimestamp() }));
     const found = await getDocs(query(collection(db('carol'), 'users'), where('nameTokens', 'array-contains', 'bo')));
     expect(found.docs.map((d) => d.id)).toEqual(['bob']);
+  });
+
+  it('bookmarks are private; birthdays and home visits are checked', async () => {
+    await assertSucceeds(ops.setBookmark(db('bob'), 'bob', 'p1', true));
+    await assertFails(getDoc(doc(db('carol'), 'users', 'bob', 'bookmarks', 'p1')));
+    await assertFails(ops.setBookmark(db('carol'), 'bob', 'p1', true));
+    await assertSucceeds(ops.setBookmark(db('bob'), 'bob', 'p1', false));
+    await assertSucceeds(ops.setBirthday(db('bob'), 'bob', '11-24'));
+    await assertFails(ops.setBirthday(db('bob'), 'bob', '13-40'));
+    await assertSucceeds(ops.setBirthday(db('bob'), 'bob', null));
+    await assertSucceeds(ops.setHomeVisit(db('bob'), 'bob', { townId: 'todzi', until: new Date(Date.now() + 10 * 86400_000) }));
+    await assertFails(ops.setHomeVisit(db('bob'), 'bob', { townId: 'todzi', until: new Date(Date.now() + 200 * 86400_000) })); // too far ahead
+    await assertFails(ops.setHomeVisit(db('bob'), 'bob', { townId: 'accra', until: new Date(Date.now() + 86400_000) }));
+    await assertFails(ops.setHomeVisit(db('carol'), 'bob', null));
   });
 
   it('profile bio and vibe', async () => {

@@ -443,6 +443,98 @@ export function createApp() {
     return c.json({ ok: true });
   });
 
+  // ---------- group chats made by members (only with their friends) ----------
+  const GROUP_MAX = 50;
+  const groupName = (v: unknown) => {
+    const name = typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '';
+    if (name.length < 2 || name.length > 40) fail(400, 'Give the group a name (2 to 40 characters).');
+    return name;
+  };
+  async function friendsOf(fs: Firestore, me: string, uids: string[]) {
+    const docs = await Promise.all(uids.map((u) => fs.get<{ status: string }>(`friendships/${[me, u].sort().join('_')}`)));
+    const notFriends = uids.filter((_, i) => docs[i]?.data.status !== 'accepted');
+    if (notFriends.length) fail(403, 'You can only add your friends to a group.');
+  }
+  async function activeMember(fs: Firestore, uid: string) {
+    const u = await fs.get<UserDoc>(`users/${uid}`);
+    if (!u) fail(403, 'Finish setting up your profile first.');
+    if (u!.data.status !== 'active') fail(403, 'Your account is suspended.');
+  }
+  type GroupDoc = { type: string; name: string; members: string[]; admins: string[] };
+  async function myGroup(fs: Firestore, id: string, me: string) {
+    if (!/^grp_[A-Za-z0-9]+$/.test(id)) fail(404, 'Group not found');
+    const g = await fs.get<GroupDoc>(`chats/${id}`);
+    if (!g || g.data.type !== 'group' || !g.data.members.includes(me)) fail(404, 'Group not found');
+    return g!;
+  }
+
+  app.post('/chats/groups', async (c) => {
+    const fs = c.get('fs');
+    const me = c.get('uid');
+    const input = (await c.req.json().catch(() => ({}))) as { name?: unknown; members?: unknown };
+    const name = groupName(input.name);
+    const others = [...new Set(Array.isArray(input.members) ? input.members.filter((m): m is string => typeof m === 'string' && m !== me) : [])];
+    if (others.length < 1) fail(400, 'Add at least one friend.');
+    if (others.length + 1 > GROUP_MAX) fail(400, `A group can have at most ${GROUP_MAX} people.`);
+    await activeMember(fs, me);
+    await friendsOf(fs, me, others);
+    const id = `grp_${fs.newId()}`;
+    await fs.commit([
+      {
+        kind: 'create',
+        path: `chats/${id}`,
+        data: {
+          type: 'group',
+          name,
+          members: [me, ...others],
+          admins: [me],
+          createdBy: me,
+          lastMessage: null,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+      },
+    ]);
+    return c.json({ id });
+  });
+
+  app.post('/chats/:id/members', async (c) => {
+    const fs = c.get('fs');
+    const me = c.get('uid');
+    const g = await myGroup(fs, c.req.param('id'), me);
+    const input = (await c.req.json().catch(() => ({}))) as { add?: unknown };
+    const add = [...new Set(Array.isArray(input.add) ? input.add.filter((m): m is string => typeof m === 'string') : [])].filter(
+      (u) => !g.data.members.includes(u),
+    );
+    if (!add.length) fail(400, 'Choose friends to add.');
+    if (g.data.members.length + add.length > GROUP_MAX) fail(400, `A group can have at most ${GROUP_MAX} people.`);
+    await activeMember(fs, me);
+    await friendsOf(fs, me, add);
+    await fs.commit([{ kind: 'update', path: g.path, data: { members: [...g.data.members, ...add], updatedAt: FieldValue.serverTimestamp() } }]);
+    return c.json({ ok: true, added: add.length });
+  });
+
+  app.post('/chats/:id/rename', async (c) => {
+    const fs = c.get('fs');
+    const me = c.get('uid');
+    const g = await myGroup(fs, c.req.param('id'), me);
+    if (!g.data.admins.includes(me)) fail(403, 'Only the group admin can rename it.');
+    const { name } = (await c.req.json().catch(() => ({}))) as { name?: unknown };
+    await fs.commit([{ kind: 'update', path: g.path, data: { name: groupName(name), updatedAt: FieldValue.serverTimestamp() } }]);
+    return c.json({ ok: true });
+  });
+
+  app.post('/chats/:id/leave', async (c) => {
+    const fs = c.get('fs');
+    const me = c.get('uid');
+    const g = await myGroup(fs, c.req.param('id'), me);
+    const members = g.data.members.filter((u) => u !== me);
+    let admins = g.data.admins.filter((u) => u !== me);
+    if (!admins.length && members.length) admins = [members[0]!]; // the group keeps an admin
+    await fs.commit([{ kind: 'update', path: g.path, data: { members, admins } }]);
+    return c.json({ ok: true });
+  });
+
   // ---------- friends: send or accept a request (checked here, with clear reasons) ----------
   app.post('/friends/:uid', async (c) => {
     const fs = c.get('fs');

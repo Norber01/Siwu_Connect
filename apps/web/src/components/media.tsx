@@ -430,7 +430,7 @@ export function MediaGallery({ media }: { media: MediaItem[] }) {
   );
 }
 
-function Lightbox({ images, start, onClose }: { images: string[]; start: number; onClose: () => void }) {
+export function Lightbox({ images, start, onClose }: { images: string[]; start: number; onClose: () => void }) {
   const [i, setI] = useState(start);
   const touch = useRef<number | null>(null);
   const go = useCallback((d: number) => setI((x) => (x + d + images.length) % images.length), [images.length]);

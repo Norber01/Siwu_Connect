@@ -1,14 +1,4 @@
-import {
-  type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type SelectHTMLAttributes,
-  type TextareaHTMLAttributes,
-  forwardRef,
-  useEffect,
-  useId,
-  useRef,
-} from 'react';
+import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, forwardRef, useEffect, useId, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { townShortName } from '@siwu/shared';
 import { Icon, type IconName } from './Icon';
@@ -247,6 +237,7 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -259,12 +250,12 @@ export function Modal({
       onClose={onClose}
       onCancel={onClose}
       className="w-[calc(100%-2rem)] max-w-md rounded-2xl p-0 backdrop:bg-black/40"
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
     >
       {open && (
         <div className="p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
-            <h2 id="modal-title" className="text-lg font-bold text-gray-900">
+            <h2 id={titleId} className="text-lg font-bold text-gray-900">
               {title}
             </h2>
             <button onClick={onClose} className="-m-2 rounded-lg p-2 text-gray-500 hover:bg-sand-100" aria-label="Close">

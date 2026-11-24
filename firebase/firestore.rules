@@ -96,6 +96,12 @@ service cloud.firestore {
             || (str(p.photoUrl, 10, 300)
                 && p.photoUrl.matches('^https?://[^/]+(/[^/]+)*/avatars/' + uid + '/[A-Za-z0-9_-]+[.](webp|jpg)$')))
         && str(p.get('bio', ''), 0, 160)
+        // Birthday (opt-in, day and month only) and "I'm home" visits.
+        && (p.get('birthdayKey', null) == null
+            || (p.birthdayKey is string && p.birthdayKey.matches('^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')))
+        && (p.get('homeVisitTown', null) == null || isTown(p.homeVisitTown))
+        && (p.get('homeVisitUntil', null) == null
+            || (p.homeVisitUntil is timestamp && p.homeVisitUntil < request.time + duration.value(92, 'd')))
         && str(p.get('vibe', ''), 0, 16)
         && p.get('nameTokens', []) is list && p.get('nameTokens', []).size() <= 100;
     }
@@ -114,12 +120,23 @@ service cloud.firestore {
         && d().createdAt == request.time
         && d().updatedAt == request.time;
       // Username, status and createdAt are immutable from the client.
-      allow update: if isActive() && uid == me()
+      allow update: if (isActive() && uid == me()
         && changed().hasOnly(['displayName', 'displayNameLower', 'photoUrl', 'hometownId',
-                              'residence', 'countryCode', 'bio', 'vibe', 'updatedAt', 'nameTokens'])
+                              'residence', 'countryCode', 'bio', 'vibe', 'updatedAt', 'nameTokens',
+                              'birthdayKey', 'homeVisitTown', 'homeVisitUntil'])
         && validProfile(d(), uid)
-        && d().updatedAt == request.time;
+        && d().updatedAt == request.time)
+        // "Active now": a time stamp refreshed while the app is open (or cleared to hide it).
+        || (signedIn() && uid == me() && changed().hasOnly(['lastActiveAt'])
+            && (d().lastActiveAt == request.time || d().lastActiveAt == null));
       allow delete: if false;
+
+      // Saved posts (bookmarks). Private to the owner.
+      match /bookmarks/{postId} {
+        allow read, delete: if signedIn() && uid == me();
+        allow create: if signedIn() && uid == me() && exactKeys(['createdAt']) && d().createdAt == request.time;
+        allow update: if false;
+      }
 
       // Users this user has blocked. Private to the owner.
       match /blocks/{blockedUid} {
@@ -145,8 +162,9 @@ service cloud.firestore {
     match /rate_limits/{uid} {
       allow read: if signedIn() && uid == me();
       allow create: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt', 'lastFriendAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt', 'lastFriendAt', 'lastPhotoAt'])
         && d().get('lastFriendAt', request.time) == request.time
+        && d().get('lastPhotoAt', request.time) == request.time
         && d().get('lastMessageAt', request.time) == request.time
         && d().get('lastStoryAt', request.time) == request.time
         && d().get('lastPostAt', request.time) == request.time
@@ -154,8 +172,9 @@ service cloud.firestore {
         && d().get('lastEventAt', request.time) == request.time
         && d().get('lastListingAt', request.time) == request.time;
       allow update: if signedIn() && uid == me()
-        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt', 'lastFriendAt'])
+        && d().keys().hasOnly(['lastPostAt', 'lastCommentAt', 'lastEventAt', 'lastListingAt', 'lastMessageAt', 'lastStoryAt', 'lastFriendAt', 'lastPhotoAt'])
         && (!('lastFriendAt' in changed()) || d().lastFriendAt == request.time)
+        && (!('lastPhotoAt' in changed()) || d().lastPhotoAt == request.time)
         && (!('lastMessageAt' in changed()) || d().lastMessageAt == request.time)
         && (!('lastStoryAt' in changed()) || d().lastStoryAt == request.time)
         && (!('lastPostAt' in changed()) || d().lastPostAt == request.time)
@@ -475,6 +494,23 @@ service cloud.firestore {
           && rsvpCountersOk(eventId, resource.data, d()));
       allow delete: if false;
 
+      // Shared photo album: anyone can add their photos; the author or a moderator of the town can take one down.
+      match /photos/{pid} {
+        allow read: if signedIn() && resource.data.status == 'published';
+        allow create: if isActive()
+          && exactKeys(['authorId', 'url', 'thumbUrl', 'status', 'createdAt'])
+          && d().authorId == me()
+          && d().url != null && imageOk(d().url, me()) && imageOk(d().thumbUrl, me())
+          && d().status == 'published'
+          && d().createdAt == request.time
+          && get(eventPath(eventId)).data.status in ['published', 'cancelled']
+          && rateOk('lastPhotoAt', 2);
+        allow update: if signedIn() && resource.data.status == 'published' && changed().hasOnly(['status'])
+          && ((resource.data.authorId == me() && d().status == 'deleted')
+              || (canModerate(get(eventPath(eventId)).data.townId) && d().status == 'removed'));
+        allow delete: if false;
+      }
+
       match /rsvps/{rid} {
         allow read: if signedIn() && rid == me();
         allow create, update: if isActive() && rid == me()
@@ -680,7 +716,7 @@ service cloud.firestore {
     function canUseChat(c) { return c.type == 'room' || me() in c.members; }
     function dmOther(c) { return c.members[0] == me() ? c.members[1] : c.members[0]; }
     function notBlockedDm(c) {
-      return c.type == 'room'
+      return c.type != 'dm'
         || (!exists(/databases/$(database)/documents/users/$(dmOther(c))/blocks/$(me()))
             && !exists(/databases/$(database)/documents/users/$(me())/blocks/$(dmOther(c))));
     }
@@ -717,9 +753,15 @@ service cloud.firestore {
         allow create: if isActive()
           && canUseChat(get(chatPath(chatId)).data)
           && notBlockedDm(get(chatPath(chatId)).data)
-          && (get(chatPath(chatId)).data.type == 'room' || areFriends(dmOther(get(chatPath(chatId)).data)))
+          && (get(chatPath(chatId)).data.type != 'dm' || areFriends(dmOther(get(chatPath(chatId)).data)))
           && d().keys().hasAll(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
-          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds'])
+          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds', 'replyTo', 'story'])
+          // Reply to an earlier message (a short quote of it) or to someone's story.
+          && (!('replyTo' in d()) || (d().replyTo is map && d().replyTo.keys().hasOnly(['id', 'senderId', 'text'])
+              && str(d().replyTo.id, 1, 40) && str(d().replyTo.senderId, 1, 128) && str(d().replyTo.text, 0, 120)))
+          && (!('story' in d()) || (d().story is map && d().story.keys().hasOnly(['id', 'text', 'url'])
+              && str(d().story.id, 1, 40) && str(d().story.text, 0, 120)
+              && (d().story.url == null || str(d().story.url, 10, 300))))
           && d().senderId == me()
           && str(d().text, 0, 2000)
           && imageOk(d().imageUrl, me())
@@ -730,11 +772,30 @@ service cloud.firestore {
           && d().createdAt == request.time
           && rateOk('lastMessageAt', 1);
         // Senders can delete their own messages.
-        allow update: if signedIn() && resource.data.senderId == me() && resource.data.status == 'sent'
+        allow update: if (signedIn() && resource.data.senderId == me() && resource.data.status == 'sent'
           && changed().hasOnly(['status', 'text', 'imageUrl', 'audioUrl'])
-          && d().status == 'deleted' && d().text == '' && d().imageUrl == null && d().get('audioUrl', null) == null;
+          && d().status == 'deleted' && d().text == '' && d().imageUrl == null && d().get('audioUrl', null) == null)
+          // Anyone in the chat can react with one emoji (or take it back); only their own reaction changes.
+          || (isActive() && canUseChat(get(chatPath(chatId)).data) && resource.data.status == 'sent'
+            && changed().hasOnly(['reactions'])
+            && d().reactions is map
+            && d().reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([me()])
+            && (!(me() in d().reactions) || d().reactions[me()] in ['❤️', '😂', '👍', '🔥', '😮', '😢', '🙏🏾']));
         allow delete: if false;
       }
+    }
+
+    // Typing and "seen" in private and group chats (not town rooms): one small record per member.
+    match /chats/{chatId}/presence/{uid} {
+      allow read: if signedIn() && get(chatPath(chatId)).data.type != 'room' && me() in get(chatPath(chatId)).data.members;
+      allow create, update: if signedIn() && uid == me()
+        && get(chatPath(chatId)).data.type != 'room' && me() in get(chatPath(chatId)).data.members
+        && d().keys().hasOnly(['typingAt', 'readAt'])
+        && (d().get('typingAt', null) == null || d().typingAt == request.time
+            || (resource != null && d().typingAt == resource.data.get('typingAt', null)))
+        && (d().get('readAt', null) == null || d().readAt == request.time
+            || (resource != null && d().readAt == resource.data.get('readAt', null)));
+      allow delete: if false;
     }
 
     // Per-user read markers for unread badges.

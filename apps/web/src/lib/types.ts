@@ -15,6 +15,13 @@ export interface Profile {
   vibe: string;
   /** Verified by a Siwu Connect admin (blue tick). */
   verified: boolean;
+  /** Last time the app was open (null when the member hides it). */
+  lastActiveAt: Date | null;
+  /** "MM-DD" when the member shares their birthday. */
+  birthdayKey: string | null;
+  /** "I'm home": visiting this town until this date. */
+  homeVisitTown: string | null;
+  homeVisitUntil: Date | null;
 }
 
 export interface Post {
@@ -105,6 +112,10 @@ export function toProfile(s: DocumentSnapshot): Profile {
     bio: d.bio ?? '',
     vibe: d.vibe ?? '',
     verified: d.verified === true,
+    lastActiveAt: date(d.lastActiveAt),
+    birthdayKey: d.birthdayKey ?? null,
+    homeVisitTown: d.homeVisitTown ?? null,
+    homeVisitUntil: date(d.homeVisitUntil),
   };
 }
 

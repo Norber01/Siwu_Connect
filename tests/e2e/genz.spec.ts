@@ -98,6 +98,14 @@ test('Gen Z features', async ({ page }) => {
   await sheet.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(sheet).toHaveCount(0);
 
+  // Save a post and find it under Saved.
+  await page.goto('/?town=all');
+  await page.getByRole('button', { name: 'Post actions' }).first().click();
+  await page.getByRole('menuitem', { name: 'Save post' }).click();
+  await expect(page.getByText('Saved 🔖')).toBeVisible();
+  await page.goto('/saved');
+  await expect(page.getByRole('article', { name: 'Post' })).toHaveCount(1);
+
   // Bio + dark mode.
   await page.goto('/settings');
   await page.getByLabel('Bio').fill('Proud daughter of Mempeasem 💚');

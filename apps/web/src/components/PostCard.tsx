@@ -6,7 +6,8 @@ import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useInvalidatePosts, useProfileById } from '../lib/hooks';
-import { REACTIONS, type Reaction, createPost, deletePost, setReaction, votePoll } from '../lib/ops';
+import { REACTIONS, type Reaction, createPost, deletePost, setBookmark, setReaction, votePoll } from '../lib/ops';
+import { useBookmarks } from '../lib/bookmarks';
 import { fetchLastPostAt, fetchMyPollVote, fetchPost } from '../lib/queries';
 import { useQuery } from '@tanstack/react-query';
 import type { Post } from '../lib/types';
@@ -329,6 +330,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
   const liked = !!reaction;
   const [reporting, setReporting] = useState(false);
   const [commenting, setCommenting] = useState(false);
+  const saved = useBookmarks().has(post.id);
   const closeComments = useCallback(() => setCommenting(false), []);
   const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
   const [busy, setBusy] = useState(false);
@@ -398,6 +400,14 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
   };
 
   const items: MenuItem[] = [];
+  items.push({
+    label: saved ? 'Remove from saved' : 'Save post',
+    icon: 'bookmark',
+    onSelect: () =>
+      void setBookmark(db, user.uid, post.id, !saved)
+        .then(() => toast(saved ? 'Removed from saved.' : 'Saved 🔖 Find it under More → Saved.'))
+        .catch((e) => toast(friendlyError(e), 'error')),
+  });
   if (isAuthor && active) items.push({ label: 'Edit post', icon: 'edit', onSelect: () => navigate(`/p/${post.id}/edit`) });
   if (isAuthor) items.push({ label: 'Delete post', icon: 'trash', danger: true, onSelect: () => setConfirm('delete') });
   if (!isAuthor && active) items.push({ label: 'Report post', icon: 'flag', onSelect: () => setReporting(true) });

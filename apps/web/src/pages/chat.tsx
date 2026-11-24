@@ -8,7 +8,8 @@ import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
-import { deleteMessage, markChatRead, openDm, sendMessage } from '../lib/ops';
+import { MESSAGE_REACTIONS, deleteMessage, markChatRead, openDm, reactToMessage, sendMessage, setTyping } from '../lib/ops';
+import { activeLabel, isOnline } from '../lib/activity';
 import { useFriendships } from '../lib/friends';
 import { VoicePlayer, VoiceRecorder, canRecordVoice } from '../components/voice';
 import { FriendActions } from '../components/FriendButton';
@@ -23,8 +24,9 @@ import { Avatar, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner,
 
 interface Chat {
   id: string;
-  type: 'dm' | 'room';
+  type: 'dm' | 'room' | 'group';
   members: string[];
+  admins?: string[];
   name?: string;
   townId?: string;
   lastMessage: { id: string; senderId: string; text: string; at: Date | null } | null;
@@ -37,8 +39,17 @@ interface Message {
   imageUrl: string | null;
   audioUrl?: string | null;
   audioSeconds?: number;
+  replyTo?: { id: string; senderId: string; text: string };
+  story?: { id: string; text: string; url: string | null };
+  reactions?: Record<string, string>;
   status: 'sent' | 'deleted' | 'removed';
   createdAt: Date | null;
+}
+
+interface Presence {
+  uid: string;
+  typingAt: Date | null;
+  readAt: Date | null;
 }
 
 const toDate = (v: unknown) => (v && typeof (v as Timestamp).toDate === 'function' ? (v as Timestamp).toDate() : null);
@@ -50,6 +61,7 @@ function toChat(id: string, d: Record<string, unknown>): Chat {
     id,
     type: d.type as Chat['type'],
     members: (d.members as string[]) ?? [],
+    admins: (d.admins as string[]) ?? [],
     name: d.name as string | undefined,
     townId: d.townId as string | undefined,
     lastMessage: lm ? { ...lm, at: toDate(lm.at) } : null,
@@ -163,13 +175,39 @@ function DmRow({ chat, unread, since }: { chat: Chat; unread: boolean; since: Da
       since={since}
       unread={unread}
       time={chat.lastMessage?.at ?? chat.updatedAt}
-      avatar={<Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={54} />}
+      avatar={
+        <span className="relative shrink-0">
+          <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={54} />
+          {isOnline(p?.lastActiveAt) && <span className="absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-green-500 ring-2 ring-white" aria-label="Active now" />}
+        </span>
+      }
       title={
         <>
           {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-4 w-4" />}
         </>
       }
       preview={chat.lastMessage ? `${chat.lastMessage.senderId === user.uid ? 'You: ' : ''}${chat.lastMessage.text}` : 'Say hello 👋'}
+    />
+  );
+}
+
+function GroupRow({ chat, unread, since }: { chat: Chat; unread: boolean; since: Date | null | undefined }) {
+  const { user } = useMe();
+  const last = chat.lastMessage;
+  return (
+    <RowShell
+      to={`/chat/${chat.id}`}
+      chatId={chat.id}
+      since={since}
+      unread={unread}
+      time={last?.at ?? chat.updatedAt}
+      avatar={
+        <span className="flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-lg font-black text-white">
+          {(chat.name ?? '?').slice(0, 2).toUpperCase()}
+        </span>
+      }
+      title={chat.name ?? 'Group'}
+      preview={last ? `${last.senderId === user.uid ? 'You: ' : ''}${last.text}` : `${chat.members.length} members · say hello 👋`}
     />
   );
 }
@@ -208,8 +246,14 @@ export function ChatListPage() {
   const sortedRooms = [...rooms].sort((a, b) => ROOM_ORDER.indexOf(a.townId ?? '') - ROOM_ORDER.indexOf(b.townId ?? ''));
   const visibleDms = dms.filter((c) => c.lastMessage || c.members.includes(user.uid));
   const time = (c: Chat) => (c.lastMessage?.at ?? c.updatedAt)?.getTime() ?? 0;
+  const people = visibleDms.filter((c) => c.type === 'dm');
+  const groups = visibleDms.filter((c) => c.type === 'group');
   const list: Chat[] =
-    filter === 'friends' ? visibleDms : filter === 'groups' ? sortedRooms : [...visibleDms, ...sortedRooms].sort((a, b) => time(b) - time(a));
+    filter === 'friends'
+      ? people
+      : filter === 'groups'
+        ? [...groups.sort((a, b) => time(b) - time(a)), ...sortedRooms]
+        : [...visibleDms, ...sortedRooms].sort((a, b) => time(b) - time(a));
   const chips: { id: ChatFilter; label: string; count?: number }[] = [
     { id: 'all', label: 'All' },
     { id: 'friends', label: 'Friends' },
@@ -274,7 +318,13 @@ export function ChatListPage() {
             <ul>
               {list.map((c) => (
                 <li key={c.id}>
-                  {c.type === 'room' ? <RoomRow chat={c} unread={isUnread(c)} since={reads[c.id]} /> : <DmRow chat={c} unread={isUnread(c)} since={reads[c.id]} />}
+                  {c.type === 'room' ? (
+                    <RoomRow chat={c} unread={isUnread(c)} since={reads[c.id]} />
+                  ) : c.type === 'group' ? (
+                    <GroupRow chat={c} unread={isUnread(c)} since={reads[c.id]} />
+                  ) : (
+                    <DmRow chat={c} unread={isUnread(c)} since={reads[c.id]} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -334,6 +384,174 @@ function RequestRow({ uid, incoming }: { uid: string; incoming: boolean }) {
   );
 }
 
+function GroupMenu({ chat }: { chat: Chat }) {
+  const { user } = useMe();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [name, setName] = useState(chat.name ?? '');
+  const admin = chat.admins?.includes(user.uid);
+  const items: MenuItem[] = [
+    { label: `Members (${chat.members.length})`, icon: 'towns', onSelect: () => setShowMembers(true) },
+    { label: 'Add friends', icon: 'plus', onSelect: () => setAdding(true) },
+    ...(admin ? [{ label: 'Rename group', icon: 'edit' as const, onSelect: () => setRenaming(true) }] : []),
+    {
+      label: 'Leave group',
+      icon: 'back',
+      danger: true,
+      onSelect: () =>
+        void api(`/chats/${chat.id}/leave`, { json: {} })
+          .then(() => {
+            toast('You left the group.');
+            navigate('/chat');
+          })
+          .catch((e) => toast(friendlyError(e), 'error')),
+    },
+  ];
+  return (
+    <>
+      <Menu items={items} label="Group options" />
+      <GroupDialog open={adding} onClose={() => setAdding(false)} onDone={() => setAdding(false)} groupId={chat.id} existing={chat.members} />
+      <Modal open={showMembers} onClose={() => setShowMembers(false)} title={`${chat.name ?? 'Group'} · members`}>
+        <ul className="max-h-80 overflow-y-auto">
+          {chat.members.map((u) => (
+            <li key={u}>
+              <MemberRow uid={u} admin={!!chat.admins?.includes(u)} />
+            </li>
+          ))}
+        </ul>
+      </Modal>
+      <Modal open={renaming} onClose={() => setRenaming(false)} title="Rename group">
+        <TextField label="Group name" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setRenaming(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() =>
+              void api(`/chats/${chat.id}/rename`, { json: { name } })
+                .then(() => {
+                  toast('Group renamed.');
+                  setRenaming(false);
+                })
+                .catch((e) => toast(friendlyError(e), 'error'))
+            }
+          >
+            Save
+          </Button>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function MemberRow({ uid, admin }: { uid: string; admin: boolean }) {
+  const { data: p } = useProfileById(uid);
+  return (
+    <Link to={p ? `/u/${p.username}` : '#'} className="flex items-center gap-3 rounded-xl p-2 hover:bg-sand-100">
+      <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={40} />
+      <span className="min-w-0 flex-1 truncate font-semibold">
+        {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-3.5 w-3.5" />}
+      </span>
+      {admin && <span className="rounded-full bg-gold-100 px-2 text-xs font-bold text-gold-800">Admin</span>}
+    </Link>
+  );
+}
+
+function FriendPickRow({ uid, onPick, checked }: { uid: string; onPick: () => void; checked?: boolean }) {
+  const { data: p } = useProfileById(uid);
+  return (
+    <li>
+      <button onClick={onPick} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-sand-100" aria-pressed={checked}>
+        <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={40} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold">
+            {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-3.5 w-3.5" />}
+          </span>
+          <span className="block text-xs text-gray-600">{p ? `@${p.username}` : ''}</span>
+        </span>
+        {checked !== undefined && (
+          <span className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-sand-200'}`}>
+            {checked && <Icon name="check" className="h-4 w-4" />}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
+/** Make a group with friends, or (with groupId) add more friends to a group. */
+function GroupDialog({
+  open,
+  onClose,
+  onDone,
+  groupId,
+  existing = [],
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDone: (id: string) => void;
+  groupId?: string;
+  existing?: string[];
+}) {
+  const f = useFriendships();
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const choices = f.friends.filter((u) => !existing.includes(u));
+  const toggle = (u: string) => setPicked((p) => (p.includes(u) ? p.filter((x) => x !== u) : [...p, u]));
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (groupId) {
+        await api(`/chats/${groupId}/members`, { json: { add: picked } });
+        toast(`Added ${picked.length} ${picked.length === 1 ? 'friend' : 'friends'}.`);
+        onDone(groupId);
+      } else {
+        const { id } = await api<{ id: string }>('/chats/groups', { json: { name, members: picked } });
+        toast('Group created 🎉');
+        onDone(id);
+      }
+      setPicked([]);
+      setName('');
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title={groupId ? 'Add friends' : 'New group'}>
+      {!groupId && (
+        <TextField label="Group name" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="e.g. Odomi family, Class of 2015" />
+      )}
+      <p className="mt-3 text-sm font-semibold text-gray-800">Choose friends ({picked.length})</p>
+      {choices.length === 0 ? (
+        <p className="py-4 text-sm text-gray-600">
+          {f.friends.length === 0 ? 'Add friends first — you can only put friends in a group.' : 'All your friends are already in this group.'}
+        </p>
+      ) : (
+        <ul className="mt-1 max-h-72 overflow-y-auto">
+          {choices.map((u) => (
+            <FriendPickRow key={u} uid={u} checked={picked.includes(u)} onPick={() => toggle(u)} />
+          ))}
+        </ul>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button busy={busy} disabled={!picked.length || (!groupId && name.trim().length < 2)} onClick={save}>
+          {groupId ? 'Add' : 'Create group'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 function NewMessageDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, blocked } = useMe();
   const navigate = useNavigate();
@@ -350,9 +568,35 @@ function NewMessageDialog({ open, onClose }: { open: boolean; onClose: () => voi
       toast(friendlyError(e), 'error');
     }
   };
+  const [grouping, setGrouping] = useState(false);
   return (
     <Modal open={open} onClose={onClose} title="New message">
+      <button
+        onClick={() => setGrouping(true)}
+        className="mb-3 flex w-full items-center gap-3 rounded-xl bg-brand-50 p-3 text-left font-semibold text-brand-800 hover:bg-brand-100"
+      >
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-white">
+          <Icon name="towns" className="h-5 w-5" />
+        </span>
+        New group
+      </button>
+      <GroupDialog
+        open={grouping}
+        onClose={() => setGrouping(false)}
+        onDone={(id) => {
+          setGrouping(false);
+          onClose();
+          navigate(`/chat/${id}`);
+        }}
+      />
       <TextField label="Search people" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Name or @username" autoCapitalize="none" />
+      {term.trim().length < 2 && f.friends.length > 0 && (
+        <ul className="mt-3 max-h-72 overflow-y-auto" aria-label="Your friends">
+          {f.friends.map((uid) => (
+            <FriendPickRow key={uid} uid={uid} onPick={() => start(uid)} />
+          ))}
+        </ul>
+      )}
       <ul className="mt-3 max-h-72 overflow-y-auto">
         {(people.data ?? [])
           .filter((p) => p.uid !== user.uid && !blocked.has(p.uid))
@@ -402,6 +646,47 @@ export function ChatRoomPage() {
   const friends = useFriendships();
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [presence, setPresence] = useState<Presence[]>([]);
+  const [tick, setTick] = useState(() => Date.now());
+  const lastTyping = useRef(0);
+  const isRoom = chatId.startsWith('room_');
+
+  // Typing and "seen" of the other members (private and group chats).
+  useEffect(() => {
+    if (isRoom) return;
+    return onSnapshot(
+      collection(db, 'chats', chatId, 'presence'),
+      (snap) =>
+        setPresence(snap.docs.map((d) => ({ uid: d.id, typingAt: toDate(d.data().typingAt), readAt: toDate(d.data().readAt) }))),
+      () => setPresence([]),
+    );
+  }, [chatId, isRoom]);
+  useEffect(() => {
+    const t = setInterval(() => setTick(Date.now()), 2000);
+    return () => clearInterval(t);
+  }, []);
+  // Stop "typing…" when leaving the chat.
+  useEffect(
+    () => () => {
+      if (lastTyping.current) void setTyping(db, user.uid, chatId, false).catch(() => {});
+    },
+    [chatId, user.uid],
+  );
+  const onType = (value: string) => {
+    setText(value);
+    if (isRoom) return;
+    const now = Date.now();
+    if (value.trim() && now - lastTyping.current > 3000) {
+      lastTyping.current = now;
+      void setTyping(db, user.uid, chatId, true).catch(() => {});
+    } else if (!value.trim() && lastTyping.current) {
+      lastTyping.current = 0;
+      void setTyping(db, user.uid, chatId, false).catch(() => {});
+    }
+  };
+  const others = presence.filter((p) => p.uid !== user.uid);
+  const typingUids = others.filter((p) => p.typingAt && tick - p.typingAt.getTime() < 6000).map((p) => p.uid);
 
   useEffect(() => {
     const u1 = onSnapshot(doc(db, 'chats', chatId), (s) => setChat(s.exists() ? toChat(s.id, s.data()) : null), () => setChat(null));
@@ -434,9 +719,11 @@ export function ChatRoomPage() {
   const title = useMemo(() => {
     if (!chat) return 'Chat';
     if (chat.type === 'room') return chat.townId === 'all' ? '🌍 All Akpafu' : `🏡 ${chat.name ?? townShortName(chat.townId ?? '')}`;
+    if (chat.type === 'group') return chat.name ?? 'Group';
     return other?.displayName ?? '…';
   }, [chat, other]);
 
+  const lastMineId = [...(messages ?? [])].reverse().find((m) => m.senderId === user.uid && m.status === 'sent')?.id;
   if (chat === undefined || messages === null) return <PageSpinner />;
   if (chat === null) return <EmptyState title="Chat not found" icon="message" />;
   const blockedOther = !!otherUid && blocked.has(otherUid);
@@ -449,7 +736,13 @@ export function ChatRoomPage() {
     setSending(true);
     if (!imageUrl) setText(''); // clear at once, like other chat apps; restored if sending fails
     try {
-      await sendMessage(db, user.uid, chatId, body.slice(0, EXTRA_LIMITS.feedbackMax), imageUrl);
+      const quote = replyTo ? { id: replyTo.id, senderId: replyTo.senderId, text: replyTo.text || (replyTo.audioUrl ? '🎤 Voice note' : '📷 Photo') } : null;
+      setReplyTo(null);
+      if (lastTyping.current) {
+        lastTyping.current = 0;
+        void setTyping(db, user.uid, chatId, false).catch(() => {});
+      }
+      await sendMessage(db, user.uid, chatId, body.slice(0, EXTRA_LIMITS.feedbackMax), imageUrl, null, { replyTo: quote });
       if (imageUrl) setText('');
     } catch (e) {
       if (!imageUrl) setText((t) => t || body);
@@ -480,13 +773,38 @@ export function ChatRoomPage() {
         title={
           chat.type === 'dm' && other ? (
             <Link to={`/u/${other.username}`} className="flex items-center gap-2">
-              <Avatar url={other.photoUrl} name={other.displayName} size={32} /> <span className="truncate">{other.displayName}</span> {other.verified && <VerifiedBadge className="h-4 w-4" />}
+              <span className="relative">
+                <Avatar url={other.photoUrl} name={other.displayName} size={36} />
+                {isOnline(other.lastActiveAt) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-white" />}
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-1">
+                  <span className="truncate">{other.displayName}</span> {other.verified && <VerifiedBadge className="h-4 w-4" />}
+                </span>
+                <span className="block text-xs font-normal text-gray-600">
+                  {typingUids.length ? <span className="font-semibold text-brand-600">typing…</span> : (activeLabel(other.lastActiveAt) ?? '')}
+                </span>
+              </span>
             </Link>
+          ) : chat.type === 'group' ? (
+            <span className="min-w-0">
+              <span className="block truncate">{title}</span>
+              <span className="block text-xs font-normal text-gray-600">
+                {typingUids.length ? (
+                  <span className="font-semibold text-brand-600">
+                    <Name uid={typingUids[0]!} me={user.uid} /> is typing…
+                  </span>
+                ) : (
+                  `${chat.members.length} members`
+                )}
+              </span>
+            </span>
           ) : (
             title
           )
         }
         back
+        actions={chat.type === 'group' ? <GroupMenu chat={chat} /> : undefined}
       />
       {chat.type === 'room' && <p className="-mt-2 mb-2 text-xs text-gray-600">Visible to all Siwu Connect members. Be kind — the community rules apply.</p>}
 
@@ -506,7 +824,18 @@ export function ChatRoomPage() {
               key={m.id}
               m={m}
               mine={m.senderId === user.uid}
-              showSender={chat.type === 'room' && arr[i - 1]?.senderId !== m.senderId}
+              me={user.uid}
+              chatId={chatId}
+              canReact={canSend}
+              onReply={() => setReplyTo(m)}
+              seen={
+                m.senderId === user.uid && m.id === lastMineId && !isRoom && m.createdAt
+                  ? others.some((p) => p.readAt && p.readAt.getTime() >= m.createdAt!.getTime())
+                    ? 'Seen'
+                    : 'Sent'
+                  : null
+              }
+              showSender={chat.type !== 'dm' && arr[i - 1]?.senderId !== m.senderId}
               items={[
                 ...(m.senderId === user.uid && m.status === 'sent'
                   ? [{ label: 'Delete message', icon: 'trash' as const, danger: true, onSelect: () => void deleteMessage(db, chatId, m.id, !!m.audioUrl).catch((e) => toast(friendlyError(e), 'error')) }]
@@ -530,10 +859,12 @@ export function ChatRoomPage() {
               ]}
             />
           ))}
+        {typingUids.length > 0 && <TypingBubble uids={typingUids} group={chat.type === 'group'} />}
         <div ref={bottom} />
       </div>
 
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] -mx-4 border-t border-sand-200 bg-white/95 px-3 py-2 backdrop-blur">
+        {replyTo && canSend && <ReplyPreview m={replyTo} me={user.uid} onCancel={() => setReplyTo(null)} />}
         {canSend ? (
           <form
             className="flex items-end gap-2"
@@ -559,7 +890,7 @@ export function ChatRoomPage() {
               id="chat-input"
               rows={1}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => onType(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -613,9 +944,180 @@ export function ChatRoomPage() {
   );
 }
 
-function Bubble({ m, mine, showSender, items }: { m: Message; mine: boolean; showSender: boolean; items: MenuItem[] }) {
+function Name({ uid, me }: { uid: string; me: string }) {
+  const { data } = useProfileById(uid === me ? null : uid);
+  return <>{uid === me ? 'You' : (data?.displayName.split(' ')[0] ?? '…')}</>;
+}
+
+function TypingBubble({ uids, group }: { uids: string[]; group: boolean }) {
+  const { user } = useMe();
+  return (
+    <div className="flex items-center gap-2 pl-10" aria-live="polite">
+      <span className="flex gap-1 rounded-2xl rounded-bl-md bg-white px-3 py-2.5 shadow-sm ring-1 ring-sand-200" aria-hidden="true">
+        {[0, 150, 300].map((d) => (
+          <span key={d} className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: `${d}ms` }} />
+        ))}
+      </span>
+      <span className="text-xs text-gray-600">
+        {group ? (
+          <>
+            <Name uid={uids[0]!} me={user.uid} />
+            {uids.length > 1 ? ` and ${uids.length - 1} more are` : ' is'} typing…
+          </>
+        ) : (
+          'typing…'
+        )}
+      </span>
+    </div>
+  );
+}
+
+function ReplyPreview({ m, me, onCancel }: { m: Message; me: string; onCancel: () => void }) {
+  return (
+    <div className="mb-2 flex items-start gap-2 rounded-xl border-l-4 border-brand-600 bg-sand-100 px-3 py-2">
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-bold text-brand-700">
+          Replying to <Name uid={m.senderId} me={me} />
+        </span>
+        <span className="block truncate text-sm text-gray-700">{m.text || (m.audioUrl ? '🎤 Voice note' : '📷 Photo')}</span>
+      </span>
+      <button type="button" onClick={onCancel} className="rounded-full px-2 text-lg leading-none text-gray-600" aria-label="Cancel reply">
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** Long-press (or tap ⋯) actions: quick emoji reactions, reply, and the message's other actions. */
+function MessageActions({
+  mine,
+  myReaction,
+  onReact,
+  onReply,
+  items,
+  canReact,
+}: {
+  mine: boolean;
+  myReaction: string | null;
+  onReact: (emoji: string | null) => void;
+  onReply: () => void;
+  items: MenuItem[];
+  canReact: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [below, setBelow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={(e) => {
+          // Open below when the message is near the top of the screen (the header would cover the menu).
+          setBelow(e.currentTarget.getBoundingClientRect().top < 320);
+          setOpen((o) => !o);
+        }}
+        className="rounded-full p-1.5 text-gray-400 hover:bg-sand-100 hover:text-gray-700"
+        aria-label="Message actions"
+        aria-expanded={open}
+      >
+        <Icon name="more" className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className={`absolute z-20 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-sand-200 ${below ? 'top-full mt-1' : 'bottom-full mb-1'} ${mine ? 'left-0' : 'right-0'}`}
+        >
+          {canReact && (
+            <div className="flex justify-between border-b border-sand-200 px-2 py-1.5">
+              {MESSAGE_REACTIONS.map((r) => (
+                <button
+                  key={r}
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    onReact(myReaction === r ? null : r);
+                  }}
+                  className={`rounded-full p-1 text-xl transition-transform hover:scale-125 ${myReaction === r ? 'bg-brand-50' : ''}`}
+                  aria-label={`React ${r}`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
+          {canReact && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onReply();
+              }}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-gray-900 hover:bg-sand-100"
+            >
+              <Icon name="back" className="h-4 w-4" /> Reply
+            </button>
+          )}
+          {items.map((it) => (
+            <button
+              key={it.label}
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                it.onSelect();
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold hover:bg-sand-100 ${it.danger ? 'text-red-700' : 'text-gray-900'}`}
+            >
+              <Icon name={it.icon} className="h-4 w-4" /> {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Bubble({
+  m,
+  mine,
+  me,
+  chatId,
+  showSender,
+  items,
+  onReply,
+  seen,
+  canReact,
+}: {
+  m: Message;
+  mine: boolean;
+  me: string;
+  chatId: string;
+  showSender: boolean;
+  items: MenuItem[];
+  onReply: () => void;
+  seen: string | null;
+  canReact: boolean;
+}) {
+  const toast = useToast();
   const { data: sender } = useProfileById(showSender ? m.senderId : null);
   const gone = m.status !== 'sent';
+  const reactions = Object.entries(m.reactions ?? {});
+  const counts = reactions.reduce<Record<string, number>>((acc, [, e]) => ({ ...acc, [e]: (acc[e] ?? 0) + 1 }), {});
+  const myReaction = m.reactions?.[me] ?? null;
+  const react = (emoji: string | null) => void reactToMessage(db, me, chatId, m.id, emoji).catch((e) => toast(friendlyError(e), 'error'));
+  const actions = !gone && (
+    <MessageActions mine={mine} myReaction={myReaction} onReact={react} onReply={onReply} items={items} canReact={canReact} />
+  );
   return (
     <div className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
       {!mine && <span className="w-8 shrink-0">{showSender && <Avatar url={sender?.photoUrl} name={sender?.displayName ?? '?'} size={32} />}</span>}
@@ -626,7 +1128,7 @@ function Bubble({ m, mine, showSender, items }: { m: Message; mine: boolean; sho
           </Link>
         )}
         <div className="flex items-center gap-1">
-          {mine && !gone && items.length > 0 && <Menu items={items} label="Message actions" />}
+          {mine && actions}
           <div
             className={`rounded-2xl px-3 py-2 text-[15px] shadow-sm ${
               gone ? 'bg-sand-100 italic text-gray-500' : mine ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md bg-white text-gray-900 ring-1 ring-sand-200'
@@ -636,6 +1138,23 @@ function Bubble({ m, mine, showSender, items }: { m: Message; mine: boolean; sho
               m.status === 'removed' ? 'Message removed by a moderator' : 'Message deleted'
             ) : (
               <>
+                {m.replyTo && (
+                  <div className={`mb-1.5 rounded-lg border-l-4 px-2 py-1 text-xs ${mine ? 'border-white/70 bg-white/15' : 'border-brand-600 bg-sand-100'}`}>
+                    <span className="block font-bold">
+                      <Name uid={m.replyTo.senderId} me={me} />
+                    </span>
+                    <span className="line-clamp-2 opacity-90">{m.replyTo.text}</span>
+                  </div>
+                )}
+                {m.story && (
+                  <div className={`mb-1.5 flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${mine ? 'bg-white/15' : 'bg-sand-100'}`}>
+                    {m.story.url && <img src={m.story.url} alt="" className="h-10 w-8 rounded object-cover" />}
+                    <span className="min-w-0">
+                      <span className="block font-bold">Replied to a story</span>
+                      {m.story.text && <span className="line-clamp-1 opacity-90">{m.story.text}</span>}
+                    </span>
+                  </div>
+                )}
                 {m.imageUrl && (
                   <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">
                     <img src={m.imageUrl} alt="" className="mb-1 max-h-64 rounded-xl" loading="lazy" />
@@ -646,9 +1165,27 @@ function Bubble({ m, mine, showSender, items }: { m: Message; mine: boolean; sho
               </>
             )}
           </div>
-          {!mine && !gone && items.length > 0 && <Menu items={items} label="Message actions" />}
+          {!mine && actions}
         </div>
-        <span className="mx-1 mt-0.5 text-[11px] text-gray-500">{m.createdAt ? m.createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'sending…'}</span>
+        {reactions.length > 0 && !gone && (
+          <div className={`-mt-1.5 flex gap-1 ${mine ? 'mr-2' : 'ml-2'}`}>
+            {Object.entries(counts).map(([e, n]) => (
+              <button
+                key={e}
+                onClick={() => canReact && react(myReaction === e ? null : e)}
+                className={`rounded-full bg-white px-1.5 text-sm shadow ring-1 ${myReaction === e ? 'ring-brand-400' : 'ring-sand-200'}`}
+                aria-label={`${e} ${n}${myReaction === e ? ', your reaction' : ''}`}
+              >
+                {e}
+                {n > 1 && <span className="ml-0.5 text-xs text-gray-600">{n}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+        <span className="mx-1 mt-0.5 text-[11px] text-gray-500">
+          {m.createdAt ? m.createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'sending…'}
+          {seen && <span className={seen === 'Seen' ? ' font-semibold text-brand-600' : ''}> · {seen === 'Seen' ? '✓✓ Seen' : '✓ Sent'}</span>}
+        </span>
       </div>
     </div>
   );

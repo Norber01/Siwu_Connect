@@ -6,8 +6,8 @@ import { EXTRA_LIMITS, TOWNS, canModerate, isSuperAdmin, townShortName } from '@
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
-import { type StoryBg, createStory, deleteStory, recordStoryView } from '../lib/ops';
-import { fetchFriendIds } from '../lib/friends';
+import { type StoryBg, createStory, deleteStory, openDm, recordStoryView, sendMessage } from '../lib/ops';
+import { fetchFriendIds, useFriendships } from '../lib/friends';
 import { friendlyError, isPermissionDenied, preparePhoto, timeAgo } from '../lib/util';
 import { inspectVideo, uploadWithProgress } from '../components/media';
 import { Icon } from '../components/Icon';
@@ -225,6 +225,27 @@ function StoryViewer({
     if (group.authorId !== user.uid) void recordStoryView(db, user.uid, story.id).catch(() => {});
   }, [story.id, onSeen, group.authorId, user.uid]);
   const mine = group.authorId === user.uid;
+  const friends = useFriendships();
+  const friendsWithAuthor = friends.get(group.authorId)?.status === 'accepted';
+  const [reply, setReply] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+  const sendReply = async () => {
+    const text = reply.trim();
+    if (!text) return;
+    setSendingReply(true);
+    try {
+      const chatId = await openDm(db, user.uid, group.authorId);
+      await sendMessage(db, user.uid, chatId, text, null, null, {
+        story: { id: story.id, text: story.text, url: story.type === 'image' ? story.url : story.posterUrl },
+      });
+      setReply('');
+      toast('Reply sent 💬');
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    } finally {
+      setSendingReply(false);
+    }
+  };
   const [showViewers, setShowViewers] = useState(false);
   const viewers = useQuery({
     queryKey: ['storyViews', story.id],
@@ -288,6 +309,32 @@ function StoryViewer({
           <div className="flex h-full items-center justify-center p-8">
             <p className="whitespace-pre-wrap break-words text-center text-3xl font-black leading-tight text-white drop-shadow">{story.text}</p>
           </div>
+        )}
+        {!mine && friendsWithAuthor && (
+          <form
+            className="absolute inset-x-3 bottom-3 z-10 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendReply();
+            }}
+          >
+            <label htmlFor="story-reply" className="sr-only">
+              Reply to the story
+            </label>
+            <input
+              id="story-reply"
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              onFocus={() => setPaused(true)}
+              onBlur={() => setPaused(false)}
+              maxLength={500}
+              placeholder={`Reply to ${author?.displayName.split(' ')[0] ?? ''}…`}
+              className="min-h-[44px] flex-1 rounded-full border border-white/60 bg-black/30 px-4 text-white placeholder-white/70 outline-none backdrop-blur"
+            />
+            <button type="submit" disabled={!reply.trim() || sendingReply} className="rounded-full bg-white px-4 text-sm font-bold text-gray-900 disabled:opacity-50">
+              Send
+            </button>
+          </form>
         )}
         {mine && (
           <button

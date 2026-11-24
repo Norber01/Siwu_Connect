@@ -6,6 +6,8 @@ import {
   type Firestore,
   collection,
   deleteDoc,
+  deleteField,
+  FieldPath,
   getDoc,
   doc,
   increment,
@@ -610,7 +612,8 @@ export async function sendMessage(
   chatId: string,
   text: string,
   imageUrl: string | null,
-  audio?: { url: string; seconds: number },
+  audio?: { url: string; seconds: number } | null,
+  extra: { replyTo?: { id: string; senderId: string; text: string } | null; story?: { id: string; text: string; url: string | null } | null } = {},
 ): Promise<void> {
   const ref = doc(collection(db, 'chats', chatId, 'messages'));
   const batch = writeBatch(db);
@@ -621,6 +624,8 @@ export async function sendMessage(
     status: 'sent',
     createdAt: serverTimestamp(),
     ...(audio ? { audioUrl: audio.url, audioSeconds: Math.round(audio.seconds) } : {}),
+    ...(extra.replyTo ? { replyTo: { ...extra.replyTo, text: extra.replyTo.text.slice(0, 120) } } : {}),
+    ...(extra.story ? { story: { ...extra.story, text: extra.story.text.slice(0, 120) } } : {}),
   });
   const preview = text ? text.slice(0, 120) : audio ? '🎤 Voice note' : '📷 Photo';
   batch.update(doc(db, 'chats', chatId), {
@@ -642,6 +647,26 @@ export async function deleteMessage(db: Firestore, chatId: string, messageId: st
 
 export async function markChatRead(db: Firestore, uid: string, chatId: string): Promise<void> {
   await setDoc(doc(db, 'users', uid, 'chatState', chatId), { lastReadAt: serverTimestamp() });
+  // Private and group chats also tell the other members you have seen the messages.
+  if (!chatId.startsWith('room_')) await setDoc(doc(db, 'chats', chatId, 'presence', uid), { readAt: serverTimestamp() }, { merge: true });
+}
+
+export const MESSAGE_REACTIONS = ['❤️', '😂', '👍', '🔥', '😮', '😢', '🙏🏾'] as const;
+
+/** React to a chat message with one emoji, or take your reaction back (null). */
+export async function reactToMessage(db: Firestore, uid: string, chatId: string, messageId: string, emoji: string | null): Promise<void> {
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), new FieldPath('reactions', uid), emoji ?? deleteField());
+}
+
+/** "typing…" for the others in a private or group chat (null when you stop or send). */
+export async function setTyping(db: Firestore, uid: string, chatId: string, typing: boolean): Promise<void> {
+  if (chatId.startsWith('room_')) return;
+  await setDoc(doc(db, 'chats', chatId, 'presence', uid), { typingAt: typing ? serverTimestamp() : null }, { merge: true });
+}
+
+/** Refreshes "Active now" (or clears it when the member hides their activity). */
+export async function setActive(db: Firestore, uid: string, show: boolean): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { lastActiveAt: show ? serverTimestamp() : null });
 }
 
 // ---------------- friends ----------------
@@ -826,4 +851,42 @@ export async function savePrediction(
   const ref = doc(db, 'matches', matchId, 'predictions', uid);
   if (existing) await updateDoc(ref, { homeScore, awayScore, updatedAt: serverTimestamp() });
   else await setDoc(ref, { homeScore, awayScore, townId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+}
+
+// ---------------- bookmarks ----------------
+
+export async function setBookmark(db: Firestore, uid: string, postId: string, saved: boolean): Promise<void> {
+  const ref = doc(db, 'users', uid, 'bookmarks', postId);
+  if (saved) await setDoc(ref, { createdAt: serverTimestamp() });
+  else await deleteDoc(ref);
+}
+
+// ---------------- event photo albums ----------------
+
+export async function addEventPhoto(db: Firestore, uid: string, eventId: string, url: string, thumbUrl: string | null): Promise<void> {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, 'events', eventId, 'photos')), { authorId: uid, url, thumbUrl, status: 'published', createdAt: serverTimestamp() });
+  b.set(doc(db, 'rate_limits', uid), { lastPhotoAt: serverTimestamp() }, { merge: true });
+  await b.commit();
+}
+
+/** The author deletes their photo; a moderator removes it. */
+export async function takeDownEventPhoto(db: Firestore, eventId: string, photoId: string, as: 'deleted' | 'removed'): Promise<void> {
+  await updateDoc(doc(db, 'events', eventId, 'photos', photoId), { status: as });
+}
+
+// ---------------- birthdays and "I'm home" ----------------
+
+/** Shares (or stops sharing) your birthday: day and month only, e.g. "11-24". */
+export async function setBirthday(db: Firestore, uid: string, key: string | null): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { birthdayKey: key, updatedAt: serverTimestamp() });
+}
+
+/** "I'm home": visiting a town until a date (or null to clear). */
+export async function setHomeVisit(db: Firestore, uid: string, visit: { townId: string; until: Date } | null): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), {
+    homeVisitTown: visit?.townId ?? null,
+    homeVisitUntil: visit ? Timestamp.fromDate(visit.until) : null,
+    updatedAt: serverTimestamp(),
+  });
 }

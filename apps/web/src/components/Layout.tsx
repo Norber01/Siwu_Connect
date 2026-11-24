@@ -11,6 +11,7 @@ import { CountBadge, NotificationBell, useUnreadNotifications } from '../pages/n
 import { LogoMark, Wordmark } from './Brand';
 import { LiveBanner } from './LiveBanner';
 import { SetupNeeded } from './SetupNeeded';
+import { useActivityHeartbeat } from '../lib/activity';
 import { PeopleSuggest } from './PeopleSuggest';
 import { CreateSheet, FeedbackDialog, InviteButton } from './extras';
 import { Icon, type IconName } from './Icon';
@@ -54,6 +55,7 @@ export function AppLayout() {
   const location = useLocation();
   const [badges, setBadges] = useState<Badges>({ notifications: 0, chat: 0 });
   const wide = useMedia('(min-width: 640px)');
+  useActivityHeartbeat(profile?.uid, profile?.status === 'active');
   const veryWide = useMedia('(min-width: 1024px)');
   useEffect(() => setDrawer(false), [location.pathname]);
 
@@ -207,6 +209,7 @@ const moreLinks: { to: string; label: string; icon: IconName }[] = [
   { to: '/market', label: 'Marketplace', icon: 'cart' },
   { to: '/directory', label: 'Businesses & jobs', icon: 'globe' },
   { to: '/towns', label: 'Towns', icon: 'towns' },
+  { to: '/saved', label: 'Saved', icon: 'bookmark' },
 ];
 
 function SideNav({ onCreate, onFeedback, badges }: { onCreate: () => void; onFeedback: () => void; badges: Badges }) {

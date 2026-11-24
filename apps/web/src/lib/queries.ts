@@ -493,3 +493,42 @@ export async function fetchPredictionLeague(days = 7): Promise<LeagueTable> {
   }
   return { members: list, towns: [...towns.values()].sort((a, b) => b.points - a.points), matches: finished.length };
 }
+
+// ---------------- bookmarks, event photos, birthdays, visits ----------------
+
+export async function fetchSavedPosts(uid: string): Promise<Post[]> {
+  const marks = await getDocs(query(collection(db, 'users', uid, 'bookmarks'), orderBy('createdAt', 'desc'), limit(50)));
+  const posts = await Promise.all(marks.docs.map((d) => fetchPost(d.id).catch(() => null)));
+  return posts.filter((p): p is Post => !!p && p.status === 'published');
+}
+
+export interface EventPhoto {
+  id: string;
+  authorId: string;
+  url: string;
+  thumbUrl: string | null;
+  createdAt: Date | null;
+}
+
+export async function fetchEventPhotos(eventId: string): Promise<EventPhoto[]> {
+  const snap = await getDocs(query(collection(db, 'events', eventId, 'photos'), where('status', '==', 'published'), orderBy('createdAt', 'desc'), limit(200)));
+  return snap.docs.map((d) => {
+    const x = d.data();
+    return { id: d.id, authorId: x.authorId, url: x.url, thumbUrl: x.thumbUrl ?? null, createdAt: x.createdAt?.toDate?.() ?? null };
+  });
+}
+
+/** Today as "MM-DD" in Ghana time (UTC). */
+export function todayKey(now = new Date()): string {
+  return `${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+}
+
+export async function fetchBirthdaysToday(): Promise<Profile[]> {
+  const snap = await getDocs(query(collection(db, 'users'), where('birthdayKey', '==', todayKey()), limit(30)));
+  return snap.docs.map(toProfile).filter((p) => p.status === 'active');
+}
+
+export async function fetchVisitingHome(): Promise<Profile[]> {
+  const snap = await getDocs(query(collection(db, 'users'), where('homeVisitUntil', '>', new Date()), orderBy('homeVisitUntil', 'asc'), limit(30)));
+  return snap.docs.map(toProfile).filter((p) => p.status === 'active');
+}

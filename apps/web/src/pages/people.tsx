@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { COUNTRIES, RESIDENCE_OPTIONS, ROLE_LABELS, TOWNS, canSuspend, hasAdminAccess, profileSchema, townName } from '@siwu/shared';
+import { COUNTRIES, RESIDENCE_OPTIONS, ROLE_LABELS, TOWNS, canSuspend, hasAdminAccess, profileSchema, townName, townShortName } from '@siwu/shared';
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
-import { blockUser, unblockUser, updateBio, updateProfile } from '../lib/ops';
+import { blockUser, setBirthday, setHomeVisit, unblockUser, updateBio, updateProfile } from '../lib/ops';
 import { FriendActions } from '../components/FriendButton';
 import { PeopleSuggest } from '../components/PeopleSuggest';
+import { useShowActivity } from '../lib/activity';
 import { ThemePicker } from '../components/theme';
 import { fetchMyLikes, fetchProfile, fetchProfileByUsername, fetchSellerListings, searchPeople, searchPosts } from '../lib/queries';
 import { FeedbackDialog, InviteButton } from '../components/extras';
@@ -144,6 +145,18 @@ export function ProfilePage() {
           </h1>
           <p className="text-sm text-gray-600">@{p.username}</p>
           {p.bio && <p className="mt-2 whitespace-pre-wrap text-[15px] text-gray-800">{p.bio}</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {p.homeVisitUntil && p.homeVisitUntil.getTime() > Date.now() && p.homeVisitTown && (
+              <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-800">
+                🏡 Visiting {townShortName(p.homeVisitTown)} until {p.homeVisitUntil.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+              </span>
+            )}
+            {p.birthdayKey && (
+              <span className="rounded-full bg-gold-100 px-3 py-1 text-xs font-bold text-gold-800">
+                🎂 {MONTHS[Number(p.birthdayKey.slice(0, 2)) - 1]} {Number(p.birthdayKey.slice(3))}
+              </span>
+            )}
+          </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700">
             <span className="inline-flex items-center gap-1">
               <Icon name="home" className="h-4 w-4" /> From
@@ -422,6 +435,10 @@ export function SettingsPage() {
 
       <BioCard />
 
+      <ActivityCard />
+
+      <ExtrasCard />
+
       <Card className="p-5">
         <h2 className="mb-2 text-base font-bold text-gray-900">Appearance</h2>
         <ThemePicker />
@@ -575,6 +592,123 @@ function SellerListings({ uid }: { uid: string }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** Birthday (shared with the community on the day) and "I'm home" visits. */
+function ExtrasCard() {
+  const { user, profile } = useMe();
+  const toast = useToast();
+  const [month, setMonth] = useState(profile.birthdayKey?.slice(0, 2) ?? '');
+  const [day, setDay] = useState(profile.birthdayKey?.slice(3) ?? '');
+  const visiting = profile.homeVisitUntil && profile.homeVisitUntil.getTime() > Date.now();
+  const [town, setTown] = useState(profile.homeVisitTown ?? profile.hometownId);
+  const [until, setUntil] = useState(() => {
+    const d = profile.homeVisitUntil ?? new Date(Date.now() + 14 * 86_400_000);
+    return d.toISOString().slice(0, 10);
+  });
+  const run = async (fn: () => Promise<void>, done: string) => {
+    try {
+      await fn();
+      toast(done);
+    } catch (e) {
+      toast(friendlyError(e), 'error');
+    }
+  };
+  const maxDate = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <Card className="space-y-5 p-5">
+      <div>
+        <h2 className="mb-1 flex items-center gap-2 text-base font-bold text-gray-900">
+          <Icon name="cake" className="h-5 w-5" /> Birthday
+        </h2>
+        <p className="mb-2 text-sm text-gray-600">Optional. On your birthday the community sees "🎂 Birthdays today". Only the day and month are shared.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <SelectField label="Month" value={month} onChange={(e) => setMonth(e.target.value)}>
+            <option value="">—</option>
+            {MONTHS.map((m, i) => (
+              <option key={m} value={String(i + 1).padStart(2, '0')}>
+                {m}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField label="Day" value={day} onChange={(e) => setDay(e.target.value)}>
+            <option value="">—</option>
+            {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map((d) => (
+              <option key={d} value={d}>
+                {Number(d)}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+        <div className="mt-2 flex gap-2">
+          <Button small disabled={!month || !day} onClick={() => run(() => setBirthday(db, user.uid, `${month}-${day}`), 'Birthday saved 🎂')}>
+            Share my birthday
+          </Button>
+          {profile.birthdayKey && (
+            <Button small variant="ghost" onClick={() => run(() => setBirthday(db, user.uid, null), 'Birthday hidden.')}>
+              Stop sharing
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="border-t border-sand-200 pt-4">
+        <h2 className="mb-1 text-base font-bold text-gray-900">🏡 I'm home</h2>
+        <p className="mb-2 text-sm text-gray-600">Visiting home? Let people know, so friends can meet up. It shows on the home feed until the date you choose.</p>
+        {visiting && (
+          <p className="mb-2 rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">
+            You're visiting {townName(profile.homeVisitTown ?? '')} until {profile.homeVisitUntil!.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <SelectField label="Town" value={town} onChange={(e) => setTown(e.target.value)}>
+            {TOWNS.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.shortName}
+              </option>
+            ))}
+          </SelectField>
+          <TextField label="Until" type="date" min={today} max={maxDate} value={until} onChange={(e) => setUntil(e.target.value)} />
+        </div>
+        <div className="mt-2 flex gap-2">
+          <Button
+            small
+            disabled={!until}
+            onClick={() =>
+              run(() => setHomeVisit(db, user.uid, { townId: town, until: new Date(`${until}T23:59:00`) }), "Welcome home! 🏡 People can see you're around.")
+            }
+          >
+            {visiting ? 'Update' : "I'm home"}
+          </Button>
+          {visiting && (
+            <Button small variant="ghost" onClick={() => run(() => setHomeVisit(db, user.uid, null), 'Visit cleared.')}>
+              I've left
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ActivityCard() {
+  const [show, setShow] = useShowActivity();
+  return (
+    <Card className="p-5">
+      <h2 className="mb-1 text-base font-bold text-gray-900">Privacy</h2>
+      <label className="flex items-start gap-3">
+        <input type="checkbox" className="mt-1 h-5 w-5 accent-brand-600" checked={show} onChange={(e) => setShow(e.target.checked)} />
+        <span>
+          <span className="block font-semibold text-gray-900">Show when I'm active</span>
+          <span className="block text-sm text-gray-600">
+            Friends see "Active now" and a green dot. If you turn this off, you also won't see when others are active.
+          </span>
+        </span>
+      </label>
+    </Card>
   );
 }
 

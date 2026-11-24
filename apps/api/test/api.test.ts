@@ -398,6 +398,33 @@ describe('backups', () => {
   });
 });
 
+describe('group chats', () => {
+  it('members make groups with their friends only; add, rename, leave', async () => {
+    await seedUser('carl', 'odomi');
+    await fs().commit([
+      { kind: 'set', path: 'friendships/alice_bob', data: { members: ['alice', 'bob'], requesterId: 'alice', status: 'accepted' } },
+      { kind: 'set', path: 'friendships/alice_carl', data: { members: ['alice', 'carl'], requesterId: 'alice', status: 'pending' } },
+    ]);
+    expect((await call('POST', '/chats/groups', 'alice', { name: 'Family', members: ['carl'] })).status).toBe(403); // not friends yet
+    expect((await call('POST', '/chats/groups', 'alice', { name: 'F', members: ['bob'] })).status).toBe(400); // name too short
+    const res = await call('POST', '/chats/groups', 'alice', { name: 'Odomi family', members: ['bob'] });
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+    const g = await fs().get<{ type: string; members: string[]; admins: string[]; name: string }>(`chats/${id}`);
+    expect(g!.data).toMatchObject({ type: 'group', members: ['alice', 'bob'], admins: ['alice'], name: 'Odomi family' });
+    expect((await call('POST', `/chats/${id}/members`, 'alice', { add: ['carl'] })).status).toBe(403);
+    await fs().commit([{ kind: 'set', path: 'friendships/alice_carl', data: { members: ['alice', 'carl'], requesterId: 'alice', status: 'accepted' } }]);
+    expect((await call('POST', `/chats/${id}/members`, 'alice', { add: ['carl'] })).status).toBe(200);
+    expect((await call('POST', `/chats/${id}/rename`, 'bob', { name: 'Bob rules' })).status).toBe(403); // not admin
+    expect((await call('POST', `/chats/${id}/rename`, 'alice', { name: 'Akpafu family' })).status).toBe(200);
+    expect((await call('POST', `/chats/${id}/leave`, 'alice', {})).status).toBe(200);
+    const after = await fs().get<{ members: string[]; admins: string[]; name: string }>(`chats/${id}`);
+    expect(after!.data).toMatchObject({ members: ['bob', 'carl'], admins: ['bob'], name: 'Akpafu family' });
+    expect((await call('POST', `/chats/${id}/leave`, 'alice', {})).status).toBe(404); // no longer a member
+    expect((await call('POST', `/chats/${id}/members`, 'mod', { add: ['mod'] })).status).toBe(404); // outsiders
+  });
+});
+
 describe('verified badge', () => {
   it('admins verify members of their towns; members cannot verify themselves', async () => {
     const v = (who: string, uid: string, route: string) => call('POST', `/admin/users/${uid}/${route}`, who, {});

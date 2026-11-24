@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import { SavedPage } from './pages/saved';
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppLayout, PublicLayout } from './components/Layout';
@@ -117,6 +118,7 @@ export function App() {
           <Route path="/u/:username" element={<ProfilePage />} />
           <Route path="/me" element={<MyProfileRedirect />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/saved" element={<SavedPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/chat" element={<ChatListPage />} />

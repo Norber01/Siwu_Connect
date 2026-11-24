@@ -20,6 +20,7 @@ import { fetchEvent, fetchMyRsvp, fetchUpcomingEvents } from '../lib/queries';
 import type { CommunityEvent } from '../lib/types';
 import { eventTime, friendlyError, fromLocalInput, isPermissionDenied, toLocalInput } from '../lib/util';
 import { DateTile, FeedbackDialog, PhotoField } from '../components/extras';
+import { EventAlbum } from '../components/EventAlbum';
 import { Icon } from '../components/Icon';
 import { Menu, type MenuItem } from '../components/Menu';
 import { AuthorLine, RichText } from '../components/PostCard';
@@ -345,6 +346,8 @@ export function EventDetailPage() {
           </Button>
         </div>
       </article>
+
+      {(e.status === 'published' || e.status === 'cancelled') && <EventAlbum eventId={e.id} townId={e.townId} canAdd={e.status === 'published'} />}
 
       <ReportDialog open={reporting} onClose={() => setReporting(false)} target={{ targetType: 'event', targetId: e.id, targetPath: `events/${e.id}`, townId: e.townId }} />
       <Modal

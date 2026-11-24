@@ -6,6 +6,7 @@ import { TownChips } from '../components/TownChips';
 import { Landscape } from '../components/Brand';
 import { NewMembers } from '../components/extras';
 import { WordOfTheDay } from '../components/WordOfTheDay';
+import { BirthdaysToday, VisitingHome } from '../components/CommunityCards';
 import { Icon } from '../components/Icon';
 import { EmptyState, ErrorState, PageHeader, PageSpinner } from '../components/ui';
 import { PostCard } from '../components/PostCard';
@@ -27,6 +28,8 @@ export function HomePage() {
         <StoriesBar />
       </div>
       <QuickActions townId={selected === 'all' ? undefined : selected} />
+      <BirthdaysToday />
+      <VisitingHome />
       <TownChips
         variant="tabs"
         value={selected}
