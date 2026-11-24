@@ -177,6 +177,16 @@ export function PostCard({ post, liked: initiallyLiked, linkToDetail = true }: {
           ) : (
             <RichText text={post.text} />
           )}
+          {post.imageUrl &&
+            (linkToDetail ? (
+              <Link to={`/p/${post.id}`} className="mt-3 block">
+                <img src={post.imageUrl} alt="" loading="lazy" decoding="async" className="max-h-[28rem] w-full rounded-xl bg-sand-100 object-cover" />
+              </Link>
+            ) : (
+              <a href={post.imageUrl} target="_blank" rel="noopener noreferrer" className="mt-3 block">
+                <img src={post.imageUrl} alt="" decoding="async" className="w-full rounded-xl bg-sand-100 object-contain" />
+              </a>
+            ))}
           {post.visibility === 'town' && <p className="mt-2 text-xs text-gray-600">Shared in this town's feed only</p>}
         </div>
         {(likes > 0 || post.commentCount > 0) && (

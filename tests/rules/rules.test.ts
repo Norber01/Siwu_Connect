@@ -216,7 +216,7 @@ describe('posts', () => {
 
   it('cannot post as someone else, pre-pin, or fake counters', async () => {
     const base = {
-      townId: 'odomi', text: 'x', visibility: 'akpafu', status: 'published', pinned: false, reactionCount: 0,
+      townId: 'odomi', text: 'x', imageUrl: null, visibility: 'akpafu', status: 'published', pinned: false, reactionCount: 0,
       commentCount: 0, lastCommentOp: null, searchTokens: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(), editedAt: null,
     };
     const write = (data: object) => {
@@ -230,6 +230,14 @@ describe('posts', () => {
     await assertFails(write({ ...base, authorId: 'alice', pinned: true }));
     await assertFails(write({ ...base, authorId: 'alice', reactionCount: 100 }));
     await assertSucceeds(write({ ...base, authorId: 'alice' }));
+  });
+
+  it('photo posts: photo-only is fine, but the photo must be the author\'s own', async () => {
+    await assertSucceeds(
+      ops.createPost(db('alice'), 'alice', { townId: 'odomi', text: '', visibility: 'akpafu' }, 'https://api.example.com/images/alice/p1.webp'),
+    );
+    await assertFails(ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: 'hi', visibility: 'akpafu' }, 'https://api.example.com/images/alice/p1.webp'));
+    await assertFails(ops.createPost(db('bob'), 'bob', { townId: 'todzi', text: '', visibility: 'akpafu' }, null)); // empty post
   });
 
   it('suspended users cannot post', async () => {

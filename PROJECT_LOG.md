@@ -57,6 +57,10 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   Super Admin exists; afterwards only a Super Admin can re-run it. Tested in the emulator end-to-end and against
   a simulated Google API.
 
+- 2026-11-24 — **Founder feedback after first live test:** added **photo posts** (one photo per post, text optional
+  when there is a photo; photo must be the author's own upload) and a **"Coming up" events strip** on the home feed.
+  Deployed; founder re-runs /setup to install the updated rules.
+
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
 |---|---|

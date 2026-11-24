@@ -1,7 +1,7 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { TOWNS, isTownId, townName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
-import { Announcements, CreatePostPrompt, Feed } from '../components/Feed';
+import { Announcements, CreatePostPrompt, Feed, UpcomingEvents } from '../components/Feed';
 import { TownChips } from '../components/TownChips';
 import { Landscape } from '../components/Brand';
 import { NewMembers } from '../components/extras';
@@ -23,6 +23,7 @@ export function HomePage() {
       />
       <CreatePostPrompt townId={selected === 'all' ? undefined : selected} />
       <Announcements townId={selected === 'all' ? null : selected} />
+      <UpcomingEvents townId={selected === 'all' ? null : selected} />
       <NewMembers />
       {selected === 'all' ? (
         <Feed

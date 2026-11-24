@@ -277,7 +277,7 @@ export function createApp() {
         posts.map((p) => ({
           kind: 'update' as const,
           path: p.path,
-          data: { status: 'deleted', text: '', searchTokens: [], updatedAt: FieldValue.serverTimestamp() },
+          data: { status: 'deleted', text: '', imageUrl: null, searchTokens: [], updatedAt: FieldValue.serverTimestamp() },
         })),
       );
     }

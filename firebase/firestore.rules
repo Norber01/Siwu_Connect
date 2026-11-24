@@ -155,6 +155,13 @@ service cloud.firestore {
     function reactionPath(postId, uid) { return /databases/$(database)/documents/posts/$(postId)/reactions/$(uid); }
     function commentPath(postId, cid) { return /databases/$(database)/documents/posts/$(postId)/comments/$(cid); }
 
+    // A post needs text, a photo, or both. The photo must be one the author uploaded.
+    function postBodyOk(p) {
+      return str(p.text, 0, 2000)
+        && imageOk(p.get('imageUrl', null), me())
+        && (p.text.size() > 0 || p.get('imageUrl', null) != null);
+    }
+
     match /posts/{postId} {
       allow read: if signedIn()
         && (resource.data.status == 'published'
@@ -162,11 +169,11 @@ service cloud.firestore {
             || canModerate(resource.data.townId));
 
       allow create: if isActive()
-        && exactKeys(['authorId', 'townId', 'text', 'visibility', 'status', 'pinned', 'reactionCount',
+        && exactKeys(['authorId', 'townId', 'text', 'imageUrl', 'visibility', 'status', 'pinned', 'reactionCount',
                       'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
         && d().authorId == me()
         && isTown(d().townId)
-        && str(d().text, 1, 2000)
+        && postBodyOk(d())
         && d().visibility in ['akpafu', 'town']
         && d().status == 'published'
         && d().pinned == false
@@ -182,16 +189,16 @@ service cloud.firestore {
       allow update: if
         // 1. Author edits their own published post.
         (isActive() && resource.data.authorId == me() && resource.data.status == 'published'
-          && changed().hasOnly(['text', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
-          && str(d().text, 1, 2000)
+          && changed().hasOnly(['text', 'imageUrl', 'searchTokens', 'visibility', 'updatedAt', 'editedAt'])
+          && postBodyOk(d())
           && d().visibility in ['akpafu', 'town']
           && d().searchTokens is list && d().searchTokens.size() <= 50
           && d().updatedAt == request.time
           && d().editedAt == request.time)
         // 2. Author deletes their own post (soft delete; text is wiped).
         || (signedIn() && resource.data.authorId == me() && resource.data.status in ['published', 'removed']
-          && changed().hasOnly(['status', 'text', 'searchTokens', 'updatedAt'])
-          && d().status == 'deleted' && d().text == '' && d().searchTokens.size() == 0
+          && changed().hasOnly(['status', 'text', 'imageUrl', 'searchTokens', 'updatedAt'])
+          && d().status == 'deleted' && d().text == '' && d().get('imageUrl', null) == null && d().searchTokens.size() == 0
           && d().updatedAt == request.time)
         // 3. Reaction counter moves by exactly one, together with the caller's reaction doc.
         || (signedIn() && resource.data.status == 'published'

@@ -21,6 +21,7 @@ import { fetchComments, fetchLastPostAt, fetchMyLikes, fetchPost } from '../lib/
 import type { Comment, Post } from '../lib/types';
 import { friendlyError, isPermissionDenied, timeAgo } from '../lib/util';
 import { PostCard, RichText } from '../components/PostCard';
+import { PhotoField } from '../components/extras';
 import { Menu, type MenuItem } from '../components/Menu';
 import { ReportDialog } from '../components/ReportDialog';
 import { useToast } from '../components/Toast';
@@ -61,6 +62,7 @@ export function NewPostPage() {
   const [townId, setTownId] = useState<TownId>(isTownId(initialTown) ? initialTown : (profile.hometownId as TownId));
   const [text, setText] = useState('');
   const [visibility, setVisibility] = useState<PostVisibility>('akpafu');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -79,6 +81,10 @@ export function NewPostPage() {
       setError(parsed.error.issues[0]!.message);
       return;
     }
+    if (!parsed.data.text && !imageUrl) {
+      setError('Write something or add a photo.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -88,7 +94,7 @@ export function NewPostPage() {
         setError(`You're posting quickly. Please wait ${wait} seconds and try again.`);
         return;
       }
-      const id = await createPost(db, user.uid, parsed.data);
+      const id = await createPost(db, user.uid, parsed.data, imageUrl);
       invalidate();
       toast('Your post is live.');
       navigate(`/p/${id}`, { replace: true });
@@ -114,7 +120,7 @@ export function NewPostPage() {
         </SelectField>
         <TextArea
           label="Your post"
-          rows={7}
+          rows={5}
           maxLength={LIMITS.postMaxChars}
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -122,13 +128,14 @@ export function NewPostPage() {
           hint={`${text.length}/${LIMITS.postMaxChars}`}
           autoFocus
         />
+        <PhotoField url={imageUrl} onChange={setImageUrl} />
         <VisibilityPicker value={visibility} onChange={setVisibility} />
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
             Cancel
           </Button>
-          <Button type="submit" busy={busy} disabled={!text.trim()}>
+          <Button type="submit" busy={busy} disabled={!text.trim() && !imageUrl}>
             Post
           </Button>
         </div>
@@ -146,6 +153,7 @@ export function EditPostPage() {
   const q = useQuery({ queryKey: ['post', postId, 'edit'], queryFn: () => fetchPost(postId) });
   const [text, setText] = useState('');
   const [visibility, setVisibility] = useState<PostVisibility>('akpafu');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -153,6 +161,7 @@ export function EditPostPage() {
     if (q.data) {
       setText(q.data.text);
       setVisibility(q.data.visibility);
+      setImageUrl(q.data.imageUrl);
     }
   }, [q.data]);
 
@@ -168,10 +177,14 @@ export function EditPostPage() {
       setError(parsed.error.issues[0]!.message);
       return;
     }
+    if (!parsed.data && !imageUrl) {
+      setError('Write something or add a photo.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await editPost(db, postId, { text: parsed.data, visibility });
+      await editPost(db, postId, { text: parsed.data, visibility }, imageUrl);
       invalidate();
       toast('Post updated.');
       navigate(`/p/${postId}`, { replace: true });
@@ -188,12 +201,13 @@ export function EditPostPage() {
       <form onSubmit={submit} className="space-y-5" noValidate>
         <TextArea
           label="Your post"
-          rows={7}
+          rows={5}
           maxLength={LIMITS.postMaxChars}
           value={text}
           onChange={(e) => setText(e.target.value)}
           hint={`${text.length}/${LIMITS.postMaxChars}`}
         />
+        <PhotoField url={imageUrl} onChange={setImageUrl} />
         <VisibilityPicker value={visibility} onChange={setVisibility} />
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">

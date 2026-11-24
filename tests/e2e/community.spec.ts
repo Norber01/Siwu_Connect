@@ -76,6 +76,17 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByText(/votes · just for fun/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Draw' })).toHaveCount(0); // cannot vote twice
 
+  // A photo post, and the new event shows on the home feed's "Coming up" strip.
+  await page.goto('/new?town=mempeasem');
+  await page.getByLabel('Your post').fill(`Sunset over Mempeasem ${tag}`);
+  await page.getByLabel('Choose photo').setInputFiles('apps/web/public/icon-512.png');
+  await expect(page.getByRole('button', { name: 'Change' })).toBeVisible();
+  await page.getByRole('button', { name: 'Post', exact: true }).click();
+  await expect(page.getByText('Your post is live.')).toBeVisible();
+  await expect(page.locator('article img[src*="/images/"]')).toBeVisible();
+  await page.goto('/?town=todzi');
+  await expect(page.getByRole('region', { name: 'Upcoming events' }).getByText(`Todzi town meeting ${tag}`)).toBeVisible();
+
   await page.goto('/?town=todzi');
   await page.getByRole('button', { name: 'Like', exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Unlike' }).first()).toBeVisible();

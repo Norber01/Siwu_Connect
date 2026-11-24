@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { townName, townShortName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { useFeed } from '../lib/hooks';
-import { type Feed as FeedSpec, fetchAnnouncements, fetchMyLikes, fetchPinned } from '../lib/queries';
+import { type Feed as FeedSpec, fetchAnnouncements, fetchMyLikes, fetchPinned, fetchUpcomingEvents } from '../lib/queries';
 import type { Announcement } from '../lib/types';
 import { friendlyError, timeAgo } from '../lib/util';
 import { Icon } from './Icon';
@@ -108,5 +108,46 @@ export function CreatePostPrompt({ townId }: { townId?: string }) {
         {townId ? `What's happening in ${townShortName(townId)}?` : "What's happening in Akpafu?"}
       </Link>
     </div>
+  );
+}
+
+/** "Coming up" strip of the next events, shown on the home feed. */
+export function UpcomingEvents({ townId }: { townId: string | null }) {
+  const q = useQuery({ queryKey: ['events', townId ?? 'all'], queryFn: () => fetchUpcomingEvents(townId), staleTime: 60_000 });
+  const events = (q.data ?? []).slice(0, 8);
+  if (!events.length) return null;
+  return (
+    <section aria-label="Upcoming events" className="rounded-2xl border border-sand-200 bg-white p-3 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
+          <Icon name="calendar" className="h-4 w-4 text-brand-700" /> Coming up
+        </h2>
+        <Link to={townId ? `/events?town=${townId}` : '/events'} className="text-xs font-semibold text-brand-700 hover:underline">
+          All events →
+        </Link>
+      </div>
+      <ul className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
+        {events.map((e) => (
+          <li key={e.id} className="w-56 shrink-0">
+            <Link to={`/events/${e.id}`} className="block overflow-hidden rounded-xl border border-sand-200 hover:border-brand-300">
+              {e.imageUrl ? (
+                <img src={e.imageUrl} alt="" loading="lazy" className="h-24 w-full object-cover" />
+              ) : (
+                <div className="flex h-24 items-center justify-center bg-brand-50 text-brand-300">
+                  <Icon name="calendar" className="h-10 w-10" />
+                </div>
+              )}
+              <div className="p-2">
+                <p className="text-[11px] font-bold uppercase text-brand-700">
+                  {e.startsAt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · {townShortName(e.townId)}
+                </p>
+                <p className="truncate text-sm font-bold text-gray-900">{e.title}</p>
+                <p className="text-xs text-gray-600">{e.goingCount} going</p>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

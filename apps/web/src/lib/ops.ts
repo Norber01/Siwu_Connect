@@ -70,13 +70,14 @@ export async function updateProfile(
   });
 }
 
-export async function createPost(db: Firestore, uid: string, input: PostInput): Promise<string> {
+export async function createPost(db: Firestore, uid: string, input: PostInput, imageUrl: string | null = null): Promise<string> {
   const ref = doc(collection(db, 'posts'));
   const batch = writeBatch(db);
   batch.set(ref, {
     authorId: uid,
     townId: input.townId,
     text: input.text,
+    imageUrl,
     visibility: input.visibility,
     status: 'published',
     pinned: false,
@@ -97,9 +98,11 @@ export async function editPost(
   db: Firestore,
   postId: string,
   input: Pick<PostInput, 'text' | 'visibility'>,
+  imageUrl: string | null = null,
 ): Promise<void> {
   await updateDoc(doc(db, 'posts', postId), {
     text: input.text,
+    imageUrl,
     visibility: input.visibility,
     searchTokens: searchTokens(input.text),
     updatedAt: serverTimestamp(),
@@ -112,6 +115,7 @@ export async function deletePost(db: Firestore, postId: string): Promise<void> {
   await updateDoc(doc(db, 'posts', postId), {
     status: 'deleted',
     text: '',
+    imageUrl: null,
     searchTokens: [],
     updatedAt: serverTimestamp(),
   });

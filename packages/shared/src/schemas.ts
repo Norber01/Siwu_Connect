@@ -47,15 +47,11 @@ export const profileSchema = z.object({
 });
 export type ProfileInput = z.infer<typeof profileSchema>;
 
+/** Post text may be empty when the post has a photo; the UI checks "text or photo". */
 export const postTextSchema = z
   .string()
   .transform(cleanMultiline)
-  .pipe(
-    z
-      .string()
-      .min(1, 'Write something first')
-      .max(LIMITS.postMaxChars, `Posts can be at most ${LIMITS.postMaxChars} characters`),
-  );
+  .pipe(z.string().max(LIMITS.postMaxChars, `Posts can be at most ${LIMITS.postMaxChars} characters`));
 
 export const postSchema = z.object({
   townId: townIdSchema,

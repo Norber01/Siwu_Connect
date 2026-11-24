@@ -41,7 +41,7 @@ describe('schemas', () => {
     expect(postSchema.safeParse({ townId: 'todzi', text: '  hello \n\n\n\n world ', visibility: 'akpafu' }).data?.text).toBe(
       'hello \n\n world',
     );
-    expect(postSchema.safeParse({ townId: 'todzi', text: '   ', visibility: 'akpafu' }).success).toBe(false);
+    expect(postSchema.safeParse({ townId: 'todzi', text: '   ', visibility: 'akpafu' }).data?.text).toBe(''); // allowed with a photo
     expect(postSchema.safeParse({ townId: 'accra', text: 'x', visibility: 'akpafu' }).success).toBe(false);
     expect(postSchema.safeParse({ townId: 'todzi', text: 'x'.repeat(2001), visibility: 'town' }).success).toBe(false);
   });
