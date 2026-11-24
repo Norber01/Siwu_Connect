@@ -23,10 +23,19 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Cache only the app shell; all community data is always fetched fresh.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/__\//],
+        // Cache the app's code and images; all community data is always fetched fresh.
+        // Pages themselves are NOT pre-cached: they are loaded from the network first (so security headers such
+        // as the microphone permission always come fresh) and the last copy is used only when offline.
+        globPatterns: ['**/*.{js,css,svg,png,woff2}'],
+        navigateFallback: null,
+        cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: { cacheName: 'pages', networkTimeoutSeconds: 5, expiration: { maxEntries: 20 } },
+          },
+        ],
       },
     }),
   ],
