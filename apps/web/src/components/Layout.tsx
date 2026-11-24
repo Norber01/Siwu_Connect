@@ -7,7 +7,7 @@ import { useAuth, useMe } from '../auth/AuthProvider';
 import { useFriendships } from '../lib/friends';
 import { fetchTrendingTags, fetchUpcomingEvents } from '../lib/queries';
 import { useChats } from '../pages/chat';
-import { CountBadge, useUnreadNotifications } from '../pages/notifications';
+import { CountBadge, NotificationBell, useUnreadNotifications } from '../pages/notifications';
 import { LogoMark, Wordmark } from './Brand';
 import { LiveBanner } from './LiveBanner';
 import { PeopleSuggest } from './PeopleSuggest';
@@ -55,8 +55,6 @@ export function AppLayout() {
   const wide = useMedia('(min-width: 640px)');
   const veryWide = useMedia('(min-width: 1024px)');
   useEffect(() => setDrawer(false), [location.pathname]);
-  const inChat = /^\/chat\/./.test(location.pathname);
-  const showFab = profile?.status === 'active' && !inChat && !/^\/(new|stories\/new|admin)/.test(location.pathname);
 
   return (
     <div className="min-h-screen bg-white">
@@ -65,33 +63,36 @@ export function AppLayout() {
         {profile && wide && <SideNav badges={badges} onCreate={() => setCreating(true)} onFeedback={() => setFeedback(true)} />}
 
         <div className="min-w-0 max-w-[600px] flex-1 border-sand-200 pb-28 sm:border-x sm:pb-8">
-          {/* Top bar (phones) */}
-          <header className="sticky top-0 z-30 border-b border-sand-200 bg-white/90 backdrop-blur sm:hidden">
-            <div className="grid h-14 grid-cols-[72px_1fr_72px] items-center px-3">
-              {profile ? (
-                <button onClick={() => setDrawer(true)} aria-label="Open menu" className="rounded-full">
-                  <Avatar url={profile.photoUrl} name={profile.displayName} size={34} />
-                </button>
-              ) : (
-                <span />
-              )}
-              <Link to="/" aria-label="Siwu Connect home" className="justify-self-center">
-                <LogoMark size={30} />
+          {/* Top bar (phones): soft sky gradient, logo, round search and bell buttons */}
+          <header className="sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white/95 backdrop-blur sm:hidden">
+            <div className="flex h-16 items-center gap-2 px-4">
+              <Link to="/" aria-label="Siwu Connect home" className="flex min-w-0 flex-1 items-center gap-2">
+                <LogoMark size={38} />
+                <span className="min-w-0">
+                  <span className="block whitespace-nowrap text-[19px] font-black uppercase leading-tight tracking-wide text-brand-900">Siwu Connect</span>
+                  <span className="block truncate text-[10.5px] font-semibold text-brand-700/80">Five towns · One community</span>
+                </span>
               </Link>
-              <span className="flex items-center justify-self-end">
-                {hasAdminAccess(role) && (
-                  <NavLink to="/admin" aria-label="Admin area" className="mr-1 rounded-full p-1 text-gray-700 aria-[current=page]:text-brand-700">
-                    <Icon name="shield" className="h-6 w-6" />
-                  </NavLink>
-                )}
-                <button
-                  onClick={() => setFeedback(true)}
-                  className="rounded-full bg-gold-400 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#0d4a1e]"
-                  title="This is an early test version — tap to send feedback"
-                >
-                  Beta
-                </button>
-              </span>
+              <button
+                onClick={() => setFeedback(true)}
+                className="rounded-full bg-gold-400 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#0f2f41]"
+                title="This is an early test version — tap to send feedback"
+              >
+                Beta
+              </button>
+              {hasAdminAccess(role) && (
+                <NavLink to="/admin" aria-label="Admin area" className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-brand-900 shadow-sm aria-[current=page]:text-gold-600">
+                  <Icon name="shield" className="h-5 w-5" />
+                </NavLink>
+              )}
+              <NavLink to="/explore" aria-label="Explore" className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-brand-900 shadow-sm aria-[current=page]:text-gold-600">
+                <Icon name="search" className="h-5 w-5" />
+              </NavLink>
+              {profile && (
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 shadow-sm">
+                  <NotificationBell />
+                </span>
+              )}
             </div>
           </header>
 
@@ -116,19 +117,9 @@ export function AppLayout() {
       </div>
 
       {profile && <BadgeSource onChange={setBadges} />}
-      {/* Compose button */}
-      {showFab && (
-        <button
-          onClick={() => setCreating(true)}
-          aria-label="Create"
-          className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-900/30 hover:bg-brand-700 sm:hidden"
-        >
-          <Icon name="plus" className="h-7 w-7" />
-        </button>
-      )}
 
       {/* Bottom bar (phones) */}
-      {profile && !wide && <BottomNav badges={badges} />}
+      {profile && !wide && <BottomNav badges={badges} canCreate={profile.status === 'active'} onCreate={() => setCreating(true)} onMore={() => setDrawer(true)} />}
 
       {profile && drawer && !wide && <Drawer onClose={() => setDrawer(false)} onFeedback={() => setFeedback(true)} admin={hasAdminAccess(role)} />}
       {profile && <CreateSheet open={creating} onClose={() => setCreating(false)} />}
@@ -146,31 +137,58 @@ function BadgeSource({ onChange }: { onChange: (b: Badges) => void }) {
   return null;
 }
 
-function BottomNav({ badges }: { badges: Badges }) {
+function BottomNav({ badges, onCreate, onMore, canCreate }: { badges: Badges; onCreate: () => void; onMore: () => void; canCreate: boolean }) {
+  const item = (isActive: boolean) =>
+    `flex h-[60px] w-full flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${isActive ? 'text-brand-800' : 'text-gray-500'}`;
   return (
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-sand-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
-      <ul className="grid grid-cols-5">
-        {tabs.map((n) => (
-          <li key={n.to}>
-            <NavLink
-              to={n.to}
-              end={n.end}
-              aria-label={(() => {
-                const c = n.to === '/notifications' ? badges.notifications : n.to === '/chat' ? badges.chat : 0;
-                return c ? `${n.label}, ${c} unread` : n.label;
-              })()}
-              className={({ isActive }) => `flex h-[56px] items-center justify-center ${isActive ? 'text-gray-900' : 'text-gray-500'}`}
-            >
-              {({ isActive }) => (
+    <nav aria-label="Main" className="fixed inset-x-2 bottom-2 z-30 rounded-3xl border border-white/70 bg-gradient-to-b from-sky-100/95 to-white/95 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-brand-900/10 backdrop-blur sm:hidden">
+      <ul className="grid grid-cols-5 items-end">
+        <li>
+          <NavLink to="/" end aria-label="Home" className={({ isActive }) => item(isActive)}>
+            {({ isActive }) => (
+              <>
+                <Icon name="home" filled={isActive} className="h-6 w-6" /> Home
+              </>
+            )}
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to="/sports" aria-label="Sports" className={({ isActive }) => item(isActive)}>
+            {({ isActive }) => (
+              <>
+                <Icon name="ball" className={`h-6 w-6 ${isActive ? "stroke-[2.4]" : ""}`} /> Sports
+              </>
+            )}
+          </NavLink>
+        </li>
+        <li className="flex justify-center">
+          <button
+            onClick={onCreate}
+            disabled={!canCreate}
+            aria-label="Create"
+            className="-mt-6 mb-2 flex h-[58px] w-[58px] items-center justify-center rounded-full bg-gradient-to-b from-gold-400 to-gold-600 text-white shadow-lg shadow-gold-600/40 ring-4 ring-white/90 hover:to-gold-400 disabled:opacity-50"
+          >
+            <Icon name="plus" className="h-8 w-8" />
+          </button>
+        </li>
+        <li>
+          <NavLink to="/chat" aria-label={badges.chat ? `Chat, ${badges.chat} unread` : 'Chat'} className={({ isActive }) => item(isActive)}>
+            {({ isActive }) => (
+              <>
                 <span className="relative">
-                  <Icon name={n.icon} filled={isActive && n.icon !== 'search'} className={`h-[26px] w-[26px] ${isActive ? 'stroke-[2.4]' : ''}`} />
-                  {n.to === '/notifications' && <CountBadge n={badges.notifications} />}
-                  {n.to === '/chat' && <CountBadge n={badges.chat} />}
+                  <Icon name="message" filled={isActive} className="h-6 w-6" />
+                  <CountBadge n={badges.chat} />
                 </span>
-              )}
-            </NavLink>
-          </li>
-        ))}
+                Chat
+              </>
+            )}
+          </NavLink>
+        </li>
+        <li>
+          <button onClick={onMore} aria-label="More" className={item(false)}>
+            <Icon name="grid" className="h-6 w-6" /> More
+          </button>
+        </li>
       </ul>
     </nav>
   );
@@ -231,14 +249,14 @@ function SideNav({ onCreate, onFeedback, badges }: { onCreate: () => void; onFee
         <button
           onClick={onCreate}
           disabled={profile.status !== 'active'}
-          className="mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-lg font-bold text-white shadow hover:bg-brand-700 disabled:opacity-50 xl:w-full"
+          className="mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-b from-gold-400 to-gold-600 text-lg font-bold text-white shadow hover:to-gold-400 disabled:opacity-50 xl:w-full"
           aria-label="Create"
         >
           <Icon name="plus" className="h-6 w-6 xl:hidden" />
           <span className="hidden xl:inline">Post</span>
         </button>
       </nav>
-      <button onClick={onFeedback} className="mb-2 self-center rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-black uppercase text-[#0d4a1e] xl:self-start">
+      <button onClick={onFeedback} className="mb-2 self-center rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-black uppercase text-[#0f2f41] xl:self-start">
         Beta · feedback
       </button>
       <Link to="/me" className="flex items-center gap-3 rounded-full p-2 hover:bg-sand-100">

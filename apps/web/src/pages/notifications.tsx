@@ -44,7 +44,7 @@ export function NotificationBell() {
   return (
     <NavLink
       to="/notifications"
-      className="relative rounded-full p-1.5 text-gray-700 hover:bg-sand-100 aria-[current=page]:text-brand-700"
+      className="relative rounded-full p-1.5 text-brand-900 hover:bg-sand-100 aria-[current=page]:text-gold-600"
       aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'}
     >
       <Icon name="bell" className="h-6 w-6" />

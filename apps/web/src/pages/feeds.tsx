@@ -1,7 +1,7 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { TOWNS, isTownId, townName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
-import { Announcements, CreatePostPrompt, Feed, UpcomingEvents } from '../components/Feed';
+import { Announcements, CreatePostPrompt, Feed, QuickActions, UpcomingEvents } from '../components/Feed';
 import { TownChips } from '../components/TownChips';
 import { Landscape } from '../components/Brand';
 import { NewMembers } from '../components/extras';
@@ -23,13 +23,15 @@ export function HomePage() {
   return (
     <div className="space-y-3">
       <h1 className="sr-only">{selected === 'all' ? 'All Akpafu feed' : `${townName(selected)} feed`}</h1>
+      <div className="rounded-3xl bg-gradient-to-b from-sky-100 to-white/60 px-4 pb-2 pt-3 shadow-sm ring-1 ring-white">
+        <StoriesBar />
+      </div>
+      <QuickActions townId={selected === 'all' ? undefined : selected} />
       <TownChips
         variant="tabs"
         value={selected}
         onChange={(v) => setParams(v === profile.hometownId ? {} : { town: v }, { replace: true })}
       />
-      <StoriesBar />
-      <CreatePostPrompt townId={selected === 'all' ? undefined : selected} />
       <Announcements townId={selected === 'all' ? null : selected} />
       <WordOfTheDay />
       <UpcomingEvents townId={selected === 'all' ? null : selected} />
@@ -72,7 +74,7 @@ export function TownsPage() {
                 <span>
                   <span className="block text-lg font-bold">{t.name}</span>
                   {profile.hometownId === t.id && (
-                    <span className="mt-0.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-[#0d4a1e]">
+                    <span className="mt-0.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-[#0f2f41]">
                       Your hometown
                     </span>
                   )}
@@ -85,7 +87,7 @@ export function TownsPage() {
       </ul>
       <Link
         to="/?town=all"
-        className="mt-3 flex min-h-[56px] items-center justify-between rounded-2xl bg-gold-400 px-4 font-bold text-[#0d4a1e] shadow-sm hover:bg-gold-600"
+        className="mt-3 flex min-h-[56px] items-center justify-between rounded-2xl bg-gold-400 px-4 font-bold text-[#0f2f41] shadow-sm hover:bg-gold-600"
       >
         <span className="flex items-center gap-2">
           <Icon name="globe" /> All Akpafu — five towns, one community

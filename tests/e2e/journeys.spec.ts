@@ -97,8 +97,8 @@ test('Phase 1 journeys', async ({ page }, info) => {
   await expect(page.getByText('edited')).toBeVisible();
 
   // Profile shows hometown and the post.
-  if (await page.getByRole('button', { name: 'Open menu' }).isVisible()) {
-    await page.getByRole('button', { name: 'Open menu' }).click(); // phone: side menu from the avatar
+  if (await page.getByRole('button', { name: 'More', exact: true }).isVisible()) {
+    await page.getByRole('button', { name: 'More', exact: true }).click(); // phone: side menu from "More"
   }
   await page.getByRole('link', { name: 'Profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: alice.name })).toBeVisible();

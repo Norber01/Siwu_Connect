@@ -4,13 +4,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Siwu Connect brand: green, white and yellow (from the founder's design, 2026-11-23).
+        // Siwu Connect brand (founder's second mockup, 2026-11-24): deep teal-navy with gold highlights on a
+        // soft sky background. The logo keeps its original green, yellow and dark figures.
         brand: {
-          50: '#eef8f0', 100: '#d6efdb', 200: '#ade0b8', 300: '#7dcb8e', 400: '#4caf62',
-          500: '#2a9645', 600: '#1f8a3a', 700: '#187530', 800: '#135f27', 900: '#0d4a1e',
+          50: '#eef5f9', 100: '#d7e8f1', 200: '#b0d0e2', 300: '#80b2cc', 400: '#4f91b3',
+          500: '#2c7699', 600: '#1d6283', 700: '#174f6b', 800: '#143f56', 900: '#0f2f41',
         },
-        gold: { 100: '#fff7d1', 400: '#f7c600', 600: '#d9ad00', 800: '#5c4800' },
-        sand: { 50: '#fafbfa', 100: '#f3f6f3', 200: '#e3e9e3' },
+        gold: { 100: '#fbf3dc', 400: '#d6b04a', 600: '#b8922b', 800: '#5a4511' },
+        sand: { 50: '#f7fafc', 100: '#eef4f8', 200: '#dde7ee' },
+        sky: { 50: '#f3f8fd', 100: '#e4f0fa', 200: '#cfe3f4' },
       },
       fontFamily: {
         sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],

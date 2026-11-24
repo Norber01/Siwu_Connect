@@ -117,16 +117,44 @@ function AutoLoad({ onVisible }: { onVisible: () => void }) {
 export function CreatePostPrompt({ townId }: { townId?: string }) {
   const { profile } = useMe();
   if (profile.status !== 'active') return null;
+  const to = townId ? `/new?town=${townId}` : '/new';
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-sand-200 bg-white p-3 shadow-sm">
+    <div className="flex items-center gap-3 rounded-full bg-sand-100 p-1.5 pr-2">
       <Avatar url={profile.photoUrl} name={profile.displayName} size={40} />
-      <Link
-        to={townId ? `/new?town=${townId}` : '/new'}
-        className="flex min-h-[44px] flex-1 items-center rounded-full bg-sand-100 px-4 text-gray-600 hover:bg-sand-200"
-      >
-        {townId ? `What's happening in ${townShortName(townId)}?` : "What's happening in Akpafu?"}
+      <Link to={to} className="flex min-h-[44px] flex-1 items-center text-[15px] text-gray-600">
+        What's on your mind?
+      </Link>
+      <Link to={to} aria-label="Add a photo or video" className="rounded-full p-2 text-brand-600 hover:bg-white">
+        <Icon name="camera" className="h-6 w-6" />
       </Link>
     </div>
+  );
+}
+
+/** Pill buttons under the stories: the main one (gold) writes a post. */
+export function QuickActions({ townId }: { townId?: string }) {
+  const { profile } = useMe();
+  const pill = 'flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold';
+  return (
+    <nav aria-label="Quick actions" className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+      {profile.status === 'active' && (
+        <Link to={townId ? `/new?town=${townId}` : '/new'} className={`${pill} bg-gradient-to-b from-gold-400 to-gold-600 text-white shadow-sm`}>
+          <Icon name="edit" className="h-4 w-4" /> Post update
+        </Link>
+      )}
+      <Link to="/events" className={`${pill} bg-white text-brand-900 shadow-sm ring-1 ring-sand-200`}>
+        Events
+      </Link>
+      <Link to="/market" className={`${pill} bg-white text-brand-900 shadow-sm ring-1 ring-sand-200`}>
+        Marketplace
+      </Link>
+      <Link to="/directory" className={`${pill} bg-white text-brand-900 shadow-sm ring-1 ring-sand-200`}>
+        Jobs & businesses
+      </Link>
+      <Link to="/sports?tab=predictions" className={`${pill} bg-white text-brand-900 shadow-sm ring-1 ring-sand-200`}>
+        Predictions
+      </Link>
+    </nav>
   );
 }
 

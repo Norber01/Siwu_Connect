@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { VerifiedBadge } from '../components/VerifiedBadge';
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { type Timestamp, collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { type Timestamp, collection, doc, getCountFromServer, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { EXTRA_LIMITS, canModerate, townShortName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
@@ -13,7 +13,7 @@ import { useFriendships } from '../lib/friends';
 import { VoicePlayer, VoiceRecorder, canRecordVoice } from '../components/voice';
 import { FriendActions } from '../components/FriendButton';
 import { searchPeople } from '../lib/queries';
-import { friendlyError, preparePhoto, timeAgo } from '../lib/util';
+import { friendlyError, preparePhoto } from '../lib/util';
 import { Icon } from '../components/Icon';
 import { Menu, type MenuItem } from '../components/Menu';
 import { RichText } from '../components/PostCard';
@@ -82,94 +82,213 @@ export function useChats() {
   }, [user.uid]);
   const isUnread = (c: Chat) =>
     !!c.lastMessage && c.lastMessage.senderId !== user.uid && (!reads[c.id] || (c.updatedAt?.getTime() ?? 0) > reads[c.id]!.getTime());
-  return { rooms, dms, error, isUnread };
+  return { rooms, dms, error, isUnread, reads };
 }
 
-function DmRow({ chat, unread }: { chat: Chat; unread: boolean }) {
-  const { user } = useMe();
-  const other = chat.members.find((m) => m !== user.uid) ?? user.uid;
-  const { data: p } = useProfileById(other);
+/** "4:32 PM" today, "Yesterday", weekday this week, else "24 Nov". */
+function chatTime(d: Date | null | undefined): string {
+  if (!d) return '';
+  const now = new Date();
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86_400_000);
+  if (diff === 0) return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/** Number of new messages since you last opened the chat (shown in a blue bubble). */
+function UnreadCount({ chatId, since }: { chatId: string; since: Date | null | undefined }) {
+  const q = useQuery({
+    queryKey: ['unreadCount', chatId, since?.getTime() ?? 0],
+    queryFn: async () => {
+      const base = collection(db, 'chats', chatId, 'messages');
+      const snap = await getCountFromServer(since ? query(base, where('createdAt', '>', since)) : query(base, limit(99)));
+      return snap.data().count;
+    },
+    staleTime: 30_000,
+  });
+  const n = q.data ?? 0;
   return (
-    <Link to={`/chat/${chat.id}`} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-sand-100">
-      <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={48} />
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate ${unread ? 'font-black' : 'font-semibold'} text-gray-900`}>
-          {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-4 w-4" />}
+    <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white" aria-label={n ? `${n} unread` : 'Unread'}>
+      {n ? (n > 99 ? '99+' : n) : ''}
+    </span>
+  );
+}
+
+function RowShell({
+  to,
+  avatar,
+  title,
+  preview,
+  time,
+  unread,
+  chatId,
+  since,
+}: {
+  to: string;
+  avatar: React.ReactNode;
+  title: React.ReactNode;
+  preview: string;
+  time: Date | null | undefined;
+  unread: boolean;
+  chatId: string;
+  since: Date | null | undefined;
+}) {
+  return (
+    <Link to={to} className="flex items-center gap-3 px-4 pt-3 hover:bg-sand-100">
+      {avatar}
+      <span className="min-w-0 flex-1 border-b border-sand-200 pb-3">
+        <span className="flex items-baseline justify-between gap-2">
+          <span className={`truncate text-[16px] ${unread ? 'font-black' : 'font-bold'} text-gray-900`}>{title}</span>
+          <span className={`shrink-0 text-xs ${unread ? 'font-bold text-brand-600' : 'text-gray-500'}`}>{chatTime(time)}</span>
         </span>
-        <span className={`block truncate text-sm ${unread ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
-          {chat.lastMessage ? `${chat.lastMessage.senderId === user.uid ? 'You: ' : ''}${chat.lastMessage.text}` : 'Say hello 👋'}
+        <span className="mt-0.5 flex items-center justify-between gap-2">
+          <span className={`truncate text-[15px] ${unread ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>{preview}</span>
+          {unread && <UnreadCount chatId={chatId} since={since} />}
         </span>
-      </span>
-      <span className="flex flex-col items-end gap-1">
-        <span className="text-xs text-gray-500">{chat.lastMessage ? timeAgo(chat.lastMessage.at) : ''}</span>
-        {unread && <span className="h-2.5 w-2.5 rounded-full bg-brand-600" aria-label="Unread" />}
       </span>
     </Link>
   );
 }
 
+function DmRow({ chat, unread, since }: { chat: Chat; unread: boolean; since: Date | null | undefined }) {
+  const { user } = useMe();
+  const other = chat.members.find((m) => m !== user.uid) ?? user.uid;
+  const { data: p } = useProfileById(other);
+  return (
+    <RowShell
+      to={`/chat/${chat.id}`}
+      chatId={chat.id}
+      since={since}
+      unread={unread}
+      time={chat.lastMessage?.at ?? chat.updatedAt}
+      avatar={<Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={54} />}
+      title={
+        <>
+          {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-4 w-4" />}
+        </>
+      }
+      preview={chat.lastMessage ? `${chat.lastMessage.senderId === user.uid ? 'You: ' : ''}${chat.lastMessage.text}` : 'Say hello 👋'}
+    />
+  );
+}
+
+function RoomRow({ chat, unread, since }: { chat: Chat; unread: boolean; since: Date | null | undefined }) {
+  const all = chat.townId === 'all';
+  return (
+    <RowShell
+      to={`/chat/${chat.id}`}
+      chatId={chat.id}
+      since={since}
+      unread={unread}
+      time={chat.lastMessage?.at ?? null}
+      avatar={
+        <span className={`flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full text-2xl ${all ? 'bg-gradient-to-br from-sky-400 to-brand-700' : 'bg-brand-600'}`}>
+          {all ? '🌍' : <Icon name="towns" className="h-7 w-7 text-white" />}
+        </span>
+      }
+      title={all ? 'All Akpafu' : `${townShortName(chat.townId ?? '')} town chat`}
+      preview={chat.lastMessage ? chat.lastMessage.text : 'Start the conversation'}
+    />
+  );
+}
+
+type ChatFilter = 'all' | 'friends' | 'groups' | 'requests';
+
 export function ChatListPage() {
   const { user } = useMe();
-  const { rooms, dms, error, isUnread } = useChats();
+  const navigate = useNavigate();
+  const { rooms, dms, error, isUnread, reads } = useChats();
+  const f = useFriendships();
   const [picking, setPicking] = useState(false);
+  const [filter, setFilter] = useState<ChatFilter>('all');
   if (error) return <ErrorState message={friendlyError(error)} />;
   if (!rooms || !dms) return <PageSpinner />;
   const sortedRooms = [...rooms].sort((a, b) => ROOM_ORDER.indexOf(a.townId ?? '') - ROOM_ORDER.indexOf(b.townId ?? ''));
   const visibleDms = dms.filter((c) => c.lastMessage || c.members.includes(user.uid));
+  const time = (c: Chat) => (c.lastMessage?.at ?? c.updatedAt)?.getTime() ?? 0;
+  const list: Chat[] =
+    filter === 'friends' ? visibleDms : filter === 'groups' ? sortedRooms : [...visibleDms, ...sortedRooms].sort((a, b) => time(b) - time(a));
+  const chips: { id: ChatFilter; label: string; count?: number }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'friends', label: 'Friends' },
+    { id: 'groups', label: 'Groups' },
+    { id: 'requests', label: 'Requests', count: f.incoming.length },
+  ];
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Chat"
-        actions={
-          <Button small icon="edit" onClick={() => setPicking(true)}>
-            New message
-          </Button>
-        }
-      />
-      <section>
-        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-600">Town chats</h2>
-        <ul className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-          {sortedRooms.map((r) => (
-            <li key={r.id} className="shrink-0">
-              <NavLink
-                to={`/chat/${r.id}`}
-                className={`flex min-h-[64px] w-36 flex-col justify-center rounded-2xl px-3 py-2 shadow-sm ${
-                  r.townId === 'all' ? 'bg-brand-600 text-white' : 'bg-white text-gray-900 ring-1 ring-sand-200'
-                }`}
-              >
-                <span className="flex items-center gap-1 text-sm font-bold">
-                  {r.townId === 'all' ? '🌍 All Akpafu' : `🏡 ${townShortName(r.townId ?? '')}`}
-                  {isUnread(r) && <span className="h-2 w-2 rounded-full bg-gold-400" />}
-                </span>
-                <span className={`truncate text-xs ${r.townId === 'all' ? 'text-white/80' : 'text-gray-600'}`}>
-                  {r.lastMessage ? r.lastMessage.text : 'Start the conversation'}
-                </span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <FriendRequests />
-      <section>
-        <h2 className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-600">Messages</h2>
-        {visibleDms.length === 0 ? (
-          <EmptyState title="No private messages yet" icon="message">
-            Add friends from their profile. Once they accept your request, tap <strong>New message</strong> to chat.
-          </EmptyState>
-        ) : (
-          <ul className="rounded-2xl bg-white shadow-sm ring-1 ring-sand-200">
-            {visibleDms.map((c) => (
-              <li key={c.id}>
-                <DmRow chat={c} unread={isUnread(c)} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <p className="text-center text-xs text-gray-500">
-        Private messages can only be read by the two of you. Town chats are visible to all members.
-      </p>
+    <div className="-mx-4 pb-16">
+      <div className="flex items-center justify-between px-4 pb-2 pt-1">
+        <h1 className="text-[30px] font-black tracking-tight text-gray-900">Chat</h1>
+        <span className="flex items-center gap-1">
+          <button onClick={() => navigate('/search?tab=people')} className="rounded-full p-2 text-gray-800 hover:bg-sand-100" aria-label="Search people">
+            <Icon name="search" className="h-6 w-6" />
+          </button>
+          <button onClick={() => setPicking(true)} className="rounded-full p-2 text-gray-800 hover:bg-sand-100" aria-label="Write a new message">
+            <Icon name="edit" className="h-6 w-6" />
+          </button>
+        </span>
+      </div>
+      <div role="tablist" aria-label="Show chats" className="flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
+        {chips.map((c) => (
+          <button
+            key={c.id}
+            role="tab"
+            aria-selected={filter === c.id}
+            onClick={() => setFilter(c.id)}
+            className={`flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full px-5 text-sm font-semibold ${
+              filter === c.id ? 'bg-brand-600 text-white shadow-sm' : 'bg-sand-100 text-gray-800 hover:bg-sand-200'
+            }`}
+          >
+            {c.label}
+            {!!c.count && <span className="rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white">{c.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {filter === 'requests' ? (
+        <div className="px-4 pt-2">
+          {f.incoming.length + f.outgoing.length === 0 ? (
+            <EmptyState title="No friend requests" icon="user">
+              Find people with the search icon and tap <strong>Add friend</strong> on their profile.
+            </EmptyState>
+          ) : (
+            <FriendRequests />
+          )}
+        </div>
+      ) : (
+        <>
+          {f.incoming.length > 0 && (
+            <div className="px-4 pt-2">
+              <FriendRequests />
+            </div>
+          )}
+          {list.length === 0 ? (
+            <div className="px-4">
+              <EmptyState title="No chats here yet" icon="message">
+                Add friends from their profile. Once they accept, tap <strong>New Message</strong> to chat.
+              </EmptyState>
+            </div>
+          ) : (
+            <ul>
+              {list.map((c) => (
+                <li key={c.id}>
+                  {c.type === 'room' ? <RoomRow chat={c} unread={isUnread(c)} since={reads[c.id]} /> : <DmRow chat={c} unread={isUnread(c)} since={reads[c.id]} />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      <p className="px-6 pt-4 text-center text-xs text-gray-500">Private messages can only be read by the two of you. Town chats are visible to all members.</p>
+
+      <button
+        onClick={() => setPicking(true)}
+        className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white px-6 py-3 font-bold text-brand-700 shadow-lg ring-1 ring-sand-200 sm:bottom-6"
+      >
+        <Icon name="message" className="h-5 w-5" /> New Message <Icon name="edit" className="h-5 w-5" />
+      </button>
       <NewMessageDialog open={picking} onClose={() => setPicking(false)} />
     </div>
   );
@@ -196,15 +315,21 @@ export function FriendRequests() {
 function RequestRow({ uid, incoming }: { uid: string; incoming: boolean }) {
   const { data: p } = useProfileById(uid);
   return (
-    <li className="flex flex-wrap items-center gap-3 p-3">
-      <Link to={p ? `/u/${p.username}` : '#'} className="flex min-w-0 flex-1 items-center gap-3">
+    <li className="p-3">
+      <Link to={p ? `/u/${p.username}` : '#'} className="flex min-w-0 items-center gap-3">
         <Avatar url={p?.photoUrl} name={p?.displayName ?? '…'} size={44} />
         <span className="min-w-0">
-          <span className="block truncate font-semibold text-gray-900">{p?.displayName ?? '…'}</span>
+          <span className="block truncate font-semibold text-gray-900">
+            {p?.displayName ?? '…'} {p?.verified && <VerifiedBadge className="h-3.5 w-3.5" />}
+          </span>
           <span className="block text-xs text-gray-600">{incoming ? 'Wants to be friends and chat' : 'Request sent'}</span>
         </span>
       </Link>
-      <span className="flex gap-1">{p && <FriendActions uid={uid} name={p.displayName} />}</span>
+      {p && (
+        <span className="mt-2 flex gap-2 pl-[56px]">
+          <FriendActions uid={uid} name={p.displayName} />
+        </span>
+      )}
     </li>
   );
 }

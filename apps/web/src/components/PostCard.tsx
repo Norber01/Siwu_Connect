@@ -410,7 +410,9 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
     <article className="-mx-4 border-b border-sand-200 px-4 pb-1 pt-3 transition-colors hover:bg-sand-100/40" aria-label="Post">
       {post.quoteOf && !post.text && !post.media.length && (
         <div className="mb-1 ml-8 flex items-center gap-1 text-[13px] font-bold text-gray-600">
-          <Icon name="repeat" className="h-3.5 w-3.5" /> Reposted
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-bold text-white">
+            <Icon name="repeat" className="h-3 w-3" /> reposted
+          </span>
         </div>
       )}
       {post.pinned && (

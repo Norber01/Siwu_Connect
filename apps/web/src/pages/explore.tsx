@@ -172,7 +172,7 @@ export function DirectoryPage() {
           <button
             key={x}
             onClick={() => setParams({ kind: x, ...(town !== 'all' ? { town } : {}) }, { replace: true })}
-            className={`min-h-[36px] shrink-0 rounded-full px-3 text-sm font-semibold ${x === kind ? 'bg-gold-400 text-[#0d4a1e]' : 'bg-white text-gray-700 ring-1 ring-sand-200'}`}
+            className={`min-h-[36px] shrink-0 rounded-full px-3 text-sm font-semibold ${x === kind ? 'bg-gold-400 text-[#0f2f41]' : 'bg-white text-gray-700 ring-1 ring-sand-200'}`}
           >
             {KINDS[x].emoji} {KINDS[x].title}
           </button>

@@ -16,7 +16,7 @@ function read(): ThemePref {
 export function applyTheme(pref: ThemePref = read()) {
   const dark = pref === 'dark' || (pref === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
   document.documentElement.classList.toggle('dark', !!dark);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b1410' : '#1f8a3a');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0a0f1a' : '#ffffff');
 }
 
 export function initTheme() {

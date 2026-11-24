@@ -148,7 +148,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByRole('button', { name: 'Add friend' }).click();
   await expect(page.getByRole('button', { name: 'Requested · Cancel' })).toBeVisible();
   await page.goto('/chat');
-  await page.getByRole('link', { name: /🏡 Todzi/ }).click();
+  await page.getByRole('link', { name: /Todzi town chat/ }).click();
   await page.getByLabel('Message', { exact: true }).fill(`Hello Todzi room ${tag}`);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText(`Hello Todzi room ${tag}`)).toBeVisible();
