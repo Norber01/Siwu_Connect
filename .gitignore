@@ -19,3 +19,4 @@ service-account*.json
 coverage/
 !.env.development
 !apps/api/.dev.vars.example
+!apps/web/.env.production
