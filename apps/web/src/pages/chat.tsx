@@ -319,10 +319,12 @@ export function ChatRoomPage() {
     const body = text.trim();
     if (!body && !imageUrl) return;
     setSending(true);
+    if (!imageUrl) setText(''); // clear at once, like other chat apps; restored if sending fails
     try {
       await sendMessage(db, user.uid, chatId, body.slice(0, EXTRA_LIMITS.feedbackMax), imageUrl);
-      setText('');
+      if (imageUrl) setText('');
     } catch (e) {
+      if (!imageUrl) setText((t) => t || body);
       toast(/permission/i.test(String(e)) ? 'Slow down a little, or this person may not accept messages from you.' : friendlyError(e), 'error');
     } finally {
       setSending(false);
