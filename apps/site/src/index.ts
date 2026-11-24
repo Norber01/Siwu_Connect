@@ -15,7 +15,8 @@ const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'x-frame-options': 'DENY',
-  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+  // Microphone: voice notes and word pronunciations. Camera: photos are picked through the phone's own camera app.
+  'permissions-policy': 'camera=(self), microphone=(self), geolocation=()',
 };
 
 /** Serves the Siwu Connect web app. Unknown paths get index.html (client-side routing). */

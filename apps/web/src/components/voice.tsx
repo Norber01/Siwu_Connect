@@ -49,14 +49,29 @@ export function VoiceRecorder({
 
   useEffect(() => () => rec.current?.stream.getTracks().forEach((t) => t.stop()), []);
 
+  const starting = useRef(false);
   const start = async () => {
+    if (starting.current) return; // ignore a second tap while the phone asks for permission
+    starting.current = true;
+    try {
+      await begin();
+    } finally {
+      starting.current = false;
+    }
+  };
+  const begin = async () => {
     const type = pickType();
     if (!type) return onError('Voice notes are not supported on this browser.');
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    } catch {
-      return onError('Allow the microphone to record a voice note.');
+    } catch (e) {
+      const name = e instanceof DOMException ? e.name : '';
+      return onError(
+        name === 'NotFoundError'
+          ? 'No microphone was found on this device.'
+          : 'The microphone is blocked for Siwu Connect. Tap the lock or ⓘ icon next to the web address (or open your phone Settings → Apps → your browser → Permissions), allow the microphone, then try again.',
+      );
     }
     const r = new MediaRecorder(stream, { mimeType: type, audioBitsPerSecond: 32_000 });
     chunks.current = [];
