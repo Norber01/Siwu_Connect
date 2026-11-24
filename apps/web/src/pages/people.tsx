@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { COUNTRIES, RESIDENCE_OPTIONS, TOWNS, canSuspend, profileSchema, townName } from '@siwu/shared';
+import { COUNTRIES, RESIDENCE_OPTIONS, ROLE_LABELS, TOWNS, canSuspend, hasAdminAccess, profileSchema, townName } from '@siwu/shared';
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
@@ -158,14 +158,22 @@ export function ProfilePage() {
               <FriendActions uid={p.uid} name={p.displayName} />
             </div>
           )}
-          {canSuspend(role, p.hometownId) && (
+          {hasAdminAccess(role) && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-sand-100 p-2">
               <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-gray-600">
                 <Icon name="shield" className="h-4 w-4" /> Admin
               </span>
-              <Button small variant={p.verified ? 'secondary' : 'primary'} onClick={toggleVerified}>
-                {p.verified ? 'Remove verified badge' : '✔ Verify account'}
-              </Button>
+              {canSuspend(role, p.hometownId) ? (
+                <Button small variant={p.verified ? 'secondary' : 'primary'} onClick={toggleVerified}>
+                  {p.verified ? 'Remove verified badge' : '✔ Verify account'}
+                </Button>
+              ) : (
+                <span className="text-xs text-gray-700">
+                  Only a Super Admin{p.hometownId ? ` or the Town Admin for ${townName(p.hometownId)}` : ''} can verify this member. You are signed in as{' '}
+                  <strong>{role ? ROLE_LABELS[role.role] : ''}</strong>
+                  {role && role.role !== 'super_admin' && role.townIds.length > 0 && ` for ${role.townIds.map(townName).join(', ')}`}.
+                </span>
+              )}
             </div>
           )}
           {isMe && (
