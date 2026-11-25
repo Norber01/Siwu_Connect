@@ -14,6 +14,7 @@ import {
   permission,
   pushSupported,
   savePushPrefs,
+  explainPushError,
   sendTestPush,
 } from '../lib/push';
 import { useToast } from './Toast';
@@ -73,6 +74,7 @@ export function PushSettingsCard() {
   const [deviceOn, setDeviceOn] = useDeviceOn();
   const [prefs, setPrefs] = useState<PushPrefs | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     if (info.data) setPrefs(info.data.prefs);
   }, [info.data]);
@@ -80,14 +82,15 @@ export function PushSettingsCard() {
   const turnOn = async () => {
     if (!info.data?.publicKey) return;
     setBusy('on');
+    setProblem(null);
     try {
       const r = await enablePush(user.uid, info.data.publicKey);
       if (r === 'on') {
         setDeviceOn(true);
         toast('Notifications are on for this device 🔔');
-      } else toast(explainResult(r)!, 'error');
+      } else setProblem(explainResult(r));
     } catch (e) {
-      toast(friendlyError(e), 'error');
+      setProblem(explainPushError(e));
     } finally {
       setBusy(null);
     }
@@ -135,6 +138,7 @@ export function PushSettingsCard() {
         <>
           <div className="space-y-2">
             <DeviceHelp />
+            {problem && <Alert kind="warning">{problem}</Alert>}
             {deviceOn ? (
               <>
                 <p className="text-sm font-semibold text-green-800">🔔 On for this device</p>
@@ -256,7 +260,7 @@ export function PushPrompt() {
         later();
       }
     } catch (e) {
-      toast(friendlyError(e), 'error');
+      toast(explainPushError(e), 'error');
     } finally {
       setBusy(false);
     }

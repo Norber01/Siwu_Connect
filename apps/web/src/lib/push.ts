@@ -8,6 +8,7 @@
  */
 import type { PushPrefs } from '@siwu/shared';
 import { api } from './api';
+import { ApiError } from './errors';
 import { setPushPing } from './ops';
 
 setPushPing((kind, path, event) => {
@@ -111,6 +112,20 @@ export async function enablePush(uid: string, publicKey: string): Promise<Enable
   sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   await register(sub, uid);
   return 'on';
+}
+
+/** A clear explanation (with the technical reason in brackets, to help fix it) when turning on fails. */
+export function explainPushError(e: unknown): string {
+  const name = e instanceof Error || e instanceof DOMException ? e.name : '';
+  const msg = e instanceof Error || e instanceof DOMException ? e.message : String(e);
+  const detail = ` (${[name, msg].filter(Boolean).join(': ').slice(0, 160)})`;
+  if (e instanceof ApiError) return msg;
+  if (name === 'NotAllowedError') return `Notifications are blocked for Siwu Connect on this phone. Allow them in the phone or browser settings, then try again.${detail}`;
+  if (name === 'AbortError' || /push service/i.test(msg)) {
+    return `This phone could not reach its notification service. This happens on phones without Google services (some Huawei phones) and in browsers such as Brave or Opera with notifications switched off. Try Chrome, and check you are online.${detail}`;
+  }
+  if (name === 'InvalidStateError') return `Please close Siwu Connect completely, open it again and try once more.${detail}`;
+  return `Could not turn on notifications.${detail}`;
 }
 
 /** Stops notifications on this device. */
