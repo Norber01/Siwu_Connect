@@ -333,11 +333,6 @@ export async function fetchNotifications(uid: string): Promise<AppNotification[]
   return snap.docs.map(toNotification);
 }
 
-export async function fetchNewMembers(): Promise<Profile[]> {
-  const snap = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(12)));
-  return snap.docs.map(toProfile).filter((p) => p.status === 'active');
-}
-
 export async function fetchFeedback(): Promise<Feedback[]> {
   const snap = await getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(100)));
   return snap.docs.map(toFeedback);

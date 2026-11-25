@@ -1,16 +1,14 @@
 import { useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { EXTRA_LIMITS, canReportSports, feedbackSchema, hasAdminAccess } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { sendFeedback } from '../lib/ops';
-import { fetchNewMembers } from '../lib/queries';
 import { dateTile, friendlyError, preparePhoto } from '../lib/util';
 import { Icon, type IconName } from './Icon';
 import { useToast } from './Toast';
-import { Alert, Avatar, Button, Modal, TextArea } from './ui';
+import { Alert, Button, Modal, TextArea } from './ui';
 
 /** Photo for an event or listing: resized on the phone, uploaded to the API. */
 export function PhotoField({ url, onChange, label = 'Photo (optional)' }: { url: string | null; onChange: (u: string | null) => void; label?: string }) {
@@ -188,34 +186,6 @@ export function InviteButton({ className = '', small }: { className?: string; sm
   );
 }
 
-export function NewMembers() {
-  const { user } = useMe();
-  const q = useQuery({ queryKey: ['newMembers'], queryFn: fetchNewMembers, staleTime: 5 * 60_000 });
-  const members = (q.data ?? []).filter((m) => m.uid !== user.uid);
-  if (members.length < 2) return null;
-  return (
-    <section aria-label="New members" className="rounded-2xl border border-sand-200 bg-white p-3 shadow-sm">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-bold text-gray-900">👋 Welcome our newest members</h2>
-        <InviteButton small />
-      </div>
-      <ul className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
-        {members.map((m) => (
-          <li key={m.uid} className="w-16 shrink-0 text-center">
-            <Link to={`/u/${m.username}`} className="block">
-              <span className="inline-block rounded-full ring-2 ring-gold-400">
-                <Avatar url={m.photoUrl} name={m.displayName} size={52} />
-              </span>
-              <span className="mt-1 block truncate text-xs font-semibold text-gray-800">{m.displayName.split(' ')[0]}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** The "+" menu: choose what to create. */
 export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { role, profile } = useMe();
   const navigate = useNavigate();
