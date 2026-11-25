@@ -1,3 +1,4 @@
+import { useShowOnScrollUp } from '../lib/scroll';
 import { usePushNavigation } from './PushSettings';
 import { useEffect, useState } from 'react';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -58,6 +59,10 @@ export function AppLayout() {
   const wide = useMedia('(min-width: 640px)');
   useActivityHeartbeat(profile?.uid, profile?.status === 'active');
   usePushNavigation();
+  // Like X: the top and bottom bars slide away while scrolling down the feed, and come back when scrolling up.
+  // (Not in a chat, where the message box sits just above the bottom bar.)
+  const scrollShow = useShowOnScrollUp();
+  const bars = scrollShow || location.pathname.startsWith('/chat/');
   const veryWide = useMedia('(min-width: 1024px)');
   useEffect(() => setDrawer(false), [location.pathname]);
 
@@ -69,7 +74,11 @@ export function AppLayout() {
 
         <div className="min-w-0 max-w-[600px] flex-1 border-sand-200 pb-28 sm:border-x sm:pb-8">
           {/* Top bar (phones): soft sky gradient, logo, round search and bell buttons */}
-          <header className="sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white/95 backdrop-blur sm:hidden">
+          <header
+            className={`sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white/95 backdrop-blur transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
+              bars ? 'translate-y-0' : 'pointer-events-none -translate-y-full'
+            }`}
+          >
             <div className="flex h-16 items-center gap-2 px-4">
               <Link to="/" aria-label="Siwu Connect home" className="flex min-w-0 flex-1 items-center gap-2">
                 <LogoMark size={38} />
@@ -131,7 +140,9 @@ export function AppLayout() {
       {profile && <BadgeSource onChange={setBadges} />}
 
       {/* Bottom bar (phones) */}
-      {profile && !wide && <BottomNav badges={badges} canCreate={profile.status === 'active'} onCreate={() => setCreating(true)} onMore={() => setDrawer(true)} />}
+      {profile && !wide && (
+        <BottomNav badges={badges} hidden={!bars} canCreate={profile.status === 'active'} onCreate={() => setCreating(true)} onMore={() => setDrawer(true)} />
+      )}
 
       {profile && drawer && !wide && <Drawer onClose={() => setDrawer(false)} onFeedback={() => setFeedback(true)} admin={hasAdminAccess(role)} />}
       {profile && <CreateSheet open={creating} onClose={() => setCreating(false)} />}
@@ -149,11 +160,28 @@ function BadgeSource({ onChange }: { onChange: (b: Badges) => void }) {
   return null;
 }
 
-function BottomNav({ badges, onCreate, onMore, canCreate }: { badges: Badges; onCreate: () => void; onMore: () => void; canCreate: boolean }) {
+function BottomNav({
+  badges,
+  onCreate,
+  onMore,
+  canCreate,
+  hidden,
+}: {
+  badges: Badges;
+  onCreate: () => void;
+  onMore: () => void;
+  canCreate: boolean;
+  hidden: boolean;
+}) {
   const item = (isActive: boolean) =>
     `flex h-[60px] w-full flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${isActive ? 'text-brand-800' : 'text-gray-500'}`;
   return (
-    <nav aria-label="Main" className="fixed inset-x-2 bottom-2 z-30 rounded-3xl border border-white/70 bg-gradient-to-b from-sky-100/95 to-white/95 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-brand-900/10 backdrop-blur sm:hidden">
+    <nav
+      aria-label="Main"
+      className={`fixed inset-x-2 bottom-2 z-30 rounded-3xl border border-white/70 bg-gradient-to-b from-sky-100/95 to-white/95 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-brand-900/10 backdrop-blur transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
+        hidden ? 'pointer-events-none translate-y-[calc(100%+1rem)]' : 'translate-y-0'
+      }`}
+    >
       <ul className="grid grid-cols-5 items-end">
         <li>
           <NavLink to="/" end aria-label="Home" className={({ isActive }) => item(isActive)}>

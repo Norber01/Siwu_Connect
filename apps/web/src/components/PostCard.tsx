@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { Link, useNavigate } from 'react-router-dom';
 import { canAnnounce, canModerate } from '@siwu/shared';
@@ -379,18 +379,31 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
   const invalidate = useInvalidatePosts();
   const [reaction, setReactionState] = useState<Reaction | null>(initialReaction as Reaction | null);
   const [likes, setLikes] = useState(post.reactionCount);
-  const [counts, setCounts] = useState<Record<string, number>>(post.reactions);
   const [liking, setLiking] = useState(false);
   const [picker, setPicker] = useState(false);
+  const pressTimer = useRef<number | undefined>(undefined);
+  const held = useRef(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  // Tapping anywhere else closes the emoji picker.
+  useEffect(() => {
+    if (!picker) return;
+    const away = (e: PointerEvent) => {
+      if (!pickerRef.current?.contains(e.target as Node)) setPicker(false);
+    };
+    const t = setTimeout(() => document.addEventListener('pointerdown', away), 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('pointerdown', away);
+    };
+  }, [picker]);
   // Fresh data from the server (e.g. replacing the copy saved on the phone) updates the card in place, so a menu or
   // window you just opened on it stays open. Skipped while your own reaction is being saved.
   useEffect(() => {
     if (liking) return;
     setReactionState(initialReaction as Reaction | null);
     setLikes(post.reactionCount);
-    setCounts(post.reactions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialReaction, post.reactionCount, post.reactions]);
+  }, [initialReaction, post.reactionCount]);
   const liked = !!reaction;
   const [reporting, setReporting] = useState(false);
   const [commenting, setCommenting] = useState(false);
@@ -408,29 +421,17 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
     setLiking(true);
     setReactionState(next);
     setLikes((n) => n + (next ? 1 : 0) - (prev ? 1 : 0));
-    setCounts((c) => {
-      const n = { ...c };
-      if (prev) n[prev] = Math.max(0, (n[prev] ?? 0) - 1);
-      if (next) n[next] = (n[next] ?? 0) + 1;
-      return n;
-    });
     try {
       await setReaction(db, user.uid, post, prev, next);
     } catch (e) {
       setReactionState(prev);
       setLikes(post.reactionCount);
-      setCounts(post.reactions);
       toast(friendlyError(e), 'error');
     } finally {
       setLiking(false);
     }
   };
   const toggleLike = () => react(reaction ? null : 'like');
-  const top = Object.entries(counts)
-    .filter(([, n]) => n > 0)
-    .sort((x, y) => y[1] - x[1])
-    .slice(0, 3)
-    .map(([t]) => REACTIONS.find((r) => r.id === t)?.emoji);
   const current = REACTIONS.find((r) => r.id === reaction);
 
   const runConfirmed = async () => {
@@ -464,14 +465,6 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
   };
 
   const items: MenuItem[] = [];
-  items.push({
-    label: saved ? 'Remove from saved' : 'Save post',
-    icon: 'bookmark',
-    onSelect: () =>
-      void setBookmark(db, user.uid, post.id, !saved)
-        .then(() => toast(saved ? 'Removed from saved.' : 'Saved 🔖 Find it under More → Saved.'))
-        .catch((e) => toast(friendlyError(e), 'error')),
-  });
   if (isAuthor && active) items.push({ label: 'Edit post', icon: 'edit', onSelect: () => navigate(`/p/${post.id}/edit`) });
   if (isAuthor) items.push({ label: 'Delete post', icon: 'trash', danger: true, onSelect: () => setConfirm('delete') });
   if (!isAuthor && active) items.push({ label: 'Report post', icon: 'flag', onSelect: () => setReporting(true) });
@@ -519,7 +512,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
 
           <div className="relative -ml-2 mt-1 flex max-w-md items-center justify-between text-[13px] text-gray-600">
             {picker && (
-              <div className="absolute -top-14 left-0 z-10 flex gap-1 rounded-full bg-white px-2 py-1.5 shadow-xl ring-1 ring-sand-200" role="menu" aria-label="Reactions">
+              <div ref={pickerRef} className="absolute -top-14 left-0 z-10 flex gap-1 rounded-full bg-white px-2 py-1.5 shadow-xl ring-1 ring-sand-200" role="menu" aria-label="Reactions">
                 {REACTIONS.map((r) => (
                   <button
                     key={r.id}
@@ -550,43 +543,70 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
               </span>
               {post.commentCount > 0 && <span className="tabular-nums">{post.commentCount}</span>}
             </Link>
-            <span className="inline-flex items-center">
-              <button
-                onClick={toggleLike}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setPicker(true);
-                }}
-                disabled={!active}
-                aria-pressed={liked}
-                aria-label={liked ? 'Unlike' : 'Like'}
-                className={`group inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-2 disabled:opacity-50 ${liked ? 'text-pink-600' : 'hover:text-pink-600'}`}
-              >
-                <span className="rounded-full p-1.5 group-hover:bg-pink-50">
-                  {current && current.id !== 'like' ? (
-                    <span className="block h-[18px] w-[18px] text-[16px] leading-[18px]">{current.emoji}</span>
-                  ) : (
-                    <Icon name="heart" filled={liked} className="h-[18px] w-[18px]" />
-                  )}
-                </span>
-                {likes > 0 && (
-                  <span className="tabular-nums">
-                    {top.length > 1 && <span className="mr-0.5 tracking-tighter">{top.join('')}</span>}
-                    {likes}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setPicker((x) => !x)}
-                disabled={!active}
-                className="rounded-full p-1.5 text-base grayscale hover:bg-gold-100 hover:grayscale-0 disabled:opacity-50"
-                aria-label="Choose a reaction"
-                aria-expanded={picker}
-              >
-                😊
-              </button>
-            </span>
             <RepostButton post={post} disabled={!active} />
+            <button
+              onClick={() => {
+                // A long press opened the emoji picker instead.
+                if (held.current) {
+                  held.current = false;
+                  return;
+                }
+                void toggleLike();
+              }}
+              onPointerDown={() => {
+                held.current = false;
+                pressTimer.current = window.setTimeout(() => {
+                  held.current = true;
+                  setPicker(true);
+                  navigator.vibrate?.(10);
+                }, 450);
+              }}
+              onPointerUp={() => clearTimeout(pressTimer.current)}
+              onPointerLeave={() => clearTimeout(pressTimer.current)}
+              onPointerCancel={() => clearTimeout(pressTimer.current)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setPicker(true);
+              }}
+              disabled={!active}
+              aria-pressed={liked}
+              aria-label={liked ? 'Unlike' : 'Like'}
+              title="Tap to like · hold to choose an emoji"
+              className={`group inline-flex min-h-[40px] select-none items-center gap-1.5 rounded-full px-2 [-webkit-touch-callout:none] disabled:opacity-50 ${liked ? 'text-pink-600' : 'hover:text-pink-600'}`}
+            >
+              <span className="rounded-full p-1.5 group-hover:bg-pink-50">
+                {current && current.id !== 'like' ? (
+                  <span className="block h-[18px] w-[18px] text-center text-[15px] leading-[18px]">{current.emoji}</span>
+                ) : (
+                  <Icon name="heart" filled={liked} className="h-[18px] w-[18px]" />
+                )}
+              </span>
+              {likes > 0 && <span className="tabular-nums">{likes}</span>}
+            </button>
+            {/* For keyboards and screen readers (on phones: hold the heart). */}
+            <button
+              onClick={() => setPicker((x) => !x)}
+              disabled={!active}
+              className="sr-only focus:not-sr-only focus:rounded-full focus:p-1.5"
+              aria-label="Choose a reaction"
+              aria-expanded={picker}
+            >
+              😊
+            </button>
+            <button
+              onClick={() =>
+                void setBookmark(db, user.uid, post.id, !saved)
+                  .then(() => toast(saved ? 'Removed from saved.' : 'Saved 🔖 Find it under More → Saved.'))
+                  .catch((e) => toast(friendlyError(e), 'error'))
+              }
+              aria-pressed={saved}
+              aria-label={saved ? 'Remove from saved' : 'Save post'}
+              className={`group inline-flex min-h-[40px] items-center rounded-full px-2 ${saved ? 'text-brand-700' : 'hover:text-brand-700'}`}
+            >
+              <span className="rounded-full p-1.5 group-hover:bg-brand-50">
+                <Icon name="bookmark" filled={saved} className="h-[18px] w-[18px]" />
+              </span>
+            </button>
             <ShareButton post={post} />
           </div>
         </div>

@@ -36,7 +36,12 @@ test('Gen Z features', async ({ page }) => {
   await expect(page.getByRole('link', { name: `#${tag}` })).toBeVisible();
 
   // Emoji reaction.
-  await page.getByRole('button', { name: 'Choose a reaction' }).click();
+  // Hold the heart to choose an emoji (like on a phone).
+  const heart = page.getByRole('button', { name: 'Like', exact: true }).first();
+  await heart.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
   await page.getByRole('menuitem', { name: 'React fire' }).click();
   await expect(page.getByRole('button', { name: 'Unlike' })).toBeVisible();
 
@@ -100,8 +105,7 @@ test('Gen Z features', async ({ page }) => {
 
   // Save a post and find it under Saved.
   await page.goto('/?town=all');
-  await page.getByRole('button', { name: 'Post actions' }).first().click();
-  await page.getByRole('menuitem', { name: 'Save post' }).click();
+  await page.getByRole('button', { name: 'Save post' }).first().click();
   await expect(page.getByText('Saved 🔖')).toBeVisible();
   await page.goto('/saved');
   await expect(page.getByRole('article', { name: 'Post' })).toHaveCount(1);

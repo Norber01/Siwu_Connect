@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { onSnapshot } from 'firebase/firestore';
 import { matchClock } from '@siwu/shared';
 import { activeMatchesQuery } from '../lib/queries';
+import { useShowOnScrollUp } from '../lib/scroll';
 import { type Match, toMatch } from '../lib/types';
 
 /** Matches that are being played right now (by the live clock or the reporter's status). */
@@ -23,25 +24,6 @@ function useLiveMatches(): Match[] {
     return () => clearInterval(t);
   }, []);
   return all.filter((m) => ['first', 'break', 'second'].includes(matchClock(m, now).phase));
-}
-
-/** Hidden while scrolling down, shown again when scrolling up or at the top. */
-function useShowOnScrollUp(): boolean {
-  const [show, setShow] = useState(true);
-  const last = useRef(0);
-  useEffect(() => {
-    last.current = window.scrollY;
-    const on = () => {
-      const y = window.scrollY;
-      if (y < 60) setShow(true);
-      else if (y > last.current + 8) setShow(false);
-      else if (y < last.current - 8) setShow(true);
-      last.current = y;
-    };
-    window.addEventListener('scroll', on, { passive: true });
-    return () => window.removeEventListener('scroll', on);
-  }, []);
-  return show;
 }
 
 /** Small "LIVE" strip at the top of the app while a game is on. Tap it to follow the match. */
