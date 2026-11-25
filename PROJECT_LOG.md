@@ -202,6 +202,11 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     listings in every town. Neither can post announcements or suspend members.
   - Only one person can hold each of these roles; the API refuses a second one with "There is already a Moderator
     (@name). Remove their role first." Town admins are still per town. Rules changed → **Run setup again**.
+- **Own domain siwuconnect.com** (bought by the founder on Cloudflare): website on https://siwuconnect.com
+  (www.siwuconnect.com redirects there), API on https://api.siwuconnect.com. The old workers.dev addresses keep
+  working, so existing links, installed apps and photos/videos posted earlier still load. The setup version now
+  includes the website addresses, so a new address shows the "Run setup again" banner (it allows the address for
+  sign-in). The live check (`scripts/check-live.mjs`) now checks the new addresses by default.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

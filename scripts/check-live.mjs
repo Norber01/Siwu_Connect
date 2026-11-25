@@ -5,8 +5,8 @@
  * (Behind an HTTPS proxy, run it with NODE_USE_ENV_PROXY=1 so Node uses the proxy.)
  * Exits with an error if anything is wrong, listing what failed.
  */
-const SITE = (process.argv[2] ?? 'https://siwu-connect.fnorxx.workers.dev').replace(/\/$/, '');
-const API = (process.argv[3] ?? 'https://siwu-connect-api.fnorxx.workers.dev').replace(/\/$/, '');
+const SITE = (process.argv[2] ?? 'https://siwuconnect.com').replace(/\/$/, '');
+const API = (process.argv[3] ?? 'https://api.siwuconnect.com').replace(/\/$/, '');
 const results = [];
 const check = async (name, fn) => {
   try {

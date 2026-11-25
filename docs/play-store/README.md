@@ -8,7 +8,7 @@ opted in for 14 days in a row**. Plan for about 15 testers (3 per town).
 
 ---
 
-## Step 1 — Buy the domain siwuconnect.com (Cloudflare, about $10–11 a year)
+## Step 1 — Buy the domain siwuconnect.com (Cloudflare, about $10–11 a year) — ✅ done, the app runs on siwuconnect.com
 
 1. Open **dash.cloudflare.com** and sign in (the same account that runs Siwu Connect).
 2. Left menu: **Domain Registration → Register Domains**.

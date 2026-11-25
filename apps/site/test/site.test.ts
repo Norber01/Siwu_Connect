@@ -15,6 +15,15 @@ vi.mock('../src/files.gen', () => ({
 const site = (await import('../src/index')).default;
 const get = (path: string, method = 'GET') => site.fetch(new Request(`https://siwu.example${path}`, { method }));
 
+describe('domain', () => {
+  it('www.siwuconnect.com sends visitors to siwuconnect.com, keeping the page', () => {
+    const r = site.fetch(new Request('https://www.siwuconnect.com/p/abc?x=1'));
+    expect(r.status).toBe(301);
+    expect(r.headers.get('location')).toBe('https://siwuconnect.com/p/abc?x=1');
+    expect(site.fetch(new Request('https://siwuconnect.com/')).status).toBe(200);
+  });
+});
+
 describe('website security headers', () => {
   it('allow the microphone and camera for the site itself and nothing else', () => {
     const policy = get('/').headers.get('permissions-policy') ?? '';

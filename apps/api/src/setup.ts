@@ -30,6 +30,11 @@ export interface SetupStatus {
   setupNeeded: boolean;
 }
 
+/** Rules/indexes version plus the website addresses, so a new address (which must be allowed for sign-in) asks for setup. */
+export function setupVersion(env: Env): string {
+  return `${SETUP_VERSION}|${env.ALLOWED_ORIGINS}`;
+}
+
 async function superAdminExists(fs: Firestore): Promise<boolean> {
   const rows = await fs.query({ collection: 'admin_roles', where: [['role', 'EQUAL', 'super_admin']], limit: 1 });
   return rows.length > 0;
@@ -50,7 +55,7 @@ export async function setupStatus(env: Env, caller: Caller): Promise<SetupStatus
     ]);
     exists = found;
     callerIsSuperAdmin = role?.data.role === 'super_admin';
-    setupNeeded = installed?.data.version !== SETUP_VERSION;
+    setupNeeded = installed?.data.version !== setupVersion(env);
   }
   return {
     founderEmailConfigured: !!founder,
@@ -265,7 +270,7 @@ export async function runSetup(env: Env, caller: Caller, part: 'core' | 'indexes
   // phone runs in parts: this happens with the last batch of indexes).
   const finished = part === 'all' || (part === 'indexes' && indexInfo.next === null);
   if (finished && steps.every((x) => x.ok)) {
-    await fs.commit([{ kind: 'set', path: 'settings/setup', data: { version: SETUP_VERSION, at: FieldValue.serverTimestamp(), by: caller.uid } }]);
+    await fs.commit([{ kind: 'set', path: 'settings/setup', data: { version: setupVersion(env), at: FieldValue.serverTimestamp(), by: caller.uid } }]);
   }
   return { ok: steps.every((s) => s.ok), steps, ...indexInfo };
 }

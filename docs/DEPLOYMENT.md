@@ -4,8 +4,8 @@
 
 | Part | Where |
 |---|---|
-| Website | Cloudflare Worker `siwu-connect` → https://siwu-connect.fnorxx.workers.dev (built app embedded by `scripts/gen-site.mjs`) |
-| API | Cloudflare Worker `siwu-connect-api` → https://siwu-connect-api.fnorxx.workers.dev |
+| Website | Cloudflare Worker `siwu-connect` → **https://siwuconnect.com** (www redirects there; https://siwu-connect.fnorxx.workers.dev still works) (built app embedded by `scripts/gen-site.mjs`) |
+| API | Cloudflare Worker `siwu-connect-api` → **https://api.siwuconnect.com** (https://siwu-connect-api.fnorxx.workers.dev still works, so older photo/video links keep loading) |
 | Photos | Cloudflare R2 bucket `siwu-photos` |
 | Accounts & database | Firebase project `siwu-connect-cadd9` (Spark/free plan, Firestore in europe-west1) |
 

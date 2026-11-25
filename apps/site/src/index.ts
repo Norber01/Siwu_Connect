@@ -45,6 +45,10 @@ export function assetLinks(fingerprints: string | undefined): unknown[] {
 export default {
   fetch(request: Request, env: { ANDROID_CERT_SHA256?: string } = {}): Response {
     const url = new URL(request.url);
+    if (url.hostname === 'www.siwuconnect.com') {
+      url.hostname = 'siwuconnect.com';
+      return new Response(null, { status: 301, headers: { location: url.toString(), ...SECURITY_HEADERS } });
+    }
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
     if (url.pathname === '/.well-known/assetlinks.json') {
       return new Response(JSON.stringify(assetLinks(env.ANDROID_CERT_SHA256)), {
