@@ -88,16 +88,28 @@ async function register(sub: PushSubscription, uid: string): Promise<void> {
   store.set(SYNC_KEY, `${uid}|${new Date().toDateString()}`);
 }
 
+/** A step that took too long (the phone never answered), so the button doesn't spin forever. */
+export class PushStepTimeout extends Error {
+  constructor(readonly step: 'permission' | 'subscribe' | 'server') {
+    super(`No answer at step "${step}"`);
+    this.name = 'PushStepTimeout';
+  }
+}
+function limit<T>(p: Promise<T>, ms: number, step: PushStepTimeout['step']): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new PushStepTimeout(step)), ms))]);
+}
+
 export type EnableResult = 'on' | 'denied' | 'unsupported' | 'unavailable';
 
 /** Asks the browser for permission (must be called from a tap) and registers this device. */
 export async function enablePush(uid: string, publicKey: string): Promise<EnableResult> {
   if (!pushSupported()) return 'unsupported';
-  const perm = await Notification.requestPermission();
+  // Chrome sometimes asks "quietly" (a small bell in the address bar) and waits until the person answers.
+  const perm = Notification.permission === 'granted' ? 'granted' : await limit(Notification.requestPermission(), 15_000, 'permission');
   if (perm !== 'granted') return 'denied';
   const reg = await registration();
   if (!reg) return 'unavailable';
-  let sub = await reg.pushManager.getSubscription();
+  let sub = await limit(reg.pushManager.getSubscription(), 10_000, 'subscribe');
   const key = keyBytes(publicKey);
   const sameKey = (s: PushSubscription) => {
     const k = s.options?.applicationServerKey;
@@ -106,11 +118,11 @@ export async function enablePush(uid: string, publicKey: string): Promise<Enable
     return a.length === key.length && a.every((b, i) => b === key[i]);
   };
   if (sub && !sameKey(sub)) {
-    await sub.unsubscribe();
+    await limit(sub.unsubscribe(), 10_000, 'subscribe');
     sub = null;
   }
-  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-  await register(sub, uid);
+  sub ??= await limit(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }), 30_000, 'subscribe');
+  await limit(register(sub, uid), 20_000, 'server');
   return 'on';
 }
 
@@ -120,6 +132,15 @@ export function explainPushError(e: unknown): string {
   const msg = e instanceof Error || e instanceof DOMException ? e.message : String(e);
   const detail = ` (${[name, msg].filter(Boolean).join(': ').slice(0, 160)})`;
   if (e instanceof ApiError) return msg;
+  if (e instanceof PushStepTimeout) {
+    if (e.step === 'permission') {
+      return 'Your phone is waiting for you to allow notifications, but the question may be hidden. Look for a 🔔 bell or a "Notifications blocked" message in or just under the address bar, tap it and choose Allow. Or in Chrome: ⋮ menu → Settings → Site settings → Notifications → siwuconnect.com → Allow. Then tap Turn on again.';
+    }
+    if (e.step === 'subscribe') {
+      return 'Your phone got no answer from its notification service (Google). Check your internet (try switching between Wi-Fi and mobile data), update "Google Play services" in the Play Store, then try again. Some phones without Google services (e.g. some Huawei) cannot get notifications.';
+    }
+    return 'Siwu Connect did not answer in time. Check your connection and try again.';
+  }
   if (name === 'NotAllowedError') return `Notifications are blocked for Siwu Connect on this phone. Allow them in the phone or browser settings, then try again.${detail}`;
   if (name === 'AbortError' || /push service/i.test(msg)) {
     return `This phone could not reach its notification service. This happens on phones without Google services (some Huawei phones) and in browsers such as Brave or Opera with notifications switched off. Try Chrome, and check you are online.${detail}`;
