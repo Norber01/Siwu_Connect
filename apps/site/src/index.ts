@@ -69,6 +69,10 @@ export default {
       return new Response(null, { status: 301, headers: { location: url.toString(), ...SECURITY_HEADERS } });
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
+    // The old workers.dev address keeps working, but only siwuconnect.com should appear in Google.
+    if (url.pathname === '/robots.txt' && url.hostname.endsWith('.workers.dev')) {
+      return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS } });
+    }
     if (url.pathname === '/.well-known/assetlinks.json') {
       return new Response(JSON.stringify(assetLinks(env.ANDROID_CERT_SHA256)), {
         headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', ...SECURITY_HEADERS },

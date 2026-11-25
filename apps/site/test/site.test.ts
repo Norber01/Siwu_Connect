@@ -31,6 +31,13 @@ describe('Google sign-in on our own address', () => {
   });
 });
 
+describe('search engines', () => {
+  it('the old workers.dev address asks search engines not to list it', async () => {
+    const r = site.fetch(new Request('https://siwu-connect.fnorxx.workers.dev/robots.txt'));
+    expect(await r.text()).toContain('Disallow: /');
+  });
+});
+
 describe('domain', () => {
   it('www.siwuconnect.com sends visitors to siwuconnect.com, keeping the page', () => {
     const r = site.fetch(new Request('https://www.siwuconnect.com/p/abc?x=1'));
