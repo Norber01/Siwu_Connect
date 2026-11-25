@@ -41,10 +41,29 @@ export function assetLinks(fingerprints: string | undefined): unknown[] {
   ];
 }
 
+/**
+ * Google sign-in helper pages (/__/auth/…, /__/firebase/…) are passed through from Firebase, so sign-in happens on
+ * siwuconnect.com instead of showing the Firebase address (Firebase's recommended setup for a custom domain).
+ * Their own headers are kept: the sign-in helper must be allowed to load inside the app's page.
+ */
+export function proxyFirebaseAuth(request: Request, authHost: string): Promise<Response> {
+  const url = new URL(request.url);
+  return fetch(new Request(`https://${authHost}${url.pathname}${url.search}`, request));
+}
+
+interface SiteEnv {
+  ANDROID_CERT_SHA256?: string;
+  /** e.g. "siwu-connect-cadd9.firebaseapp.com" */
+  FIREBASE_AUTH_HOST?: string;
+}
+
 /** Serves the Siwu Connect web app. Unknown paths get index.html (client-side routing). */
 export default {
-  fetch(request: Request, env: { ANDROID_CERT_SHA256?: string } = {}): Response {
+  fetch(request: Request, env: SiteEnv = {}): Response | Promise<Response> {
     const url = new URL(request.url);
+    if (env.FIREBASE_AUTH_HOST && (url.pathname.startsWith('/__/auth/') || url.pathname.startsWith('/__/firebase/'))) {
+      return proxyFirebaseAuth(request, env.FIREBASE_AUTH_HOST);
+    }
     if (url.hostname === 'www.siwuconnect.com') {
       url.hostname = 'siwuconnect.com';
       return new Response(null, { status: 301, headers: { location: url.toString(), ...SECURITY_HEADERS } });

@@ -12,8 +12,24 @@ vi.mock('../src/files.gen', () => ({
   },
 }));
 
-const site = (await import('../src/index')).default;
+const mod = await import('../src/index');
+const site = { fetch: (r: Request, env = {}) => mod.default.fetch(r, env) as Response };
 const get = (path: string, method = 'GET') => site.fetch(new Request(`https://siwu.example${path}`, { method }));
+
+describe('Google sign-in on our own address', () => {
+  it('passes /__/auth/ pages through to Firebase, keeping the path and query', async () => {
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', async (r: Request) => {
+      seen.push(r.url);
+      return new Response('<html>handler</html>', { headers: { 'content-type': 'text/html' } });
+    });
+    const res = await mod.default.fetch(new Request('https://siwuconnect.com/__/auth/handler?apiKey=k&x=1'), { FIREBASE_AUTH_HOST: 'demo.firebaseapp.com' });
+    expect(seen).toEqual(['https://demo.firebaseapp.com/__/auth/handler?apiKey=k&x=1']);
+    expect(await res.text()).toBe('<html>handler</html>');
+    expect(res.headers.get('x-frame-options')).toBeNull(); // the sign-in helper loads inside the app
+    vi.unstubAllGlobals();
+  });
+});
 
 describe('domain', () => {
   it('www.siwuconnect.com sends visitors to siwuconnect.com, keeping the page', () => {

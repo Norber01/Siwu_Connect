@@ -15,3 +15,5 @@ routes = [
 # Play Console → Setup → App integrity → App signing: the SHA-256 certificate fingerprint(s), comma separated.
 # Not secret (they are published at /.well-known/assetlinks.json). Filled in once the app is uploaded to Play.
 ANDROID_CERT_SHA256 = ""
+# Google sign-in helper pages are served from siwuconnect.com/__/auth/ (passed through from here).
+FIREBASE_AUTH_HOST = "siwu-connect-cadd9.firebaseapp.com"
