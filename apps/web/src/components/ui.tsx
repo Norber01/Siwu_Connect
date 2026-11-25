@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, forwardRef, useEffect, useId, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { townShortName } from '@siwu/shared';
@@ -244,7 +245,9 @@ export function Modal({
     if (open && !d.open) d.showModal?.();
     if (!open && d.open) d.close?.();
   }, [open]);
-  return (
+  // Rendered at the end of the page (not inside the post or card that opened it): when a feed reorders, the
+  // browser would move the window with its post and it would stop covering the page.
+  return createPortal(
     <dialog
       ref={ref}
       onClose={onClose}
@@ -265,7 +268,8 @@ export function Modal({
           {children}
         </div>
       )}
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 

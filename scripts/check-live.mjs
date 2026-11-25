@@ -55,6 +55,10 @@ await check('API accepts requests from the website', async () => {
   });
   expect(r.headers.get('access-control-allow-origin') === SITE, `CORS allow-origin is ${r.headers.get('access-control-allow-origin')}`);
 });
+await check('Internal notification address is closed to the internet', async () => {
+  const r = await fetch(`${API}/internal/push/send`, { method: 'POST', headers: { 'x-push-key': 'guess' }, body: '{}' });
+  expect(r.status === 404, `status ${r.status}`);
+});
 await check('API refuses requests without sign-in', async () => {
   const r = await fetch(`${API}/admin/approvals`);
   expect(r.status === 401, `status ${r.status}`);

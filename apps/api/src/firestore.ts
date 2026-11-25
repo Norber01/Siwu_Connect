@@ -77,7 +77,7 @@ export interface Write {
 
 export type Filter =
   | [field: string, op: 'EQUAL' | 'LESS_THAN' | 'GREATER_THAN_OR_EQUAL' | 'LESS_THAN_OR_EQUAL', value: unknown]
-  | [field: string, op: 'IN' | 'ARRAY_CONTAINS', value: unknown];
+  | [field: string, op: 'IN' | 'ARRAY_CONTAINS' | 'ARRAY_CONTAINS_ANY', value: unknown];
 
 export interface QueryOptions {
   parent?: string;
@@ -86,6 +86,8 @@ export interface QueryOptions {
   where?: Filter[];
   orderBy?: [field: string, dir: 'ASCENDING' | 'DESCENDING'][];
   limit?: number;
+  /** Continue after this document (path relative to the database, e.g. "push_subs/abc"); orders by name. */
+  afterPath?: string;
 }
 
 export class Firestore {
@@ -139,6 +141,10 @@ export class Firestore {
     if (filters.length === 1) structuredQuery.where = filters[0];
     if (filters.length > 1) structuredQuery.where = { compositeFilter: { op: 'AND', filters } };
     if (q.orderBy) structuredQuery.orderBy = q.orderBy.map(([f, d]) => ({ field: { fieldPath: f }, direction: d }));
+    if (q.afterPath) {
+      structuredQuery.orderBy = [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }];
+      structuredQuery.startAt = { values: [{ referenceValue: `${this.docsPrefix}/${q.afterPath}` }], before: false };
+    }
     if (q.limit) structuredQuery.limit = q.limit;
     const url = q.parent ? `${this.root}/${q.parent}:runQuery` : `${this.root}:runQuery`;
     const rows = await this.request<{ document?: { name: string; fields?: Record<string, FsValue> } }[]>(url, {

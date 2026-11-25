@@ -70,6 +70,7 @@ export function PrivacyPage() {
         <li><strong>What you share:</strong> posts, photos, videos, stories, comments, reactions, polls, events, marketplace and business listings, predictions and event photos.</li>
         <li><strong>Messages:</strong> private and group chat messages, photos and voice notes. Private messages can only be read by the people in the chat — not by other members and not by admins. Messages in town chats are visible to all members.</li>
         <li><strong>Friends and activity:</strong> who you are friends with, who viewed your stories, and when you were last active (you can hide this in Settings → Privacy).</li>
+        <li><strong>Notifications:</strong> if you turn notifications on, a notification address for that phone or computer (given by Google, Apple, Mozilla or Microsoft, whose service delivers them) and your choice of which notifications you want. Notifications are encrypted so only your device can read them.</li>
         <li><strong>Safety records:</strong> when you accepted the community rules and confirmed your age, reports you make, and records of moderation actions.</li>
       </ul>
       <h2>What we do not collect</h2>
@@ -87,6 +88,7 @@ export function PrivacyPage() {
       <h2>How long we keep it</h2>
       <ul>
         <li>Stories disappear after 24 hours. Everything else stays until you delete it or delete your account.</li>
+        <li>A device's notification address is removed when you turn notifications off, sign out on that device, or uninstall the app.</li>
         <li>Backups are kept for 14 days, so deleted information disappears from backups within 14 days.</li>
       </ul>
       <h2>Your choices</h2>
@@ -124,7 +126,7 @@ export function DeleteAccountPage() {
       </p>
       <h2>What is deleted</h2>
       <ul>
-        <li>Your profile, username, photo, sign-in account, friends, saved posts, notifications and blocks.</li>
+        <li>Your profile, username, photo, sign-in account, friends, saved posts, notifications, notification settings and devices, and blocks.</li>
         <li>The text, photos, videos and voice notes of your posts, comments, stories, chat messages, events, listings and event photos.</li>
         <li>You leave all group chats.</li>
       </ul>

@@ -1,3 +1,4 @@
+import { PushPrompt } from '../components/PushSettings';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { TOWNS, isTownId, townName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
@@ -29,6 +30,7 @@ export function HomePage() {
         <StoriesBar />
       </div>
       <QuickActions townId={selected === 'all' ? undefined : selected} />
+      <PushPrompt />
       <TesterChecklist />
       <BirthdaysToday />
       <VisitingHome />

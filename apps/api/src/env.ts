@@ -19,6 +19,11 @@ export interface Env {
   FIREBASE_AUTH_EMULATOR_HOST?: string;
   /** Photo storage (profile, event and marketplace photos). Set from R2 or from PHOTOS_KV in index.ts. */
   AVATARS: R2BucketLike;
+  /** Phone notifications (Web Push): public key (also given to browsers) and the secret private key. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  /** This same Worker (service binding), used to split big notification deliveries into small calls. */
+  SELF?: { fetch(request: Request): Promise<Response> };
   /** Workers KV namespace used for photos when no R2 bucket is bound (free plan, no card needed). */
   PHOTOS_KV?: KVLike;
 }

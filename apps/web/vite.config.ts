@@ -33,6 +33,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,svg,png,woff2}'],
         navigateFallback: null,
         cleanupOutdatedCaches: true,
+        // Shows notifications and opens the right page when one is tapped.
+        importScripts: ['/push-sw.js'],
         runtimeCaching: [
           {
             urlPattern: ({ request }) => request.mode === 'navigate',

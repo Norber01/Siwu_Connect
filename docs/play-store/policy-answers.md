@@ -60,8 +60,9 @@ Google's form does not count service providers as "sharing".
 | Messages → **Other in-app messages** | Yes | Optional | App functionality (chat) |
 | App activity → **Other user-generated content** (posts, comments, listings, events) | Yes | Optional | App functionality |
 | App activity → **Other actions** (likes, RSVPs, votes, predictions, friends) | Yes | Optional | App functionality |
+| Device or other IDs (the phone's **push notification address**, only if notifications are turned on) | Yes | Optional | App functionality (notifications) |
 | Location | **No** | — | — |
-| Financial info, Health, Contacts, Calendar, Web history, Device IDs | **No** | — | — |
+| Financial info, Health, Contacts, Calendar, Web history | **No** | — | — |
 | App info and performance (crash logs, diagnostics) | **No** | — | — |
 
 For each collected type: **processed ephemerally?** No. **Used for:** App functionality (plus Account management

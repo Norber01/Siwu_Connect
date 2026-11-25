@@ -52,6 +52,10 @@ Siwu Connect brings together the people of Akpafu Odomi, Akpafu Mempeasem, Akpaf
 • Private messages can only be read by the people in the chat
 • No ads and no selling of your data
 
+🔔 NOTIFICATIONS
+• Messages, friend requests, comments, announcements and live goals from your town's matches
+• Event reminders and friends' birthdays — choose exactly which ones you want
+
 Siwu Connect is built for slow connections and saves your data, with a light video version for 2G/3G.
 
 ## Category and details

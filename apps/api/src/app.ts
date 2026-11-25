@@ -18,12 +18,34 @@ import {
   resolveReportSchema,
   SINGLE_ALL_TOWN_ROLES,
   ROLE_LABELS,
+  pushNotifySchema,
+  pushPrefsSchema,
+  pushSubscribeSchema,
 } from '@siwu/shared';
+import {
+  type Job,
+  type PushMessage,
+  type SubDoc,
+  type Target,
+  allowedEndpoint,
+  deliver,
+  handleNotify,
+  internalKey,
+  loadPrefs,
+  pushAnnouncement,
+  pushNotification,
+  refreshDevices,
+  runJob,
+  sendTo,
+  subPath,
+  topicsFor,
+  vapidKeys,
+} from './push';
 import { type Caller, deleteAuthUser, verifyIdToken } from './auth';
 import { runSetup, setupStatus } from './setup';
 import { runBackup } from './backup';
 import type { Env } from './env';
-import { type Data, FieldValue, Firestore, type Write } from './firestore';
+import { type Data, type Doc, FieldValue, Firestore, type Write } from './firestore';
 
 type Vars = { uid: string; fs: Firestore; caller: Caller };
 type Ctx = { Bindings: Env; Variables: Vars };
@@ -52,6 +74,16 @@ interface ReportDoc {
   targetPath: string;
   townId: string;
   status: string;
+}
+
+/** Runs work after the reply is sent (on Cloudflare), or before it (in tests). Failures are only logged. */
+async function later(c: { executionCtx: { waitUntil(p: Promise<unknown>): void } }, work: Promise<unknown>): Promise<void> {
+  const p = work.catch((e) => console.warn('Background work failed', e));
+  try {
+    c.executionCtx.waitUntil(p);
+  } catch {
+    await p;
+  }
 }
 
 const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 415, message: string): never => {
@@ -217,6 +249,20 @@ export function createApp() {
         'x-content-type-options': 'nosniff',
       },
     });
+  });
+
+  // Internal: big notification deliveries split into small calls of this same Worker (see push.ts).
+  app.post('/internal/push/:op', async (c) => {
+    if (new URL(c.req.url).hostname !== 'push.internal' || !c.env.VAPID_PRIVATE_KEY || c.req.header('x-push-key') !== (await internalKey(c.env))) {
+      fail(404, 'Not found');
+    }
+    const fs = new Firestore(c.env);
+    const b = (await c.req.json()) as { subs: Pick<Doc<SubDoc>, 'path' | 'data'>[]; msg: PushMessage; target: Target; exclude?: string; afterPath?: string } & Job;
+    const op = c.req.param('op');
+    if (op === 'send') return c.json({ sent: await sendTo(c.env, fs, b.subs, b.msg) });
+    if (op === 'fanout') return c.json({ sent: await deliver(c.env, fs, b.target, b.msg, { exclude: b.exclude, afterPath: b.afterPath }) });
+    if (op === 'job') return c.json({ sent: await runJob(c.env, fs, b) });
+    return fail(404, 'Not found');
   });
 
   // Everything below requires a verified Firebase user.
@@ -440,9 +486,11 @@ export function createApp() {
         if (writes.length) await fs.commit(writes);
         return false;
       },
-      // Private lists under the profile: notifications, saved posts, blocks, read markers.
+      // Private lists under the profile: notifications, saved posts, blocks, read markers; notification devices.
       async () => {
         let more = false;
+        const devices = await fs.query({ collection: 'push_subs', where: [['uid', 'EQUAL', uid]], limit: 50 });
+        await fs.commit([...devices.map((d) => ({ kind: 'delete' as const, path: d.path })), { kind: 'delete', path: `push_prefs/${uid}` }]);
         for (const sub of ['notifications', 'bookmarks', 'blocks', 'chatState']) {
           const docs = await fs.query({ collection: sub, parent: `users/${uid}`, limit: 200 });
           if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
@@ -478,7 +526,7 @@ export function createApp() {
     ];
     // Roughly how many outgoing calls each step makes (comments look up their posts; the chats step can touch
     // up to 100 chats in one write). A request stops before passing ~35, under Cloudflare's 50 per request.
-    const cost = [2, 2, 2, 2, 2, 2, 22, 2, 2, 2, 8, 8, 9];
+    const cost = [2, 2, 2, 2, 2, 2, 22, 2, 2, 2, 10, 8, 9];
     let step = Math.max(0, Math.min(steps.length - 1, Math.floor(Number(c.req.query('step') ?? 0)) || 0));
     let used = 4; // token, role lookup and the request itself
     while (used + cost[step]! <= 35) {
@@ -592,6 +640,70 @@ export function createApp() {
     return c.json({ ok: true });
   });
 
+  // ---------- phone notifications ----------
+  app.get('/push/prefs', async (c) => {
+    const fs = c.get('fs');
+    const uid = c.get('uid');
+    const [prefs, role] = await Promise.all([loadPrefs(fs, uid), roleOf(fs, uid)]);
+    return c.json({ enabled: !!vapidKeys(c.env), publicKey: c.env.VAPID_PUBLIC_KEY ?? null, prefs, staff: !!role && role.role !== 'reporter' });
+  });
+
+  app.post('/push/prefs', async (c) => {
+    const prefs = await body(c.req.raw, pushPrefsSchema);
+    const fs = c.get('fs');
+    const uid = c.get('uid');
+    await fs.commit([{ kind: 'set', path: `push_prefs/${uid}`, data: { prefs, updatedAt: FieldValue.serverTimestamp() } }]);
+    await refreshDevices(fs, uid, prefs);
+    return c.json({ ok: true });
+  });
+
+  /** Turns notifications on for this device (or refreshes it; a device signed in to a new account moves over). */
+  app.post('/push/subscribe', async (c) => {
+    const input = await body(c.req.raw, pushSubscribeSchema);
+    if (!vapidKeys(c.env)) fail(409, 'Notifications are not set up on the server yet.');
+    if (!allowedEndpoint(c.env, input.endpoint)) fail(400, 'This browser’s notification service is not supported.');
+    const fs = c.get('fs');
+    const uid = c.get('uid');
+    const topics = await topicsFor(fs, uid);
+    await fs.commit([
+      {
+        kind: 'set',
+        path: await subPath(input.endpoint),
+        data: { uid, endpoint: input.endpoint, p256dh: input.keys.p256dh, auth: input.keys.auth, topics, updatedAt: FieldValue.serverTimestamp() },
+      },
+    ]);
+    return c.json({ ok: true });
+  });
+
+  app.post('/push/unsubscribe', async (c) => {
+    const input = await body(c.req.raw, pushSubscribeSchema.pick({ endpoint: true }));
+    const fs = c.get('fs');
+    const path = await subPath(input.endpoint);
+    const sub = await fs.get<SubDoc>(path);
+    if (sub && sub.data.uid === c.get('uid')) await fs.commit([{ kind: 'delete', path }]);
+    return c.json({ ok: true });
+  });
+
+  /** "Send me a test notification": goes to all the member's devices. */
+  app.post('/push/test', async (c) => {
+    const sent = await deliver(c.env, c.get('fs'), { uids: [c.get('uid')], topic: 'account' }, {
+      title: 'Notifications are working ✅',
+      body: 'This is how Siwu Connect will let you know about messages, friends, matches and news.',
+      url: '/settings',
+      tag: 'test',
+    });
+    return c.json({ sent });
+  });
+
+  /** The app saved something that may notify others (a message, a comment, a goal…). Checked in push.ts. */
+  app.post('/push/notify', async (c) => {
+    const input = await body(c.req.raw, pushNotifySchema);
+    const fs = c.get('fs');
+    const uid = c.get('uid');
+    await later(c, handleNotify(c.env, fs, uid, input));
+    return c.json({ ok: true });
+  });
+
   // ---------- friends: send or accept a request (checked here, with clear reasons) ----------
   app.post('/friends/:uid', async (c) => {
     const fs = c.get('fs');
@@ -618,6 +730,7 @@ export function createApp() {
             data: { type: 'friend_accepted', actorId: me, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
           },
         ]);
+        await later(c, pushNotification(c.env, fs, other, { type: 'friend_accepted', actorId: me }));
         return c.json({ result: 'accepted' });
       }
       return c.json({ result: existing.data.status === 'accepted' ? 'friends' : 'already' });
@@ -634,6 +747,7 @@ export function createApp() {
         data: { type: 'friend_request', actorId: me, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
       },
     ]);
+    await later(c, pushNotification(c.env, fs, other, { type: 'friend_request', actorId: me }));
     return c.json({ result: 'sent' });
   });
 
@@ -794,6 +908,7 @@ export function createApp() {
           },
           audit(fs, uid, `${collection === 'listings' ? 'listing' : 'directory'}.${decision}`, path, item!.data.townId, { note, label }),
         ]);
+        await later(c, pushNotification(c.env, fs, ownerId, { type: approved ? 'approved' : 'rejected', actorId: uid, targetPath: path, title: item!.data.title, note }));
         return c.json({ ok: true });
       });
     }
@@ -931,6 +1046,7 @@ export function createApp() {
           data: { type: 'verified', actorId: uid, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
         });
       await fs.commit(writes);
+      if (verify) await later(c, pushNotification(c.env, fs, c.req.param('uid'), { type: 'verified', actorId: uid }));
       return c.json({ ok: true });
     });
   }
@@ -957,6 +1073,7 @@ export function createApp() {
           data: { type: 'tester', actorId: uid, postId: null, commentId: null, read: false, createdAt: FieldValue.serverTimestamp() },
         });
       await fs.commit(writes);
+      if (on) await later(c, pushNotification(c.env, fs, c.req.param('uid'), { type: 'tester', actorId: uid }));
       return c.json({ ok: true });
     });
   }
@@ -985,6 +1102,7 @@ export function createApp() {
       },
       audit(fs, c.get('uid'), 'announcement.create', path, input.townId, { title: input.title }),
     ]);
+    await later(c, pushAnnouncement(c.env, fs, { id: path.split('/')[1]!, townId: input.townId, title: input.title, body: input.body }, c.get('uid')));
     return c.json({ ok: true, id: path.split('/')[1] });
   });
 
@@ -1036,6 +1154,7 @@ export function createApp() {
       { kind: 'set', path, data: { role: input.role, townIds, username: input.username, grantedBy: c.get('uid'), grantedAt: FieldValue.serverTimestamp() } },
       audit(fs, c.get('uid'), 'role.grant', path, townIds.join(',') || 'all', { role: input.role, townIds, username: input.username }),
     ]);
+    await later(c, refreshDevices(fs, targetUid)); // staff get report/approval notifications
     return c.json({ ok: true, uid: targetUid });
   });
 
@@ -1051,6 +1170,7 @@ export function createApp() {
       { kind: 'delete', path },
       audit(fs, c.get('uid'), 'role.revoke', path, current!.townIds.join(',') || 'all', { role: current!.role }),
     ]);
+    await later(c, refreshDevices(fs, targetUid));
     return c.json({ ok: true });
   });
 

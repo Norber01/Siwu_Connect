@@ -1,3 +1,5 @@
+import { syncPush } from '../lib/push';
+import { PushSettingsCard } from '../components/PushSettings';
 import { useEffect, useState } from 'react';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -421,6 +423,7 @@ export function SettingsPage() {
     setBusy(true);
     try {
       await updateProfile(db, user.uid, { ...p.data, photoUrl: draft.photoUrl, username: profile.username });
+      if (p.data.hometownId !== profile.hometownId) void syncPush(user.uid, true); // town news and matches follow the new hometown
       toast('Profile saved.');
     } catch (err) {
       toast(friendlyError(err), 'error');
@@ -448,6 +451,7 @@ export function SettingsPage() {
           <Alert kind="warning">Your account is suspended, so your profile cannot be edited.</Alert>
         )}
       </Card>
+      <PushSettingsCard />
 
       <BioCard />
 

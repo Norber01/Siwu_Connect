@@ -25,10 +25,22 @@ import {
   type MatchUpdateInput,
   type PostInput,
   type ProfileInput,
+  type PushNotifyInput,
   type ReportTargetType,
   nameTokens,
   searchTokens,
 } from '@siwu/shared';
+
+// ---------------- phone notifications ----------------
+type PushPing = (kind: PushNotifyInput['kind'], path: string, event?: PushNotifyInput['event']) => void;
+let ping: PushPing = () => {};
+/**
+ * The app sets this (lib/push.ts) so that saved messages, comments, goals and so on notify people's phones.
+ * The server checks each one; the rules tests leave it switched off.
+ */
+export function setPushPing(fn: PushPing): void {
+  ping = fn;
+}
 
 export interface NewProfile extends ProfileInput {
   username: string;
@@ -164,6 +176,8 @@ export async function createPost(
     });
   }
   await batch.commit();
+  if (quoteOf && quoteOf.authorId !== uid) ping('notification', `users/${quoteOf.authorId}/notifications/repost_${ref.id}`);
+  for (const m of mentions) ping('notification', `users/${m}/notifications/mention_${ref.id}`);
   return ref.id;
 }
 
@@ -252,6 +266,7 @@ export async function setReaction(
       });
     }
     await b.commit();
+    if (post.authorId !== uid) ping('notification', `users/${post.authorId}/notifications/like_${post.id}_${uid}`);
   }
 }
 
@@ -291,6 +306,7 @@ export async function addComment(
     });
   }
   await batch.commit();
+  if (post.authorId !== uid) ping('notification', `users/${post.authorId}/notifications/comment_${ref.id}`);
   return ref.id;
 }
 
@@ -343,6 +359,7 @@ export async function submitReport(
     resolvedAt: null,
     resolution: null,
   });
+  ping('report', `reports/${reportId(uid, target)}`);
 }
 
 export async function blockUser(db: Firestore, uid: string, otherUid: string): Promise<void> {
@@ -391,6 +408,7 @@ export async function createEvent(db: Firestore, uid: string, e: EventInput, ima
   });
   batch.set(doc(db, 'rate_limits', uid), { lastEventAt: serverTimestamp() }, { merge: true });
   await batch.commit();
+  ping('event', `events/${ref.id}`);
   return ref.id;
 }
 
@@ -467,6 +485,7 @@ export async function createListing(db: Firestore, uid: string, l: ListingInput,
   });
   batch.set(doc(db, 'rate_limits', uid), { lastListingAt: serverTimestamp() }, { merge: true });
   await batch.commit();
+  if (!staff) ping('approval', `listings/${ref.id}`);
   return ref.id;
 }
 
@@ -478,6 +497,7 @@ export async function updateListing(
   status: 'available' | 'sold' | 'pending',
 ): Promise<void> {
   await updateDoc(doc(db, 'listings', id), { ...listingFields(l, imageUrl), status, updatedAt: serverTimestamp() });
+  if (status === 'pending') ping('approval', `listings/${id}`);
 }
 
 export async function setListingStatus(db: Firestore, id: string, status: 'available' | 'sold' | 'deleted'): Promise<void> {
@@ -518,6 +538,13 @@ export async function updateMatchState(
   state: { status: MatchStatus; homeScore: number; awayScore: number; minute: number | null },
 ): Promise<void> {
   await updateDoc(doc(db, 'matches', id), { ...state, updatedAt: serverTimestamp() });
+  matchPing(id, state.status);
+}
+
+function matchPing(id: string, status: MatchStatus): void {
+  if (status === 'live') ping('match', `matches/${id}`, 'kickoff');
+  if (status === 'halftime') ping('match', `matches/${id}`, 'halftime');
+  if (status === 'finished') ping('match', `matches/${id}`, 'fulltime');
 }
 
 /**
@@ -530,7 +557,8 @@ export async function addMatchUpdate(
   u: MatchUpdateInput,
 ): Promise<void> {
   const batch = writeBatch(db);
-  batch.set(doc(collection(db, 'matches', match.id, 'updates')), {
+  const updateRef = doc(collection(db, 'matches', match.id, 'updates'));
+  batch.set(updateRef, {
     type: u.type,
     team: u.team,
     minute: u.minute,
@@ -545,6 +573,8 @@ export async function addMatchUpdate(
   if (match.status === 'scheduled') patch.status = 'live';
   batch.update(doc(db, 'matches', match.id), patch);
   await batch.commit();
+  if (match.status === 'scheduled') ping('match', `matches/${match.id}`, 'kickoff');
+  if (u.type === 'goal') ping('match', `matches/${match.id}/updates/${updateRef.id}`, 'goal');
 }
 
 export async function deleteMatchUpdate(db: Firestore, matchId: string, updateId: string): Promise<void> {
@@ -569,6 +599,7 @@ export async function voteOnMatch(db: Firestore, uid: string, matchId: string, p
 /** Reporter clock controls. The clock itself runs automatically from these times. */
 export async function startMatchNow(db: Firestore, id: string): Promise<void> {
   await updateDoc(doc(db, 'matches', id), { actualKickoffAt: serverTimestamp(), secondHalfStartAt: null, status: 'live', updatedAt: serverTimestamp() });
+  ping('match', `matches/${id}`, 'kickoff');
 }
 
 export async function startSecondHalfNow(db: Firestore, id: string): Promise<void> {
@@ -577,6 +608,7 @@ export async function startSecondHalfNow(db: Firestore, id: string): Promise<voi
 
 export async function setMatchStatus(db: Firestore, id: string, status: MatchStatus): Promise<void> {
   await updateDoc(doc(db, 'matches', id), { status, updatedAt: serverTimestamp() });
+  if (status !== 'live') matchPing(id, status); // reopening a match is not a new kick-off
 }
 
 export async function setMatchScore(db: Firestore, id: string, homeScore: number, awayScore: number): Promise<void> {
@@ -639,6 +671,7 @@ export async function sendMessage(
   });
   batch.set(doc(db, 'rate_limits', uid), { lastMessageAt: serverTimestamp() }, { merge: true });
   await batch.commit();
+  if (!chatId.startsWith('room_')) ping('message', `chats/${chatId}/messages/${ref.id}`);
 }
 
 export async function deleteMessage(db: Firestore, chatId: string, messageId: string, hadAudio = false): Promise<void> {
@@ -711,6 +744,7 @@ export async function sendFriendRequest(db: Firestore, uid: string, otherUid: st
   });
   b.set(doc(db, 'rate_limits', uid), { lastFriendAt: serverTimestamp() }, { merge: true });
   await b.commit();
+  ping('notification', `users/${otherUid}/notifications/friend_${uid}`);
   return 'sent';
 }
 
@@ -726,6 +760,7 @@ export async function acceptFriendRequest(db: Firestore, uid: string, otherUid: 
     createdAt: serverTimestamp(),
   });
   await b.commit();
+  ping('notification', `users/${otherUid}/notifications/friendok_${uid}`);
 }
 
 /** Cancel a sent request, decline a received one, or unfriend. */
@@ -751,10 +786,11 @@ export async function createStory(
   friendIds: string[],
   /** Admins: show to everyone ('all') or to everyone from one town, instead of friends. */
   broadcast: string | null = null,
-): Promise<void> {
+): Promise<string> {
   const b = writeBatch(db);
   const now = Timestamp.now();
-  b.set(doc(collection(db, 'stories')), {
+  const ref = doc(collection(db, 'stories'));
+  b.set(ref, {
     authorId: uid,
     townId,
     ...story,
@@ -767,6 +803,8 @@ export async function createStory(
   });
   b.set(doc(db, 'rate_limits', uid), { lastStoryAt: serverTimestamp() }, { merge: true });
   await b.commit();
+  if (broadcast) ping('story', `stories/${ref.id}`);
+  return ref.id;
 }
 
 /** Lets the author see who viewed their story. */
@@ -804,6 +842,7 @@ export async function saveEntry(db: Firestore, uid: string, e: EntryInput, image
     void _kind;
     // A member's edit goes back to the moderators for approval.
     await updateDoc(doc(db, 'directory', id), { ...rest, imageUrl, ...(staff ? {} : { status: 'pending' }), updatedAt: serverTimestamp() });
+    if (!staff) ping('approval', `directory/${id}`);
     return id;
   }
   const ref = doc(collection(db, 'directory'));
@@ -811,6 +850,7 @@ export async function saveEntry(db: Firestore, uid: string, e: EntryInput, image
   b.set(ref, { ...e, ownerId: uid, imageUrl, status: staff ? 'active' : 'pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   b.set(doc(db, 'rate_limits', uid), { lastListingAt: serverTimestamp() }, { merge: true });
   await b.commit();
+  if (!staff) ping('approval', `directory/${ref.id}`);
   return ref.id;
 }
 
@@ -894,4 +934,5 @@ export async function setHomeVisit(db: Firestore, uid: string, visit: { townId: 
     homeVisitUntil: visit ? Timestamp.fromDate(visit.until) : null,
     updatedAt: serverTimestamp(),
   });
+  if (visit) ping('homevisit', `users/${uid}`);
 }

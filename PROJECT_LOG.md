@@ -207,6 +207,25 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   working, so existing links, installed apps and photos/videos posted earlier still load. The setup version now
   includes the website addresses, so a new address shows the "Run setup again" banner (it allows the address for
   sign-in). The live check (`scripts/check-live.mjs`) now checks the new addresses by default.
+- **Phone and computer notifications (Web Push)**, sent straight from the API Worker (no Firebase Messaging, no extra
+  cost): encryption per RFC 8291 (checked byte-for-byte against the RFC's example) and VAPID per RFC 8292.
+  - What notifies: private/group messages and story replies (not town rooms), friend requests/accepted, "I'm home"
+    visits (friends), comments and @mentions, reactions and reposts, approvals/rejections, verified, pilot tester,
+    announcements and admin stories (town or all), new events (hometown), match kick-off/goals/full time (followers of
+    either team's town, or all matches), event reminders ~1 hour before (people going), friends' birthdays (07:07 GMT),
+    new reports and listings awaiting approval (staff, by town).
+  - Members choose kinds in Settings → Notifications (applies to all their devices); "account" news is always on. A
+    "Turn on notifications" card shows on Home and Notifications until they decide ("Not now" hides it for 2 weeks).
+    iPhone: works once Siwu Connect is added to the Home Screen (the app explains this).
+  - The app tells the API what it just saved (`POST /push/notify`); the API checks it is the caller's, new, and not
+    already notified (`push_log`), then notifies. Devices: `push_subs`, choices: `push_prefs` — server-only (rules deny
+    clients). Signing out, turning off, uninstalling (410 from the push service) or deleting the account removes devices.
+  - Big audiences are split into batches of 20 via a service binding to the same Worker (`SELF`), keeping each call
+    under the free plan's 50 outgoing requests. Hourly cron `7 * * * *` (reminders, birthdays, tidy-up).
+  - Keys: public key in `apps/api/wrangler.toml` (VAPID_PUBLIC_KEY); private key is the Worker secret
+    VAPID_PRIVATE_KEY (made with `scripts/gen-vapid-keys.mjs`). Changing keys means everyone turns notifications on again.
+  - Fixed: a pop-up window (e.g. "Send in chat") could slip under posts when the feed reordered; windows now render at
+    page level.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
@@ -272,7 +291,6 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   the user as having no profile and send them back to the setup form. The app now tracks whose profile is loaded,
   retries the profile listener if the database refuses it during a sign-in switch, and only trusts a brand-new
   profile once the server has confirmed it. Verified with repeated end-to-end runs.
-- Notifications are in-app only (no phone push yet). Push via Firebase Cloud Messaging is the natural next step.
 - Team crests are coloured initials; real club badges can be uploaded later.
 - Photos: one per event/listing, max 1280 px / 400 KB, 200 photos per member (R2 free tier is 10 GB).
 - Search is basic: whole-word match for posts, start-of-name match for people (Firestore has no full-text search).

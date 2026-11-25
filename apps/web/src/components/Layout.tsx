@@ -1,3 +1,4 @@
+import { usePushNavigation } from './PushSettings';
 import { useEffect, useState } from 'react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -56,6 +57,7 @@ export function AppLayout() {
   const [badges, setBadges] = useState<Badges>({ notifications: 0, chat: 0 });
   const wide = useMedia('(min-width: 640px)');
   useActivityHeartbeat(profile?.uid, profile?.status === 'active');
+  usePushNavigation();
   const veryWide = useMedia('(min-width: 1024px)');
   useEffect(() => setDrawer(false), [location.pathname]);
 

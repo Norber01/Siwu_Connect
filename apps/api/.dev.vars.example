@@ -2,3 +2,4 @@
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 FOUNDER_EMAIL=founder@example.com
+# Phone notifications: the test run adds a fresh local key pair here (node scripts/gen-vapid-keys.mjs >> .dev.vars).

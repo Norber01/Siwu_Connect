@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { AdminRole } from '@siwu/shared';
 import { auth, db } from '../lib/firebase';
 import { fetchBlocked } from '../lib/queries';
+import { forgetDevice, syncPush } from '../lib/push';
 import { type Profile, toProfile } from '../lib/types';
 
 interface AuthState {
@@ -33,6 +34,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
+  // Keep this device's notifications registered to whoever is signed in.
+  useEffect(() => {
+    if (user) void syncPush(user.uid);
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -102,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    await forgetDevice(); // this phone stops getting the member's notifications
     await fbSignOut(auth);
     queryClient.clear();
   }, [queryClient]);

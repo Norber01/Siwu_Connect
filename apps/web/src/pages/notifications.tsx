@@ -1,3 +1,4 @@
+import { PushPrompt } from '../components/PushSettings';
 import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -162,6 +163,7 @@ export function NotificationsPage() {
   return (
     <div className="space-y-3">
       <PageHeader title="Notifications" back />
+      <PushPrompt />
       {q.isPending ? (
         <PageSpinner />
       ) : q.isError ? (

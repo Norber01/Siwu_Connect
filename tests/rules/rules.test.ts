@@ -423,6 +423,14 @@ describe('privileged collections', () => {
     await seedPost('p1', 'alice', 'todzi');
   });
 
+  it('notification devices, choices and records are only handled by the server', async () => {
+    for (const path of ['push_subs/abc', 'push_prefs/alice', 'push_log/abc']) {
+      await assertFails(getDoc(doc(db('alice'), path)));
+      await assertFails(getDoc(doc(db('boss'), path)));
+      await assertFails(setDoc(doc(db('alice'), path), { uid: 'alice', topics: ['staff:all'] }));
+    }
+  });
+
   it('nobody can grant roles from the client — not even a super admin', async () => {
     await assertFails(setDoc(doc(db('alice'), 'admin_roles', 'alice'), { role: 'super_admin', townIds: [] }));
     await assertFails(setDoc(doc(db('boss'), 'admin_roles', 'alice'), { role: 'moderator', townIds: ['odomi'] }));

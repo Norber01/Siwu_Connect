@@ -26,7 +26,9 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'cp -n apps/api/.dev.vars.example apps/api/.dev.vars; cd apps/api && npx wrangler dev --local --port 8787',
+      // Local notification keys are made on first run (never committed).
+      command:
+        'cp -n apps/api/.dev.vars.example apps/api/.dev.vars; grep -q VAPID_PRIVATE_KEY apps/api/.dev.vars || node scripts/gen-vapid-keys.mjs >> apps/api/.dev.vars; cd apps/api && npx wrangler dev --local --port 8787',
       url: 'http://localhost:8787/health',
       reuseExistingServer: true,
       timeout: 120_000,

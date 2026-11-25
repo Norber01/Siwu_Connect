@@ -14,12 +14,13 @@ PUBLIC_API_URL = "http://localhost:8787"
 binding = "AVATARS"
 bucket_name = "siwu-avatars-dev"
 
-# Nightly database backup at 02:23 UTC (kept in R2 under backups/, newest 14).
+# Nightly database backup at 02:23 UTC (kept in R2 under backups/, newest 14); every hour at :07 event
+# reminders, friends' birthdays (07:07) and tidying up notification records.
 [triggers]
-crons = ["23 2 * * *"]
+crons = ["23 2 * * *", "7 * * * *"]
 
 # --- production (founder's Cloudflare account) ---
-# Secrets (never committed): GOOGLE_SERVICE_ACCOUNT_JSON, FOUNDER_EMAIL — set in the Cloudflare
+# Secrets (never committed): GOOGLE_SERVICE_ACCOUNT_JSON, FOUNDER_EMAIL, VAPID_PRIVATE_KEY — set in the Cloudflare
 # dashboard (Workers & Pages → siwu-connect-api → Settings → Variables and Secrets) or with `wrangler secret put`.
 [env.production]
 name = "siwu-connect-api"
@@ -31,8 +32,14 @@ routes = [{ pattern = "api.siwuconnect.com", custom_domain = true }]
 FIREBASE_PROJECT_ID = "siwu-connect-cadd9"
 ALLOWED_ORIGINS = "https://siwuconnect.com,https://siwu-connect.fnorxx.workers.dev"
 PUBLIC_API_URL = "https://api.siwuconnect.com"
+# Phone notifications: public key (not secret). The private key is the Worker secret VAPID_PRIVATE_KEY.
+VAPID_PUBLIC_KEY = "BEBnFOAEAWMKYliwjVy4mijS31RGIIvukw7-V9cs2oulnh5jKF5RuXABm5GqZJvEfdoRnqEZAZhX-gEvfbZuVM8"
 [[env.production.r2_buckets]]
 binding = "AVATARS"
 bucket_name = "siwu-photos"
+# This same Worker, so big notification deliveries can be split into small calls (free-plan limits).
+[[env.production.services]]
+binding = "SELF"
+service = "siwu-connect-api"
 [env.production.triggers]
-crons = ["23 2 * * *"]
+crons = ["23 2 * * *", "7 * * * *"]
