@@ -19,11 +19,38 @@ const SECURITY_HEADERS = {
   'permissions-policy': 'camera=(self), microphone=(self), geolocation=()',
 };
 
+/** Android app (Google Play) that opens this website full-screen. Its package name never changes once published. */
+export const ANDROID_PACKAGE = 'com.siwuconnect.app';
+
+/**
+ * Digital Asset Links: proves to Android that the Play Store app and this website belong together, so the app
+ * opens the site full-screen without a browser bar. The SHA-256 fingerprints come from Play Console
+ * (Setup → App integrity → App signing) and are set in wrangler.toml as ANDROID_CERT_SHA256 (comma separated).
+ */
+export function assetLinks(fingerprints: string | undefined): unknown[] {
+  const certs = (fingerprints ?? '')
+    .split(',')
+    .map((f) => f.trim().toUpperCase())
+    .filter((f) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(f));
+  if (!certs.length) return [];
+  return [
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: { namespace: 'android_app', package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: certs },
+    },
+  ];
+}
+
 /** Serves the Siwu Connect web app. Unknown paths get index.html (client-side routing). */
 export default {
-  fetch(request: Request): Response {
+  fetch(request: Request, env: { ANDROID_CERT_SHA256?: string } = {}): Response {
     const url = new URL(request.url);
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
+    if (url.pathname === '/.well-known/assetlinks.json') {
+      return new Response(JSON.stringify(assetLinks(env.ANDROID_CERT_SHA256)), {
+        headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', ...SECURITY_HEADERS },
+      });
+    }
     let path = url.pathname === '/' ? '/index.html' : url.pathname;
     if (!FILES[path]) path = '/index.html';
     const file = FILES[path]!;

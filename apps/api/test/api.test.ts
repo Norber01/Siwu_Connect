@@ -259,8 +259,36 @@ describe('account deletion', () => {
   it('wipes profile and content and frees the username', async () => {
     await seedPost('p1', 'alice', 'odomi', { commentCount: 1 });
     await seedPost('p2', 'bob', 'todzi', { commentCount: 1 });
-    await fs().commit([{ kind: 'set', path: 'posts/p2/comments/c1', data: { authorId: 'alice', townId: 'todzi', text: 'hey', status: 'published' } }]);
-    expect((await call('POST', '/me/delete-account', 'alice')).status).toBe(200);
+    await fs().commit([
+      { kind: 'set', path: 'posts/p2/comments/c1', data: { authorId: 'alice', townId: 'todzi', text: 'hey', status: 'published' } },
+      { kind: 'set', path: 'chats/alice_bob', data: { type: 'dm', members: ['alice', 'bob'] } },
+      { kind: 'set', path: 'chats/alice_bob/messages/m1', data: { senderId: 'alice', text: 'secret plans', imageUrl: null, status: 'sent' } },
+      { kind: 'set', path: 'chats/alice_bob/presence/alice', data: { readAt: new Date() } },
+      { kind: 'set', path: 'chats/grp_1', data: { type: 'group', name: 'Fam', members: ['alice', 'bob'], admins: ['alice'] } },
+      { kind: 'set', path: 'directory/d1', data: { ownerId: 'alice', townId: 'odomi', title: 'Shop', status: 'active' } },
+      { kind: 'set', path: 'users/alice/bookmarks/p2', data: { createdAt: new Date() } },
+      { kind: 'set', path: 'users/alice/notifications/n1', data: { type: 'like' } },
+      { kind: 'set', path: 'events/e1/photos/ph1', data: { authorId: 'alice', url: 'x', status: 'published' } },
+    ]);
+    // The app repeats the call until the server says it's done.
+    let step = 0;
+    let calls = 0;
+    for (;;) {
+      const res = await call('POST', `/me/delete-account?step=${step}`, 'alice');
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { done: boolean; next?: number };
+      calls++;
+      if (body.done) break;
+      step = body.next!;
+      expect(calls).toBeLessThan(20);
+    }
+    expect((await fs().get<{ text: string; status: string }>('chats/alice_bob/messages/m1'))!.data).toMatchObject({ text: '', status: 'deleted' });
+    expect(await fs().get('chats/alice_bob/presence/alice')).toBeNull();
+    expect((await fs().get<{ members: string[]; admins: string[] }>('chats/grp_1'))!.data).toMatchObject({ members: ['bob'], admins: ['bob'] });
+    expect(await fs().get('directory/d1')).toBeNull();
+    expect(await fs().get('users/alice/bookmarks/p2')).toBeNull();
+    expect(await fs().get('users/alice/notifications/n1')).toBeNull();
+    expect((await fs().get<{ status: string }>('events/e1/photos/ph1'))!.data.status).toBe('deleted');
     expect(await fs().get('users/alice')).toBeNull();
     expect(await fs().get('usernames/alice')).toBeNull();
     const p1 = await fs().get<{ status: string; text: string }>('posts/p1');

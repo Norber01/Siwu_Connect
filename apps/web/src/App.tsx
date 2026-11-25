@@ -9,7 +9,7 @@ import { HomePage, TagPage, TownPage, TownsPage } from './pages/feeds';
 import { OnboardingPage } from './pages/Onboarding';
 import { MyProfileRedirect, ProfilePage, SearchPage, SettingsPage } from './pages/people';
 import { EditPostPage, NewPostPage, NotFoundPage, PostDetailPage } from './pages/posts';
-import { PrivacyPage, RulesPage } from './pages/static';
+import { PrivacyPage, RulesPage, DeleteAccountPage } from './pages/static';
 import { SetupPage } from './pages/Setup';
 import { EventDetailPage, EventFormPage, EventsPage } from './pages/events';
 import { ListingDetailPage, ListingFormPage, MarketPage } from './pages/market';
@@ -99,6 +99,7 @@ export function App() {
         </Route>
         <Route path="/rules" element={<RulesPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/delete-account" element={<DeleteAccountPage />} />
       </Route>
       <Route element={<RequireMember />}>
         <Route element={<AppLayout />}>

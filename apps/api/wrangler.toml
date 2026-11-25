@@ -25,6 +25,9 @@ crons = ["23 2 * * *"]
 name = "siwu-connect-api"
 workers_dev = true
 account_id = "56ca686cd94e782648ae9b8ba47a1820"
+# Custom domain (switched on once siwuconnect.com is in the founder's Cloudflare account). The workers.dev address
+# stays on, so photos and videos already posted with the old address keep working.
+# routes = [{ pattern = "api.siwuconnect.com", custom_domain = true }]
 [env.production.vars]
 FIREBASE_PROJECT_ID = "siwu-connect-cadd9"
 ALLOWED_ORIGINS = "https://siwu-connect.fnorxx.workers.dev"

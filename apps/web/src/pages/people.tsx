@@ -548,7 +548,13 @@ function DeleteAccountDialog({ open, onClose, username }: { open: boolean; onClo
     setBusy(true);
     setError(null);
     try {
-      await api('/me/delete-account');
+      // Deletion runs in small steps; keep going until the server says it's done.
+      let step = 0;
+      for (let i = 0; i < 100; i++) {
+        const r = await api<{ done: boolean; next?: number }>(`/me/delete-account?step=${step}`);
+        if (r.done) break;
+        step = r.next ?? step;
+      }
       await signOut().catch(() => {});
       navigate('/welcome', { replace: true });
     } catch (e) {

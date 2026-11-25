@@ -76,11 +76,10 @@ export function Feed({ feed, emptyTitle, emptyText }: { feed: FeedSpec; emptyTit
 
   return (
     <div className="-mx-4 border-t border-sand-200 px-4">
-      {pinnedItems.map((p) => (
-        <PostCard key={`pin-${p.id}`} post={p} liked={pinned.data!.liked.get(p.id) ?? null} />
-      ))}
-      {rows.map(({ post, liked }) => (
-        <PostCard key={`${post.id}:${liked ?? ''}`} post={post} liked={liked} />
+      {/* One list (pinned first) with stable keys: when the pinned posts arrive a moment later, a post moving up
+          keeps its state, so a menu or window just opened on it stays open. */}
+      {[...pinnedItems.map((p) => ({ post: p, liked: pinned.data?.liked.get(p.id) ?? null })), ...rows].map(({ post, liked }) => (
+        <PostCard key={post.id} post={post} liked={liked} />
       ))}
       {posts.isPlaceholderData ? (
         <p className="py-4 text-center text-sm text-gray-500">Getting the latest posts…</p>

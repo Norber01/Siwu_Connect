@@ -4,3 +4,14 @@ main = "src/index.ts"
 compatibility_date = "2024-11-01"
 account_id = "56ca686cd94e782648ae9b8ba47a1820"
 workers_dev = true
+
+# Custom domain (switched on once siwuconnect.com is in the founder's Cloudflare account):
+# routes = [
+#   { pattern = "siwuconnect.com", custom_domain = true },
+#   { pattern = "www.siwuconnect.com", custom_domain = true },
+# ]
+
+[vars]
+# Play Console → Setup → App integrity → App signing: the SHA-256 certificate fingerprint(s), comma separated.
+# Not secret (they are published at /.well-known/assetlinks.json). Filled in once the app is uploaded to Play.
+ANDROID_CERT_SHA256 = ""

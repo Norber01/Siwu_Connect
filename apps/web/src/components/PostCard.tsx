@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { Link, useNavigate } from 'react-router-dom';
 import { canAnnounce, canModerate } from '@siwu/shared';
@@ -382,6 +382,15 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
   const [counts, setCounts] = useState<Record<string, number>>(post.reactions);
   const [liking, setLiking] = useState(false);
   const [picker, setPicker] = useState(false);
+  // Fresh data from the server (e.g. replacing the copy saved on the phone) updates the card in place, so a menu or
+  // window you just opened on it stays open. Skipped while your own reaction is being saved.
+  useEffect(() => {
+    if (liking) return;
+    setReactionState(initialReaction as Reaction | null);
+    setLikes(post.reactionCount);
+    setCounts(post.reactions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialReaction, post.reactionCount, post.reactions]);
   const liked = !!reaction;
   const [reporting, setReporting] = useState(false);
   const [commenting, setCommenting] = useState(false);

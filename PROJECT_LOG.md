@@ -180,6 +180,23 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
     The founder chooses the testers.
   - Share a post in chat: Share → "Send in chat" (friends, groups or town chats, several at once, optional
     note) or "Share outside (WhatsApp…)". The message shows a tappable preview of the post.
+- 2026-11-25 — **Getting ready for Google Play (personal account → closed test of 12+ testers for 14 days):**
+  - The founder approved the privacy notice and community rules: "Draft" labels removed. The privacy notice was
+    rewritten to cover everything the app does now. Contact: privacy@siwuconnect.com (to be forwarded with Cloudflare
+    Email Routing once the domain is bought).
+  - Public **/delete-account** page (required by Google Play). Account deletion now also wipes chat messages,
+    Businesses & jobs entries, event photos, group membership, notifications, saved posts, blocks and read
+    markers. It runs in steps (the app repeats the call), so very active accounts stay under Cloudflare's
+    per-request limit. Two new collection-group indexes (messages, photos) → **Run setup again**.
+  - The site serves **/.well-known/assetlinks.json** for Android package `com.siwuconnect.app` (fingerprints go
+    in `apps/site/wrangler.toml` → ANDROID_CERT_SHA256). The manifest has an id, scope and categories. Custom-domain
+    lines for siwuconnect.com and api.siwuconnect.com are prepared (commented out) in both wrangler files.
+  - `docs/play-store/`: a step-by-step guide (domain, email forwarding, Play Console, PWABuilder package, closed
+    test, production), store listing texts, answers for Google's forms (data safety, content rating, target audience,
+    app access), feature graphic, icon and six 1080×1920 screenshots.
+  - Pilot goal changed to 3 testers per town (15, above Google's 12).
+  - Fixed: when fresh posts replaced the copy saved on the phone, or the pinned posts arrived a moment later,
+    posts were rebuilt, so a just-opened menu or "Send in chat" window closed. Posts now update in place.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |

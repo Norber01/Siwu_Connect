@@ -348,6 +348,11 @@ export function createApp() {
   });
 
   // ---------- account deletion ----------
+  /**
+   * Deletes the caller's account and personal data. Runs in small steps (the app calls it repeatedly until
+   * `done`), so a very active account never exceeds Cloudflare's per-request limit on outgoing calls.
+   * Likes, RSVPs and votes stay only as anonymous counts.
+   */
   app.post('/me/delete-account', async (c) => {
     const uid = c.get('uid');
     const fs = c.get('fs');
@@ -356,91 +361,131 @@ export function createApp() {
       const supers = await fs.query({ collection: 'admin_roles', where: [['role', 'EQUAL', 'super_admin']], limit: 2 });
       if (supers.length < 2) fail(409, 'The last Super Admin account cannot be deleted');
     }
-    const user = await fs.get<UserDoc>(`users/${uid}`);
-
-    // Wipe the user's posts (soft delete, text removed).
-    for (;;) {
-      const posts = await fs.query<PostDoc>({
-        collection: 'posts',
-        where: [['authorId', 'EQUAL', uid], ['status', 'IN', ['published', 'removed']]],
-        limit: 200,
-      });
-      if (!posts.length) break;
-      await fs.commit(
-        posts.map((p) => ({
-          kind: 'update' as const,
-          path: p.path,
-          data: { status: 'deleted', text: '', imageUrl: null, media: [], searchTokens: [], updatedAt: FieldValue.serverTimestamp() },
-        })),
-      );
-    }
-    // Wipe the user's events and listings.
-    for (const [collection, field, live] of [
-      ['events', 'authorId', ['published', 'cancelled', 'removed']],
-      ['listings', 'sellerId', ['available', 'sold', 'removed', 'pending', 'rejected']],
-    ] as const) {
-      for (;;) {
-        const docs = await fs.query({ collection, where: [[field, 'EQUAL', uid], ['status', 'IN', [...live]]], limit: 200 });
-        if (!docs.length) break;
-        await fs.commit(
-          docs.map((d) => ({
-            kind: 'update' as const,
-            path: d.path,
-            data: { status: 'deleted', description: '', imageUrl: null, updatedAt: FieldValue.serverTimestamp() },
-          })),
-        );
-      }
-    }
-    // Remove friendships and stories.
-    for (;;) {
-      const docs = await fs.query({ collection: 'friendships', where: [['members', 'ARRAY_CONTAINS', uid]], limit: 200 });
-      if (!docs.length) break;
-      await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
-    }
-    for (;;) {
-      const docs = await fs.query({ collection: 'stories', where: [['authorId', 'EQUAL', uid], ['status', 'EQUAL', 'active']], limit: 200 });
-      if (!docs.length) break;
-      await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted' } })));
-    }
-    // Wipe the user's comments, keeping counters right.
-    for (;;) {
-      const comments = await fs.query<CommentDoc>({
-        collection: 'comments',
-        allDescendants: true,
-        where: [['authorId', 'EQUAL', uid], ['status', 'IN', ['published', 'removed']]],
-        limit: 100,
-      });
-      if (!comments.length) break;
-      const writes: Write[] = [];
-      for (const cm of comments) {
-        writes.push({ kind: 'update', path: cm.path, data: { status: 'deleted', text: '' } });
-        if (cm.data.status === 'published') {
-          const postPath = cm.path.split('/comments/')[0]!;
-          const post = await fs.get<PostDoc>(postPath);
-          if (post?.data.status === 'published') {
-            writes.push({ kind: 'update', path: postPath, data: { commentCount: FieldValue.increment(-1) } });
+    const now = FieldValue.serverTimestamp();
+    /** Each step handles one batch and says whether that kind of data may still have more left. */
+    const steps: Array<() => Promise<boolean>> = [
+      // Posts: text, photos and videos removed (the post shows as deleted).
+      async () => {
+        const docs = await fs.query<PostDoc>({ collection: 'posts', where: [['authorId', 'EQUAL', uid], ['status', 'IN', ['published', 'removed']]], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted', text: '', imageUrl: null, media: [], searchTokens: [], updatedAt: now } })));
+        return docs.length === 200;
+      },
+      async () => {
+        const docs = await fs.query({ collection: 'events', where: [['authorId', 'EQUAL', uid], ['status', 'IN', ['published', 'cancelled', 'removed']]], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted', description: '', imageUrl: null, updatedAt: now } })));
+        return docs.length === 200;
+      },
+      async () => {
+        const docs = await fs.query({ collection: 'listings', where: [['sellerId', 'EQUAL', uid], ['status', 'IN', ['available', 'sold', 'removed', 'pending', 'rejected']]], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted', description: '', imageUrl: null, contactPhone: null, updatedAt: now } })));
+        return docs.length === 200;
+      },
+      async () => {
+        const docs = await fs.query({ collection: 'directory', where: [['ownerId', 'EQUAL', uid]], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
+        return docs.length === 200;
+      },
+      async () => {
+        const docs = await fs.query({ collection: 'stories', where: [['authorId', 'EQUAL', uid], ['status', 'EQUAL', 'active']], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted' } })));
+        return docs.length === 200;
+      },
+      async () => {
+        const docs = await fs.query({ collection: 'friendships', where: [['members', 'ARRAY_CONTAINS', uid]], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
+        return docs.length === 200;
+      },
+      // Comments (a few at a time, keeping each post's comment count right).
+      async () => {
+        const docs = await fs.query<CommentDoc>({ collection: 'comments', allDescendants: true, where: [['authorId', 'EQUAL', uid], ['status', 'IN', ['published', 'removed']]], limit: 20 });
+        const writes: Write[] = [];
+        for (const cm of docs) {
+          writes.push({ kind: 'update', path: cm.path, data: { status: 'deleted', text: '' } });
+          if (cm.data.status === 'published') {
+            const postPath = cm.path.split('/comments/')[0]!;
+            const post = await fs.get<PostDoc>(postPath);
+            if (post?.data.status === 'published') writes.push({ kind: 'update', path: postPath, data: { commentCount: FieldValue.increment(-1) } });
           }
         }
-      }
-      await fs.commit(writes);
-    }
-
-    const writes: Write[] = [
-      { kind: 'delete', path: `users/${uid}` },
-      { kind: 'delete', path: `users_private/${uid}` },
-      { kind: 'delete', path: `rate_limits/${uid}` },
-      { kind: 'delete', path: `admin_roles/${uid}` },
-      audit(fs, uid, 'account.delete', `users/${uid}`, user?.data.hometownId ?? ''),
+        if (writes.length) await fs.commit(writes);
+        return docs.length === 20;
+      },
+      // Chat messages: text, photos and voice notes wiped ("Message deleted" for the others).
+      async () => {
+        const docs = await fs.query({ collection: 'messages', allDescendants: true, where: [['senderId', 'EQUAL', uid], ['status', 'EQUAL', 'sent']], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted', text: '', imageUrl: null, audioUrl: null } })));
+        return docs.length === 200;
+      },
+      // Event album photos.
+      async () => {
+        const docs = await fs.query({ collection: 'photos', allDescendants: true, where: [['authorId', 'EQUAL', uid], ['status', 'EQUAL', 'published']], limit: 200 });
+        if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'update' as const, path: d.path, data: { status: 'deleted' } })));
+        return docs.length === 200;
+      },
+      // Leave group chats; remove typing/seen records in all chats.
+      async () => {
+        const chats = await fs.query<{ type: string; members: string[]; admins?: string[] }>({ collection: 'chats', where: [['members', 'ARRAY_CONTAINS', uid]], limit: 100 });
+        const writes: Write[] = [];
+        for (const ch of chats) {
+          writes.push({ kind: 'delete', path: `${ch.path}/presence/${uid}` });
+          if (ch.data.type === 'group') {
+            const members = ch.data.members.filter((m) => m !== uid);
+            let admins = (ch.data.admins ?? []).filter((m) => m !== uid);
+            if (!admins.length && members.length) admins = [members[0]!];
+            writes.push({ kind: 'update', path: ch.path, data: { members, admins } });
+          }
+        }
+        if (writes.length) await fs.commit(writes);
+        return false;
+      },
+      // Private lists under the profile: notifications, saved posts, blocks, read markers.
+      async () => {
+        let more = false;
+        for (const sub of ['notifications', 'bookmarks', 'blocks', 'chatState']) {
+          const docs = await fs.query({ collection: sub, parent: `users/${uid}`, limit: 200 });
+          if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
+          if (docs.length === 200) more = true;
+        }
+        return more;
+      },
+      // Uploaded files.
+      async () => {
+        let more = false;
+        for (const prefix of [`avatars/${uid}/`, `images/${uid}/`, `videos/${uid}/`, `audio/${uid}/`]) {
+          const objects = await c.env.AVATARS.list({ prefix, limit: 500 });
+          if (objects.objects.length) await c.env.AVATARS.delete(objects.objects.map((o) => o.key));
+          if (objects.objects.length === 500) more = true;
+        }
+        return more;
+      },
+      // Finally the profile itself and the sign-in account.
+      async () => {
+        const user = await fs.get<UserDoc>(`users/${uid}`);
+        const writes: Write[] = [
+          { kind: 'delete', path: `users/${uid}` },
+          { kind: 'delete', path: `users_private/${uid}` },
+          { kind: 'delete', path: `rate_limits/${uid}` },
+          { kind: 'delete', path: `admin_roles/${uid}` },
+          audit(fs, uid, 'account.delete', `users/${uid}`, user?.data.hometownId ?? ''),
+        ];
+        if (user) writes.push({ kind: 'delete', path: `usernames/${user.data.username}` });
+        await fs.commit(writes);
+        await deleteAuthUser(c.env, uid);
+        return false;
+      },
     ];
-    if (user) writes.push({ kind: 'delete', path: `usernames/${user.data.username}` });
-    await fs.commit(writes);
-
-    for (const prefix of [`avatars/${uid}/`, `images/${uid}/`, `videos/${uid}/`, `audio/${uid}/`]) {
-      const objects = await c.env.AVATARS.list({ prefix, limit: 1000 });
-      if (objects.objects.length) await c.env.AVATARS.delete(objects.objects.map((o) => o.key));
+    // Roughly how many outgoing calls each step makes (comments look up their posts; the chats step can touch
+    // up to 100 chats in one write). A request stops before passing ~35, under Cloudflare's 50 per request.
+    const cost = [2, 2, 2, 2, 2, 2, 22, 2, 2, 2, 8, 8, 9];
+    let step = Math.max(0, Math.min(steps.length - 1, Math.floor(Number(c.req.query('step') ?? 0)) || 0));
+    let used = 4; // token, role lookup and the request itself
+    while (used + cost[step]! <= 35) {
+      used += cost[step]!;
+      const more = await steps[step]!();
+      if (!more) step++;
+      if (step >= steps.length) return c.json({ ok: true, done: true });
     }
-    await deleteAuthUser(c.env, uid);
-    return c.json({ ok: true });
+    return c.json({ ok: true, done: false, next: step });
   });
 
   // ---------- sports reporters (public list: who covers which town) ----------

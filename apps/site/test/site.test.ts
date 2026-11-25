@@ -44,3 +44,15 @@ describe('website security headers', () => {
     expect(get('/', 'POST').status).toBe(405);
   });
 });
+
+describe('Android app link (Google Play)', () => {
+  const fp = Array.from({ length: 32 }, (_, i) => (i * 7 % 256).toString(16).padStart(2, '0').toUpperCase()).join(':');
+  it('lists the app only when a valid fingerprint is set', async () => {
+    const empty = await site.fetch(new Request('https://siwu.example/.well-known/assetlinks.json'), {});
+    expect(await empty.json()).toEqual([]);
+    const res = await site.fetch(new Request('https://siwu.example/.well-known/assetlinks.json'), { ANDROID_CERT_SHA256: `${fp}, not-a-fingerprint` });
+    expect(res.headers.get('content-type')).toBe('application/json');
+    const body = (await res.json()) as { target: { package_name: string; sha256_cert_fingerprints: string[] } }[];
+    expect(body[0]!.target).toEqual({ namespace: 'android_app', package_name: 'com.siwuconnect.app', sha256_cert_fingerprints: [fp] });
+  });
+});

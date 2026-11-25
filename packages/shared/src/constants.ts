@@ -25,8 +25,8 @@ export const LIMITS = {
  */
 export const MIN_AGE = 13;
 
-/** Pilot: how many testers we want from each town. */
-export const PILOT_TESTERS_PER_TOWN = 5;
+/** Pilot: testers wanted from each town (5 towns × 3 = 15, comfortably above Google Play's 12 for the closed test). */
+export const PILOT_TESTERS_PER_TOWN = 3;
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
