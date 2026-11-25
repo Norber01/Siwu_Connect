@@ -207,6 +207,11 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   working, so existing links, installed apps and photos/videos posted earlier still load. The setup version now
   includes the website addresses, so a new address shows the "Run setup again" banner (it allows the address for
   sign-in). The live check (`scripts/check-live.mjs`) now checks the new addresses by default.
+- **Members belong to their hometown** (founder's decision): they see and use only the All Akpafu chat room and
+  their hometown's room, and post only in their hometown (choosing whether it also shows in the All Akpafu feed).
+  Town admins also have the towns they look after; Super Admins have every town. Enforced in the Firestore rules
+  (`inMyTowns`); moderators can still open a single reported room message from any town. Reposts go into the
+  reposter's hometown. Shared helper `myTowns()`. Rules changed → **Run setup again**.
 - **Google sign-in on our own address**: the site passes `/__/auth/*` and `/__/firebase/*` through to
   siwu-connect-cadd9.firebaseapp.com and the app uses authDomain `siwuconnect.com`, so the sign-in window shows
   siwuconnect.com. The founder added `https://siwuconnect.com/__/auth/handler` to the OAuth client's redirect URIs and

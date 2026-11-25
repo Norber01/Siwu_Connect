@@ -313,7 +313,7 @@ function ShareButton({ post }: { post: Post }) {
 
 /** Repost straight away, or open the composer to quote with your own words. */
 function RepostButton({ post, disabled }: { post: Post; disabled: boolean }) {
-  const { user } = useMe();
+  const { user, profile } = useMe(); // a repost goes into the reposter's own town
   const toast = useToast();
   const navigate = useNavigate();
   const invalidate = useInvalidatePosts();
@@ -329,7 +329,7 @@ function RepostButton({ post, disabled }: { post: Post; disabled: boolean }) {
       if (last && Date.now() - last.getTime() < 20_000) throw new Error("You're posting quickly. Please wait a few seconds and try again.");
       const original = target === post.id ? post : await fetchPost(target);
       if (!original) throw new Error('This post is no longer available.');
-      await createPost(db, user.uid, { townId: original.townId as never, text: '', visibility: 'akpafu' }, [], {
+      await createPost(db, user.uid, { townId: profile.hometownId as never, text: '', visibility: 'akpafu' }, [], {
         quoteOf: { id: original.id, authorId: original.authorId },
       });
       invalidate();

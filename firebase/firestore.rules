@@ -34,6 +34,13 @@ service cloud.firestore {
     function rolePath() { return /databases/$(database)/documents/admin_roles/$(me()); }
     function hasRole() { return signedIn() && exists(rolePath()); }
     function isSuper() { return hasRole() && get(rolePath()).data.role == 'super_admin'; }
+    // Members belong to their hometown: they use its chat room and post in it (plus everything Akpafu-wide).
+    // Town admins also have the towns they look after; Super Admins have every town.
+    function myHometown() { return get(userPath(me())).data.hometownId; }
+    function inMyTowns(t) {
+      return t == myHometown() || isSuper()
+        || (hasRole() && get(rolePath()).data.role == 'town_admin' && t in get(rolePath()).data.townIds);
+    }
     function canModerate(townId) {
       return hasRole()
         && (get(rolePath()).data.role == 'super_admin'
@@ -284,6 +291,7 @@ service cloud.firestore {
                               'commentCount', 'lastCommentOp', 'searchTokens', 'createdAt', 'updatedAt', 'editedAt'])
         && d().authorId == me()
         && isTown(d().townId)
+        && inMyTowns(d().townId)
         && postBodyOk(d())
         && d().visibility in ['akpafu', 'town']
         && d().status == 'published'
@@ -723,7 +731,8 @@ service cloud.firestore {
       return url == null
         || (str(url, 10, 300) && url.matches('^https?://[^/]+(/[^/]+)*/audio/' + uid + '/[A-Za-z0-9_-]+[.](webm|m4a|ogg)$'));
     }
-    function canUseChat(c) { return c.type == 'room' || me() in c.members; }
+    function roomOk(c) { return c.get('townId', '') == 'all' || inMyTowns(c.get('townId', '')); }
+    function canUseChat(c) { return (c.type == 'room' && roomOk(c)) || (c.type != 'room' && me() in c.get('members', [])); }
     function dmOther(c) { return c.members[0] == me() ? c.members[1] : c.members[0]; }
     function notBlockedDm(c) {
       return c.type != 'dm'
@@ -733,7 +742,7 @@ service cloud.firestore {
 
     match /chats/{chatId} {
       allow get: if signedIn() && (resource == null || canUseChat(resource.data));
-      allow list: if signedIn() && (resource.data.type == 'room' || me() in resource.data.members);
+      allow list: if signedIn() && ((resource.data.type == 'room' && roomOk(resource.data)) || me() in resource.data.get('members', []));
       allow create: if isActive()
         && exactKeys(['type', 'members', 'lastMessage', 'createdAt', 'updatedAt'])
         && d().type == 'dm'
@@ -760,6 +769,8 @@ service cloud.firestore {
 
       match /messages/{mid} {
         allow read: if signedIn() && canUseChat(get(chatPath(chatId)).data);
+        // Moderators open single reported messages from any town room (not whole rooms).
+        allow get: if signedIn() && get(chatPath(chatId)).data.type == 'room' && canModerate(get(chatPath(chatId)).data.townId);
         allow create: if isActive()
           && canUseChat(get(chatPath(chatId)).data)
           && notBlockedDm(get(chatPath(chatId)).data)

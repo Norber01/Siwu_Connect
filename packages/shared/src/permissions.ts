@@ -1,4 +1,5 @@
 import type { Role } from './constants';
+import { TOWN_IDS } from './towns';
 
 /**
  * Role hierarchy (founder-confirmed 2026-11-23):
@@ -60,4 +61,15 @@ export function canReportMatch(r: AdminRole | null | undefined, m: { home: { tow
   if (!r) return false;
   if (r.role !== 'reporter' || r.townIds.length === 0) return true;
   return (!!m.home.townId && r.townIds.includes(m.home.townId)) || (!!m.away.townId && r.townIds.includes(m.away.townId));
+}
+
+/**
+ * The towns a member belongs to: they use these towns' chat rooms and post in them (plus everything Akpafu-wide).
+ * Members: their hometown. Town admins: also the towns they look after. Super Admins: every town.
+ */
+export function myTowns(hometownId: string, r: AdminRole | null | undefined): string[] {
+  if (r?.role === 'super_admin') return [...TOWN_IDS];
+  const towns = new Set([hometownId]);
+  if (r?.role === 'town_admin') for (const t of r.townIds) towns.add(t);
+  return TOWN_IDS.filter((t) => towns.has(t));
 }

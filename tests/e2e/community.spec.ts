@@ -143,16 +143,18 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await expect(page.getByRole('button', { name: 'Unlike' }).first()).toBeVisible();
   await page.waitForTimeout(1500); // let the like reach the server before the full page reload below
 
-  // Chat: Ama asks Kofi to be friends (private chat needs an accepted request), and says hi in the Todzi room.
+  // Chat: Ama asks Kofi to be friends (private chat needs an accepted request), and says hi in her hometown's room.
   await page.goto('/u/kofi_mensah');
   await expect(page.getByRole('button', { name: 'Message' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Add friend' }).click();
   await expect(page.getByRole('button', { name: 'Requested · Cancel' })).toBeVisible();
   await page.goto('/chat');
-  await page.getByRole('link', { name: /Todzi town chat/ }).click();
-  await page.getByLabel('Message', { exact: true }).fill(`Hello Todzi room ${tag}`);
+  // Members only see All Akpafu and their own town's room.
+  await expect(page.getByRole('link', { name: /Todzi town chat/ })).toHaveCount(0);
+  await page.getByRole('link', { name: /Mempeasem town chat/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill(`Hello Mempeasem room ${tag}`);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText(`Hello Todzi room ${tag}`)).toBeVisible();
+  await expect(page.getByText(`Hello Mempeasem room ${tag}`)).toBeVisible();
 
   // Tester feedback from the Beta badge.
   await page.getByRole('button', { name: 'Beta' }).click();

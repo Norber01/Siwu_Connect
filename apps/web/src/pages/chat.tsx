@@ -3,7 +3,7 @@ import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { type Timestamp, collection, doc, getCountFromServer, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
-import { EXTRA_LIMITS, canModerate, townShortName } from '@siwu/shared';
+import { EXTRA_LIMITS, canModerate, myTowns, townShortName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
@@ -72,13 +72,28 @@ function toChat(id: string, d: Record<string, unknown>): Chat {
 
 /** Live chats (rooms + my DMs) and read markers. */
 export function useChats() {
-  const { user } = useMe();
+  const { user, profile, role } = useMe();
+  const roomIds = ['all', ...myTowns(profile.hometownId, role)].map((t) => `room_${t}`).join(',');
   const [rooms, setRooms] = useState<Chat[] | null>(null);
   const [dms, setDms] = useState<Chat[] | null>(null);
   const [reads, setReads] = useState<Record<string, Date | null>>({});
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
-    const u1 = onSnapshot(query(collection(db, 'chats'), where('type', '==', 'room')), (s) => setRooms(s.docs.map((d) => toChat(d.id, d.data()))), setError);
+    // Only the rooms the member belongs to: All Akpafu and their hometown (Super Admins: every town).
+    const ids = roomIds.split(',');
+    const found = new Map<string, Chat>();
+    const roomSubs = ids.map((id) =>
+      onSnapshot(
+        doc(db, 'chats', id),
+        (d) => {
+          if (d.exists()) found.set(id, toChat(d.id, d.data()));
+          else found.delete(id);
+          setRooms(ids.filter((x) => found.has(x)).map((x) => found.get(x)!));
+        },
+        setError,
+      ),
+    );
+    const u1 = () => roomSubs.forEach((u) => u());
     const u2 = onSnapshot(
       query(collection(db, 'chats'), where('members', 'array-contains', user.uid), orderBy('updatedAt', 'desc'), limit(50)),
       (s) => setDms(s.docs.map((d) => toChat(d.id, d.data()))),
@@ -92,7 +107,7 @@ export function useChats() {
       u2();
       u3();
     };
-  }, [user.uid]);
+  }, [user.uid, roomIds]);
   const isUnread = (c: Chat) =>
     !!c.lastMessage && c.lastMessage.senderId !== user.uid && (!reads[c.id] || (c.updatedAt?.getTime() ?? 0) > reads[c.id]!.getTime());
   return { rooms, dms, error, isUnread, reads };

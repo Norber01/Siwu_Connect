@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LIMITS, type PostVisibility, TOWNS, type TownId, canModerate, isTownId, postSchema, postTextSchema } from '@siwu/shared';
+import { LIMITS, type PostVisibility, TOWNS, type TownId, canModerate, isTownId, myTowns, postSchema, postTextSchema, townName } from '@siwu/shared';
 import { useMe } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { useInvalidatePosts } from '../lib/hooks';
@@ -41,7 +41,9 @@ function VisibilityPicker({ value, onChange }: { value: PostVisibility; onChange
 }
 
 export function NewPostPage() {
-  const { user, profile } = useMe();
+  const { user, profile, role } = useMe();
+  // Members post in their hometown (and choose whether it also shows in the All Akpafu feed).
+  const towns = TOWNS.filter((t) => myTowns(profile.hometownId, role).includes(t.id));
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const invalidate = useInvalidatePosts();
@@ -49,7 +51,9 @@ export function NewPostPage() {
   const initialTown = params.get('town');
   const quoteId = params.get('quote');
   const quoted = useQuery({ queryKey: ['post', quoteId], queryFn: () => fetchPost(quoteId!), enabled: !!quoteId });
-  const [townId, setTownId] = useState<TownId>(isTownId(initialTown) ? initialTown : (profile.hometownId as TownId));
+  const [townId, setTownId] = useState<TownId>(
+    isTownId(initialTown) && towns.some((t) => t.id === initialTown) ? initialTown : (profile.hometownId as TownId),
+  );
   const [text, setText] = useState('');
   const [visibility, setVisibility] = useState<PostVisibility>('akpafu');
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -122,13 +126,19 @@ export function NewPostPage() {
     <div>
       <PageHeader title="Create post" back />
       <form onSubmit={submit} className="space-y-5" noValidate>
-        <SelectField label="Town" value={townId} onChange={(e) => setTownId(e.target.value as TownId)}>
-          {TOWNS.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </SelectField>
+        {towns.length > 1 ? (
+          <SelectField label="Town" value={townId} onChange={(e) => setTownId(e.target.value as TownId)}>
+            {towns.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </SelectField>
+        ) : (
+          <p className="text-sm text-gray-700">
+            Posting in <strong>{townName(townId)}</strong>, your hometown.
+          </p>
+        )}
         <TextArea
           label="Your post"
           rows={5}

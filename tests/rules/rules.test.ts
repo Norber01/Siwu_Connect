@@ -201,10 +201,22 @@ describe('posts', () => {
   });
 
   it('active users can post in a valid town', async () => {
-    await assertSucceeds(ops.createPost(db('alice'), 'alice', { townId: 'adokor', text: 'Hello Adokor', visibility: 'akpafu' }));
+    // Members post in their hometown only (shown in the All Akpafu feed too if they choose).
+    await assertFails(ops.createPost(db('alice'), 'alice', { townId: 'adokor', text: 'Hello Adokor', visibility: 'akpafu' }));
+    await assertSucceeds(ops.createPost(db('alice'), 'alice', { townId: 'odomi', text: 'Hello Odomi', visibility: 'akpafu' }));
     await assertSucceeds(ops.createProfile(db('sokpo1'), 'sokpo1', profile('sokpo_one', 'sokpo')));
     await assertSucceeds(ops.createPost(db('sokpo1'), 'sokpo1', { townId: 'sokpo', text: 'Hello from Sokpo', visibility: 'akpafu' }));
     await assertFails(ops.createPost(db('alice'), 'alice', { townId: 'accra' as 'adokor', text: 'x', visibility: 'akpafu' }));
+  });
+
+  it('town admins post in their towns; Super Admins anywhere', async () => {
+    await seedUser('ta', 'odomi');
+    await seedRole('ta', 'town_admin', ['todzi']);
+    await seedUser('boss2', 'odomi');
+    await seedRole('boss2', 'super_admin');
+    await assertSucceeds(ops.createPost(db('ta'), 'ta', { townId: 'todzi', text: 'Todzi news', visibility: 'town' }));
+    await assertFails(ops.createPost(db('ta'), 'ta', { townId: 'sokpo', text: 'Sokpo news', visibility: 'town' }));
+    await assertSucceeds(ops.createPost(db('boss2'), 'boss2', { townId: 'sokpo', text: 'Sokpo news', visibility: 'town' }));
   });
 
   it('enforces text length and a posting cooldown', async () => {
@@ -690,6 +702,27 @@ describe('chat', () => {
     await seedUser('mod');
     await seedRole('mod', 'moderator', ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']);
     await seed((a) => setDoc(doc(a, 'chats', 'room_odomi'), { type: 'room', townId: 'odomi', name: 'Akpafu Odomi', lastMessage: null }));
+  });
+
+  it('town chat rooms: members use their hometown and All Akpafu; only Super Admins every town', async () => {
+    await seedUser('tod', 'todzi');
+    await seedUser('chief', 'sokpo');
+    await seedRole('chief', 'super_admin');
+    await seed((a) => setDoc(doc(a, 'chats', 'room_all'), { type: 'room', townId: 'all', name: 'All Akpafu', lastMessage: null }));
+    await seed((a) => setDoc(doc(a, 'chats', 'room_odomi', 'messages', 'm1'), { senderId: 'alice', text: 'hi', imageUrl: null, status: 'sent', createdAt: Timestamp.now() }));
+    // Someone from Todzi: not the Odomi room, but All Akpafu yes.
+    await assertFails(getDoc(doc(db('tod'), 'chats', 'room_odomi')));
+    await assertFails(getDocs(collection(db('tod'), 'chats', 'room_odomi', 'messages')));
+    await assertFails(ops.sendMessage(db('tod'), 'tod', 'room_odomi', 'Hello?', null));
+    await assertSucceeds(getDoc(doc(db('tod'), 'chats', 'room_all')));
+    await assertSucceeds(ops.sendMessage(db('tod'), 'tod', 'room_all', 'Hello everyone', null));
+    // The Super Admin sees every room.
+    await assertSucceeds(getDocs(collection(db('chief'), 'chats', 'room_odomi', 'messages')));
+    // A moderator from another town can open a single reported message, not the whole room.
+    await seedUser('mod2', 'sokpo');
+    await seedRole('mod2', 'moderator');
+    await assertSucceeds(getDoc(doc(db('mod2'), 'chats', 'room_odomi', 'messages', 'm1')));
+    await assertFails(getDocs(collection(db('mod2'), 'chats', 'room_odomi', 'messages')));
   });
 
   const befriend = async (a: string, b: string) => {
