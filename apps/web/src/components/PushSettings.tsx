@@ -127,7 +127,7 @@ export function PushSettingsCard() {
 
   return (
     <Card className="space-y-4 p-5">
-      <h2 className="text-base font-bold text-gray-900">Notifications</h2>
+      <h2 className="text-base font-bold text-gray-900">Phone notifications</h2>
       {info.isPending ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : info.isError ? (

@@ -53,7 +53,7 @@ async function register(page: Page, opts: { email: string; name: string; usernam
 }
 
 async function signOut(page: Page) {
-  await page.goto('/settings');
+  await page.goto('/settings/account');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/welcome/);
 }

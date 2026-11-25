@@ -30,7 +30,8 @@ test('notification prompt and choices', async ({ page }) => {
 
   // Settings: choose what to be notified about; it is saved for all devices.
   await page.goto('/settings');
-  await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: /Notifications/ }).click();
+  await expect(page.getByRole('heading', { name: 'Notifications', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Turn on notifications' })).toBeVisible({ timeout: 15_000 });
   const likes = page.getByRole('checkbox', { name: /Reactions and reposts/ });
   await expect(likes).toBeChecked();
@@ -46,4 +47,24 @@ test('notification prompt and choices', async ({ page }) => {
   await expect(page.getByRole('checkbox', { name: /Reactions and reposts/ })).not.toBeChecked();
   await expect(page.getByRole('radio', { name: 'All matches' })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: /Messages/ })).toBeChecked();
+});
+
+test('settings are grouped, and autoplay can be switched off', async ({ page }) => {
+  execFileSync('node', ['scripts/demo-data.mjs'], { stdio: 'ignore' });
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('kofi_mensah@example.com');
+  await page.getByLabel('Password').fill('demo-password-1');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  await page.goto('/settings');
+  const list = page.getByRole('navigation', { name: 'Settings' });
+  for (const name of ['Profile', 'Privacy', 'Notifications', 'Videos and data', 'Appearance', 'Help and feedback', 'Account']) {
+    await expect(list.getByRole('link', { name: new RegExp(name) })).toBeVisible();
+  }
+  await list.getByRole('link', { name: /Videos and data/ }).click();
+  const autoplay = page.getByRole('checkbox', { name: /Autoplay videos/ });
+  await expect(autoplay).toBeChecked();
+  await autoplay.uncheck();
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: /Autoplay videos/ })).not.toBeChecked();
 });

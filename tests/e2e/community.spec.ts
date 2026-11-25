@@ -46,7 +46,7 @@ async function recordTestVideo(page: Page): Promise<Buffer> {
 }
 
 async function signOut(page: Page) {
-  await page.goto('/settings');
+  await page.goto('/settings/account');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/welcome/);
 }

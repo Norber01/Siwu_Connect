@@ -111,11 +111,14 @@ test('Gen Z features', async ({ page }) => {
   await expect(page.getByRole('article', { name: 'Post' })).toHaveCount(1);
 
   // Bio + dark mode.
+  // Settings is a list of sections, like WhatsApp.
   await page.goto('/settings');
+  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: /Profile/ }).click();
   await page.getByLabel('Bio').fill('Proud daughter of Mempeasem 💚');
   await page.getByRole('button', { name: '🔥' }).click();
   await page.getByRole('button', { name: 'Save bio' }).click();
   await expect(page.getByText('Profile updated')).toBeVisible();
+  await page.goto('/settings/appearance');
   await page.getByRole('radio', { name: '🌙 Dark' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await page.getByRole('radio', { name: '☀️ Light' }).click();
@@ -123,7 +126,7 @@ test('Gen Z features', async ({ page }) => {
 });
 
 async function signOutAndCheckMention(page: Page) {
-  await page.goto('/settings');
+  await page.goto('/settings/account');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/welcome/);
   await signIn(page, 'kofi_mensah');

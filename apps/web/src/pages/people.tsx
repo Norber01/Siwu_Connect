@@ -19,7 +19,8 @@ import { formatPrice } from '../lib/util';
 import type { Profile } from '../lib/types';
 import { friendlyError } from '../lib/util';
 import { Feed } from '../components/Feed';
-import { Icon } from '../components/Icon';
+import { Icon, type IconName } from '../components/Icon';
+import { useAutoplay } from '../lib/autoplay';
 import { Menu, type MenuItem } from '../components/Menu';
 import { PostCard } from '../components/PostCard';
 import { type ProfileDraft, ProfileFields } from '../components/ProfileFields';
@@ -386,6 +387,7 @@ export function SearchPage() {
 }
 
 export function SettingsPage() {
+  const { section: sectionId } = useParams();
   const { user, profile, blocked } = useMe();
   const { signOut, setBlocked } = useAuth();
   const toast = useToast();
@@ -432,106 +434,184 @@ export function SettingsPage() {
     }
   };
 
+  const section = SETTINGS_SECTIONS.find((x) => x.id === sectionId);
+  const blockedCard = (
+    <Card className="p-5">
+      <h2 className="mb-2 text-base font-bold text-gray-900">Blocked people</h2>
+      {blocked.size === 0 ? (
+        <p className="text-sm text-gray-600">You haven't blocked anyone.</p>
+      ) : blockedList.isPending ? (
+        <PageSpinner />
+      ) : (
+        <ul className="divide-y divide-sand-100">
+          {(blockedList.data ?? []).map((p, i) => {
+            const uid = [...blocked][i]!;
+            return (
+              <li key={uid} className="flex items-center justify-between gap-3 py-2">
+                <span className="truncate text-sm">{p ? `${p.displayName} (@${p.username})` : 'Deleted account'}</span>
+                <Button
+                  variant="secondary"
+                  small
+                  onClick={async () => {
+                    try {
+                      await unblockUser(db, user.uid, uid);
+                      setBlocked(uid, false);
+                    } catch (e) {
+                      toast(friendlyError(e), 'error');
+                    }
+                  }}
+                >
+                  Unblock
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+
+  // Settings home: a WhatsApp-style list. Each row opens its own page.
+  if (!section) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Settings" back />
+        <Link to="/settings/profile" className="flex items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sand-200 hover:bg-sand-50">
+          <Avatar url={profile.photoUrl} name={profile.displayName} size={64} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-lg font-bold text-gray-900">{profile.displayName}</span>
+            <span className="block truncate text-sm text-gray-600">{profile.bio || `@${profile.username} · ${townName(profile.hometownId)}`}</span>
+          </span>
+          <Icon name="edit" className="h-5 w-5 shrink-0 text-gray-500" />
+        </Link>
+        <nav aria-label="Settings" className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-sand-200">
+          <ul className="divide-y divide-sand-100">
+            {SETTINGS_SECTIONS.map((x) => (
+              <li key={x.id}>
+                <Link to={`/settings/${x.id}`} className="flex items-center gap-4 px-4 py-3.5 hover:bg-sand-50">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-800">
+                    <Icon name={x.icon} className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-gray-900">{x.title}</span>
+                    <span className="block truncate text-sm text-gray-500">{x.sub}</span>
+                  </span>
+                  <span aria-hidden className="text-gray-400">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="flex justify-center">
+          <InviteButton />
+        </div>
+        <p className="pb-4 text-center text-xs text-gray-500">Siwu Connect · Five towns, one community</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" back />
-      <Card className="p-5">
-        <h2 className="mb-4 text-base font-bold text-gray-900">Profile</h2>
-        {profile.status === 'active' ? (
-          <form onSubmit={save} className="space-y-5" noValidate>
-            <p className="text-sm text-gray-600">
-              Username: <strong>@{profile.username}</strong> (cannot be changed)
-            </p>
-            <ProfileFields draft={draft} set={(patch) => setDraft((d) => ({ ...d, ...patch }))} errors={errors} />
-            <Button type="submit" busy={busy}>
-              Save profile
+      <PageHeader title={section.title} back />
+      {section.id === 'profile' && (
+        <>
+          <Card className="p-5">
+            <h2 className="mb-4 text-base font-bold text-gray-900">Profile</h2>
+            {profile.status === 'active' ? (
+              <form onSubmit={save} className="space-y-5" noValidate>
+                <p className="text-sm text-gray-600">
+                  Username: <strong>@{profile.username}</strong> (cannot be changed)
+                </p>
+                <ProfileFields draft={draft} set={(patch) => setDraft((d) => ({ ...d, ...patch }))} errors={errors} />
+                <Button type="submit" busy={busy}>
+                  Save profile
+                </Button>
+              </form>
+            ) : (
+              <Alert kind="warning">Your account is suspended, so your profile cannot be edited.</Alert>
+            )}
+          </Card>
+          <BioCard />
+          <ExtrasCard />
+        </>
+      )}
+      {section.id === 'privacy' && (
+        <>
+          <ActivityCard />
+          {blockedCard}
+        </>
+      )}
+      {section.id === 'notifications' && <PushSettingsCard />}
+      {section.id === 'media' && <AutoplayCard />}
+      {section.id === 'appearance' && (
+        <Card className="p-5">
+          <h2 className="mb-2 text-base font-bold text-gray-900">Theme</h2>
+          <ThemePicker />
+        </Card>
+      )}
+      {section.id === 'help' && (
+        <Card className="space-y-3 p-5">
+          <p className="text-sm text-gray-600">You're one of the first members. Tell us what to improve, and invite family and friends.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" icon="message" onClick={() => setFeedbackOpen(true)}>
+              Send feedback
             </Button>
-          </form>
-        ) : (
-          <Alert kind="warning">Your account is suspended, so your profile cannot be edited.</Alert>
-        )}
-      </Card>
-      <PushSettingsCard />
-
-      <BioCard />
-
-      <ActivityCard />
-
-      <ExtrasCard />
-
-      <Card className="p-5">
-        <h2 className="mb-2 text-base font-bold text-gray-900">Appearance</h2>
-        <ThemePicker />
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="mb-2 text-base font-bold text-gray-900">Blocked users</h2>
-        {blocked.size === 0 ? (
-          <p className="text-sm text-gray-600">You haven't blocked anyone.</p>
-        ) : blockedList.isPending ? (
-          <PageSpinner />
-        ) : (
-          <ul className="divide-y divide-sand-100">
-            {(blockedList.data ?? []).map((p, i) => {
-              const uid = [...blocked][i]!;
-              return (
-                <li key={uid} className="flex items-center justify-between gap-3 py-2">
-                  <span className="truncate text-sm">{p ? `${p.displayName} (@${p.username})` : 'Deleted account'}</span>
-                  <Button
-                    variant="secondary"
-                    small
-                    onClick={async () => {
-                      try {
-                        await unblockUser(db, user.uid, uid);
-                        setBlocked(uid, false);
-                      } catch (e) {
-                        toast(friendlyError(e), 'error');
-                      }
-                    }}
-                  >
-                    Unblock
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <Card className="space-y-3 p-5">
-        <h2 className="text-base font-bold text-gray-900">Help Siwu Connect grow</h2>
-        <p className="text-sm text-gray-600">You're one of the first members. Invite family and friends, and tell us what to improve.</p>
-        <div className="flex flex-wrap gap-2">
-          <InviteButton />
-          <Button variant="secondary" icon="message" onClick={() => setFeedbackOpen(true)}>
-            Send feedback
-          </Button>
-          <Button variant="ghost" icon="towns" onClick={() => navigate('/towns')}>
-            Browse towns
-          </Button>
-        </div>
-      </Card>
-
-      <Card className="space-y-3 p-5">
-        <h2 className="text-base font-bold text-gray-900">Account</h2>
-        <p className="text-sm text-gray-600">Signed in as {user.email ?? 'Google account'}</p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={async () => { await signOut(); navigate('/welcome'); }}>
-            Sign out
-          </Button>
-          <Button variant="ghost" className="text-red-700" onClick={() => setDeleteOpen(true)}>
-            Delete my account
-          </Button>
-        </div>
-        <p className="text-sm">
-          <Link to="/rules" className="text-brand-800 underline">Community rules</Link> ·{' '}
-          <Link to="/privacy" className="text-brand-800 underline">Privacy notice</Link>
-        </p>
-      </Card>
+            <InviteButton />
+            <Button variant="ghost" icon="towns" onClick={() => navigate('/towns')}>
+              Browse towns
+            </Button>
+          </div>
+          <p className="text-sm">
+            <Link to="/rules" className="text-brand-800 underline">Community rules</Link> ·{' '}
+            <Link to="/privacy" className="text-brand-800 underline">Privacy notice</Link>
+          </p>
+        </Card>
+      )}
+      {section.id === 'account' && (
+        <Card className="space-y-3 p-5">
+          <p className="text-sm text-gray-600">Signed in as {user.email ?? 'Google account'}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={async () => { await signOut(); navigate('/welcome'); }}>
+              Sign out
+            </Button>
+            <Button variant="ghost" className="text-red-700" onClick={() => setDeleteOpen(true)}>
+              Delete my account
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <DeleteAccountDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} username={profile.username} />
       <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
+  );
+}
+
+const SETTINGS_SECTIONS: { id: string; title: string; sub: string; icon: IconName }[] = [
+  { id: 'profile', title: 'Profile', sub: 'Name, photo, hometown, bio, birthday, "I\'m home"', icon: 'user' },
+  { id: 'privacy', title: 'Privacy', sub: 'Active status, blocked people', icon: 'shield' },
+  { id: 'notifications', title: 'Notifications', sub: 'Messages, friends, matches, news', icon: 'bell' },
+  { id: 'media', title: 'Videos and data', sub: 'Autoplay videos', icon: 'play' },
+  { id: 'appearance', title: 'Appearance', sub: 'Light or dark', icon: 'eye' },
+  { id: 'help', title: 'Help and feedback', sub: 'Send feedback, community rules, privacy', icon: 'message' },
+  { id: 'account', title: 'Account', sub: 'Email, sign out, delete account', icon: 'settings' },
+];
+
+function AutoplayCard() {
+  const [on, setOn] = useAutoplay();
+  return (
+    <Card className="p-5">
+      <label className="flex items-start gap-3">
+        <input type="checkbox" className="mt-1 h-5 w-5 accent-brand-600" checked={on} onChange={(e) => setOn(e.target.checked)} />
+        <span>
+          <span className="block font-semibold text-gray-900">Autoplay videos</span>
+          <span className="block text-sm text-gray-600">
+            Videos in the feed start playing (without sound) when you scroll to them. Turn this off to save data — then tap a
+            video to play it. On slow connections a lighter copy is used. This setting is for this phone only.
+          </span>
+        </span>
+      </label>
+    </Card>
   );
 }
 

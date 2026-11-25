@@ -121,6 +121,7 @@ export function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/saved" element={<SavedPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/:section" element={<SettingsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/chat" element={<ChatListPage />} />
           <Route path="/chat/:chatId" element={<ChatRoomPage />} />

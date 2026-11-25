@@ -998,7 +998,12 @@ export function SendToChatDialog({
     let sent = 0;
     try {
       for (const id of picked) {
-        await sendMessage(db, user.uid, id, note.trim().slice(0, 500), null, null, { post });
+        const go = () => sendMessage(db, user.uid, id, note.trim().slice(0, 500), null, null, { post });
+        // Chat allows one message per second: if you just sent one, wait a moment and try again.
+        await go().catch(async () => {
+          await new Promise((r) => setTimeout(r, 1300));
+          await go();
+        });
         sent++;
         if (sent < picked.length) await new Promise((r) => setTimeout(r, 1100)); // one message per second
       }

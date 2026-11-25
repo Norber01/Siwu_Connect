@@ -1,3 +1,4 @@
+import { autoplayOn } from '../lib/autoplay';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EXTRA_LIMITS } from '@siwu/shared';
 import { compressVideo } from '../lib/compress-video';
@@ -340,7 +341,6 @@ export function FeedVideo({ m, single }: { m: MediaItem; single: boolean }) {
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
     const io = new IntersectionObserver(
       ([e]) => {
         if (!e) return;
@@ -351,8 +351,9 @@ export function FeedVideo({ m, single }: { m: MediaItem; single: boolean }) {
           }
           return;
         }
-        // Plays muted when on screen, unless the phone is set to save data or the person paused it.
-        if (e.intersectionRatio >= 0.8 && !saveData && !userPaused.current && v.paused && (!playing || playing === v || playing.paused)) {
+        // Plays muted when on screen, unless switched off in Settings or the person paused it. On slow data the light
+        // 360p copy is used.
+        if (e.intersectionRatio >= 0.8 && autoplayOn() && !userPaused.current && v.paused && (!playing || playing === v || playing.paused)) {
           void v.play().catch(() => {});
         }
       },
