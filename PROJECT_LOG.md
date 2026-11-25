@@ -197,6 +197,11 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   - Pilot goal changed to 3 testers per town (15, above Google's 12).
   - Fixed: when fresh posts replaced the copy saved on the phone, or the pinned posts arrived a moment later,
     posts were rebuilt, so a just-opened menu or "Send in chat" window closed. Posts now update in place.
+- **One Moderator and one Assistant moderator for all towns** (founder's decision):
+  - New role **Assistant moderator**, with the same powers as the Moderator: review reports, remove content and approve
+    listings in every town. Neither can post announcements or suspend members.
+  - Only one person can hold each of these roles; the API refuses a second one with "There is already a Moderator
+    (@name). Remove their role first." Town admins are still per town. Rules changed → **Run setup again**.
 
 ## Phase 1 acceptance criteria (brief §13) — status in the local test environment
 | Criterion | Status |
@@ -269,7 +274,7 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
 - Author names on posts are loaded per author (cached 5 min) — fine at pilot scale; revisit if reads grow.
 - Email verification is sent but not required to post.
 - Production build warns about the Firebase chunk size (≈110 KB gzip); it is cached after the first visit.
-- Moderators can see "Users" only if they are Town/Super Admins (Moderators cannot suspend, by design).
+- The Moderator and Assistant moderator don't see "Users" (they cannot suspend, by design); Town/Super Admins do.
 
 ## Next steps
 1. Founder creates Firebase + Cloudflare accounts → deploy **staging** following `docs/DEPLOYMENT.md`.

@@ -59,13 +59,17 @@ export type ReportReason = (typeof REPORT_REASONS)[number]['id'];
 export const REPORT_TARGET_TYPES = ['post', 'comment', 'user', 'event', 'listing', 'message', 'story', 'directory'] as const;
 export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
 
-export const ROLES = ['super_admin', 'town_admin', 'moderator', 'reporter'] as const;
+export const ROLES = ['super_admin', 'town_admin', 'moderator', 'assistant_moderator', 'reporter'] as const;
 export type Role = (typeof ROLES)[number];
+
+/** Roles that cover every town and of which there is only one person each (founder decision, 2026-11-25). */
+export const SINGLE_ALL_TOWN_ROLES = ['moderator', 'assistant_moderator'] as const;
 
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: 'Super Admin',
   town_admin: 'Town Admin',
   moderator: 'Moderator',
+  assistant_moderator: 'Assistant moderator',
   reporter: 'Sports reporter',
 };
 

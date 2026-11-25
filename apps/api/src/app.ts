@@ -16,6 +16,8 @@ import {
   moderationNoteSchema,
   pinSchema,
   resolveReportSchema,
+  SINGLE_ALL_TOWN_ROLES,
+  ROLE_LABELS,
 } from '@siwu/shared';
 import { type Caller, deleteAuthUser, verifyIdToken } from './auth';
 import { runSetup, setupStatus } from './setup';
@@ -1021,7 +1023,14 @@ export function createApp() {
     const targetUid = name!.data.uid;
     const current = await roleOf(fs, targetUid);
     if (isSuperAdmin(current) && input.role !== 'super_admin') await assertNotLastSuper(fs);
-    const townIds = input.role === 'super_admin' ? [] : input.townIds;
+    // Moderator and Assistant moderator cover all towns, and there is only one of each.
+    if ((SINGLE_ALL_TOWN_ROLES as readonly string[]).includes(input.role)) {
+      const holders = await fs.query<{ username?: string }>({ collection: 'admin_roles', where: [['role', 'EQUAL', input.role]], limit: 2 });
+      const other = holders.find((h) => h.id !== targetUid);
+      if (other)
+        fail(409, `There is already a ${ROLE_LABELS[input.role]}${other.data.username ? ` (@${other.data.username})` : ''}. Remove their role first.`);
+    }
+    const townIds = input.role === 'super_admin' || (SINGLE_ALL_TOWN_ROLES as readonly string[]).includes(input.role) ? [] : input.townIds;
     const path = `admin_roles/${targetUid}`;
     await fs.commit([
       { kind: 'set', path, data: { role: input.role, townIds, username: input.username, grantedBy: c.get('uid'), grantedAt: FieldValue.serverTimestamp() } },

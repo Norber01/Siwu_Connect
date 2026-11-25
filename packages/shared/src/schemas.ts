@@ -117,7 +117,7 @@ export const grantRoleSchema = z
     role: z.enum(ROLES),
     townIds: z.array(townIdSchema).max(TOWN_IDS.length).default([]),
   })
-  .refine((v) => v.role === 'super_admin' || v.role === 'reporter' || v.townIds.length > 0, {
+  .refine((v) => v.role !== 'town_admin' || v.townIds.length > 0, {
     message: 'Choose at least one town for this role',
     path: ['townIds'],
   });

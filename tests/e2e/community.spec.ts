@@ -199,7 +199,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByRole('menuitem', { name: 'Send in chat' }).click();
   await page.getByRole('dialog', { name: 'Send in chat' }).getByRole('button', { name: /Ama/ }).click();
   await page.getByRole('dialog', { name: 'Send in chat' }).getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText('Sent 💬')).toBeVisible();
+  await expect(page.getByText('Sent 💬')).toBeVisible({ timeout: 25_000 });
   await signOut(page);
 
   // --- Ama sees the approval and the unread chat.

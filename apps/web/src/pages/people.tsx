@@ -201,7 +201,7 @@ export function ProfilePage() {
                 <span className="text-xs text-gray-700">
                   Only a Super Admin{p.hometownId ? ` or the Town Admin for ${townName(p.hometownId)}` : ''} can verify this member. You are signed in as{' '}
                   <strong>{role ? ROLE_LABELS[role.role] : ''}</strong>
-                  {role && role.role !== 'super_admin' && role.townIds.length > 0 && ` for ${role.townIds.map(townName).join(', ')}`}.
+                  {role && role.role === 'town_admin' && role.townIds.length > 0 && ` for ${role.townIds.map(townName).join(', ')}`}.
                 </span>
               )}
             </div>

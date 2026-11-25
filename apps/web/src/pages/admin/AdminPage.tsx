@@ -65,8 +65,9 @@ export function AdminPage() {
       </EmptyState>
     );
   const superAdmin = isSuperAdmin(role);
-  const showAnnouncements = role.role !== 'moderator';
-  const showUsers = role.role !== 'moderator';
+  const moderatorRole = role.role === 'moderator' || role.role === 'assistant_moderator';
+  const showAnnouncements = !moderatorRole;
+  const showUsers = !moderatorRole;
 
   const tabs = [
     { to: 'reports', label: 'Reports' },
@@ -89,7 +90,7 @@ export function AdminPage() {
       <PageHeader title="Admin" />
       <p className="text-sm text-gray-600">
         Signed in as <strong>{ROLE_LABELS[role.role]}</strong>
-        {role.role !== 'super_admin' && <> for {role.townIds.map(townName).join(', ')}</>}. Every action here is recorded in
+        {role.role === 'town_admin' ? <> for {role.townIds.map(townName).join(', ')}</> : <> for all towns</>}. Every action here is recorded in
         the audit log.
       </p>
       <nav className="-mx-4 overflow-x-auto px-4" aria-label="Admin sections">
@@ -904,7 +905,7 @@ function RolesTab() {
 
   const grant = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = grantRoleSchema.safeParse({ username: username.replace(/^@/, ''), role, townIds: role === 'super_admin' ? [] : towns });
+    const parsed = grantRoleSchema.safeParse({ username: username.replace(/^@/, ''), role, townIds: role === 'super_admin' || role === 'moderator' || role === 'assistant_moderator' ? [] : towns });
     if (!parsed.success) {
       setError(parsed.error.issues[0]!.message);
       return;
@@ -946,7 +947,7 @@ function RolesTab() {
               </option>
             ))}
           </SelectField>
-          {role !== 'super_admin' && (
+          {role !== 'super_admin' && role !== 'moderator' && role !== 'assistant_moderator' && (
             <fieldset>
               <legend className="mb-2 text-sm font-medium text-gray-800">
                 Towns{role === 'reporter' && ' (the reporter covers matches involving these towns; leave empty for all towns)'}
@@ -968,7 +969,7 @@ function RolesTab() {
           )}
           <p className="text-xs text-gray-600">
             Super Admins can do everything in all towns. Town Admins moderate, announce, pin and suspend in their towns.
-            Moderators review reports and remove content in their towns. Sports reporters add matches and live scores — for their towns, or for all towns if none are chosen.
+            There is one Moderator and one Assistant moderator: both review reports, remove content and approve listings in all towns. Sports reporters add matches and live scores — for their towns, or for all towns if none are chosen.
           </p>
           {error && <Alert>{error}</Alert>}
           <Button type="submit" busy={busy}>
@@ -991,7 +992,7 @@ function RolesTab() {
                   {r.uid === user.uid && <span className="text-gray-600"> (you)</span>}
                   <span className="block text-xs text-gray-600">
                     {ROLE_LABELS[r.role]}
-                    {r.role !== 'super_admin' && r.role !== 'reporter' && ` · ${r.townIds.map(townName).join(', ')}`}
+                    {r.townIds.length > 0 && (r.role === 'town_admin' || r.role === 'reporter') ? ` · ${r.townIds.map(townName).join(', ')}` : ' · all towns'}
                   </span>
                 </div>
                 <Button small variant="ghost" className="text-red-700" onClick={() => revoke(r.uid)}>

@@ -5,7 +5,8 @@ import type { Role } from './constants';
  *  - Super Admin: everything a Town Admin or Moderator can do, in every town,
  *    plus roles, platform settings, town configuration and the audit log.
  *  - Town Admin: moderation, announcements, pins and suspensions in assigned towns.
- *  - Moderator: review reports and remove/restore content in assigned towns.
+ *  - Moderator and Assistant moderator (one each, founder decision 2026-11-25): review reports, remove/restore
+ *    content and approve listings in every town. Same powers; the Moderator leads.
  *  - Sports reporter: create matches and post live score updates (no moderation powers).
  *
  * The same rules are mirrored in firestore.rules and enforced in the Worker.
@@ -19,7 +20,7 @@ export interface AdminRole {
 export const isSuperAdmin = (r: AdminRole | null | undefined): boolean => r?.role === 'super_admin';
 
 function inScope(r: AdminRole, townId: string): boolean {
-  if (r.role === 'super_admin') return true;
+  if (r.role === 'super_admin' || r.role === 'moderator' || r.role === 'assistant_moderator') return true;
   if (r.role === 'reporter') return false;
   return r.townIds.includes(townId);
 }

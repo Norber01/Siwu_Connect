@@ -37,11 +37,13 @@ service cloud.firestore {
     function canModerate(townId) {
       return hasRole()
         && (get(rolePath()).data.role == 'super_admin'
-            || (get(rolePath()).data.role in ['town_admin', 'moderator'] && townId in get(rolePath()).data.townIds));
+            // One Moderator and one Assistant moderator cover every town.
+            || get(rolePath()).data.role in ['moderator', 'assistant_moderator']
+            || (get(rolePath()).data.role == 'town_admin' && townId in get(rolePath()).data.townIds));
     }
     // Admins (not sports reporters): Super Admin, Town Admin, Moderator.
     function isStaff() {
-      return hasRole() && get(rolePath()).data.role in ['super_admin', 'town_admin', 'moderator'];
+      return hasRole() && get(rolePath()).data.role in ['super_admin', 'town_admin', 'moderator', 'assistant_moderator'];
     }
     // Sports reporters and every admin role may manage matches.
     function canReportSports() { return hasRole(); }

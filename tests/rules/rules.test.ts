@@ -352,8 +352,8 @@ describe('reports', () => {
     await seedUser('mod');
     await seedUser('modtodzi');
     await seedUser('boss');
-    await seedRole('mod', 'moderator', ['odomi']);
-    await seedRole('modtodzi', 'moderator', ['todzi']);
+    await seedRole('mod', 'town_admin', ['odomi']);
+    await seedRole('modtodzi', 'town_admin', ['todzi']);
     await seedRole('boss', 'super_admin');
     await seedPost('p1', 'alice');
   });
@@ -398,6 +398,18 @@ describe('reports', () => {
     await assertSucceeds(getDoc(doc(db('mod'), 'posts', 'p9')));
     await assertFails(getDoc(doc(db('modtodzi'), 'posts', 'p9')));
     await assertSucceeds(getDoc(doc(db('boss'), 'posts', 'p9')));
+  });
+});
+
+describe('moderator roles', () => {
+  it('the Moderator and Assistant moderator review reports in every town', async () => {
+    await seedUser('amod');
+    await seedRole('amod', 'assistant_moderator', []);
+    await seedUser('xmod');
+    await seedRole('xmod', 'moderator', []);
+    await seed((a) => setDoc(doc(a, 'reports', 'r1'), { reporterId: 'x', targetType: 'post', targetId: 'p1', targetPath: 'posts/p1', townId: 'sokpo', reason: 'spam', details: '', status: 'open', createdAt: Timestamp.now() }));
+    await assertSucceeds(getDoc(doc(db('amod'), 'reports', 'r1')));
+    await assertSucceeds(getDoc(doc(db('xmod'), 'reports', 'r1')));
   });
 });
 

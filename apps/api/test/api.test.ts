@@ -210,18 +210,34 @@ describe('announcements', () => {
 
 describe('roles', () => {
   it('only super admins grant and revoke roles', async () => {
-    expect((await call('POST', '/admin/roles', 'mod', { username: 'alice', role: 'moderator', townIds: ['odomi'] })).status).toBe(403);
-    expect((await call('POST', '/admin/roles', 'boss', { username: 'alice', role: 'moderator', townIds: ['odomi'] })).status).toBe(200);
-    expect((await fs().get<{ role: string }>('admin_roles/alice'))!.data.role).toBe('moderator');
-    expect((await call('POST', '/admin/roles', 'boss', { username: 'nobody', role: 'moderator', townIds: ['odomi'] })).status).toBe(404);
+    expect((await call('POST', '/admin/roles', 'mod', { username: 'alice', role: 'town_admin', townIds: ['odomi'] })).status).toBe(403);
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'alice', role: 'town_admin', townIds: ['odomi'] })).status).toBe(200);
+    expect((await fs().get<{ role: string }>('admin_roles/alice'))!.data.role).toBe('town_admin');
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'nobody', role: 'town_admin', townIds: ['odomi'] })).status).toBe(404);
     expect((await call('DELETE', '/admin/roles/alice', 'boss')).status).toBe(200);
     expect(await fs().get('admin_roles/alice')).toBeNull();
     expect(await auditActions()).toEqual(expect.arrayContaining(['role.grant', 'role.revoke']));
   });
 
+  it('one Moderator and one Assistant moderator, both for all towns', async () => {
+    // 'mod' is already the Moderator.
+    const dup = await call('POST', '/admin/roles', 'boss', { username: 'alice', role: 'moderator', townIds: [] });
+    expect(dup.status).toBe(409);
+    expect(((await dup.json()) as { error: string }).error).toMatch(/already a Moderator/);
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'alice', role: 'assistant_moderator', townIds: ['odomi'] })).status).toBe(200);
+    expect((await fs().get<{ role: string; townIds: string[] }>('admin_roles/alice'))!.data).toMatchObject({ role: 'assistant_moderator', townIds: [] });
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'bob', role: 'assistant_moderator', townIds: [] })).status).toBe(409);
+    // Re-saving the same person is fine; a town admin still needs towns.
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'alice', role: 'assistant_moderator', townIds: [] })).status).toBe(200);
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'bob', role: 'town_admin', townIds: [] })).status).toBe(400);
+    // The assistant moderates in every town (approvals in Todzi, for example).
+    await fs().commit([{ kind: 'set', path: 'listings/la', data: { sellerId: 'bob', townId: 'todzi', title: 'Goat', status: 'pending' } }]);
+    expect((await call('POST', '/admin/listings/la/approve', 'alice', {})).status).toBe(200);
+  });
+
   it('the last super admin cannot be removed or demoted', async () => {
     expect((await call('DELETE', '/admin/roles/boss', 'boss')).status).toBe(409);
-    expect((await call('POST', '/admin/roles', 'boss', { username: 'boss', role: 'moderator', townIds: ['odomi'] })).status).toBe(409);
+    expect((await call('POST', '/admin/roles', 'boss', { username: 'boss', role: 'town_admin', townIds: ['odomi'] })).status).toBe(409);
   });
 });
 

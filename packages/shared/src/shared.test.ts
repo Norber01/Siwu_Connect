@@ -46,8 +46,10 @@ describe('schemas', () => {
     expect(postSchema.safeParse({ townId: 'accra', text: 'x', visibility: 'akpafu' }).success).toBe(false);
     expect(postSchema.safeParse({ townId: 'todzi', text: 'x'.repeat(2001), visibility: 'town' }).success).toBe(false);
   });
-  it('requires towns for scoped roles', () => {
-    expect(grantRoleSchema.safeParse({ username: 'ama', role: 'moderator', townIds: [] }).success).toBe(false);
+  it('requires towns for town admins only', () => {
+    expect(grantRoleSchema.safeParse({ username: 'ama', role: 'town_admin', townIds: [] }).success).toBe(false);
+    expect(grantRoleSchema.safeParse({ username: 'ama', role: 'moderator', townIds: [] }).success).toBe(true);
+    expect(grantRoleSchema.safeParse({ username: 'ama', role: 'assistant_moderator', townIds: [] }).success).toBe(true);
     expect(grantRoleSchema.safeParse({ username: 'ama', role: 'super_admin' }).success).toBe(true);
   });
 });
@@ -55,7 +57,8 @@ describe('schemas', () => {
 describe('permissions', () => {
   const superAdmin = { role: 'super_admin' as const, townIds: [] };
   const townAdmin = { role: 'town_admin' as const, townIds: ['odomi'] };
-  const mod = { role: 'moderator' as const, townIds: ['odomi', 'todzi'] };
+  const mod = { role: 'moderator' as const, townIds: [] };
+  const assistant = { role: 'assistant_moderator' as const, townIds: [] };
 
   it('super admin can do everything everywhere', () => {
     for (const t of ['odomi', 'mempeasem', 'todzi', 'adokor', 'sokpo']) {
@@ -71,11 +74,13 @@ describe('permissions', () => {
     expect(canAnnounce(townAdmin, 'all')).toBe(false);
     expect(canSuspend(townAdmin, 'adokor')).toBe(false);
   });
-  it('moderator moderates assigned towns but cannot announce or suspend', () => {
-    expect(canModerate(mod, 'todzi')).toBe(true);
-    expect(canModerate(mod, 'adokor')).toBe(false);
-    expect(canAnnounce(mod, 'odomi')).toBe(false);
-    expect(canSuspend(mod, 'odomi')).toBe(false);
+  it('moderator and assistant moderate every town but cannot announce or suspend', () => {
+    for (const r of [mod, assistant]) {
+      expect(canModerate(r, 'todzi')).toBe(true);
+      expect(canModerate(r, 'adokor')).toBe(true);
+      expect(canAnnounce(r, 'odomi')).toBe(false);
+      expect(canSuspend(r, 'odomi')).toBe(false);
+    }
   });
   it('no role means no access', () => {
     expect(canModerate(null, 'odomi')).toBe(false);
