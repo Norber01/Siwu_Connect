@@ -207,6 +207,10 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   working, so existing links, installed apps and photos/videos posted earlier still load. The setup version now
   includes the website addresses, so a new address shows the "Run setup again" banner (it allows the address for
   sign-in). The live check (`scripts/check-live.mjs`) now checks the new addresses by default.
+- **Google sign-in on our own address**: the site passes `/__/auth/*` and `/__/firebase/*` through to
+  siwu-connect-cadd9.firebaseapp.com and the app uses authDomain `siwuconnect.com`, so the sign-in window shows
+  siwuconnect.com. The founder added `https://siwuconnect.com/__/auth/handler` to the OAuth client's redirect URIs and
+  set the consent-screen app name to "Siwu Connect".
 - **Phone and computer notifications (Web Push)**, sent straight from the API Worker (no Firebase Messaging, no extra
   cost): encryption per RFC 8291 (checked byte-for-byte against the RFC's example) and VAPID per RFC 8292.
   - What notifies: private/group messages and story replies (not town rooms), friend requests/accepted, "I'm home"
