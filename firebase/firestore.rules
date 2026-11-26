@@ -387,7 +387,14 @@ service cloud.firestore {
               || canModerate(resource.data.townId));
 
         allow create: if isActive()
-          && exactKeys(['authorId', 'townId', 'text', 'status', 'createdAt'])
+          && d().keys().hasAll(['authorId', 'townId', 'text', 'status', 'createdAt'])
+          && d().keys().hasOnly(['authorId', 'townId', 'text', 'status', 'createdAt', 'replyTo', 'replyToUid'])
+          // A reply belongs to a top-level comment on the same post (one level of replies, like Facebook).
+          && (!('replyTo' in d())
+              || (str(d().replyTo, 1, 40) && str(d().replyToUid, 1, 128)
+                  && get(commentPath(postId, d().replyTo)).data.status == 'published'
+                  && get(commentPath(postId, d().replyTo)).data.get('replyTo', null) == null))
+          && (!('replyToUid' in d()) || 'replyTo' in d())
           && d().authorId == me()
           && d().townId == get(postPath(postId)).data.townId
           && str(d().text, 1, 1000)
@@ -402,13 +409,23 @@ service cloud.firestore {
 
         // Author deletes their own comment (soft delete). If the post is still
         // published the counter must go down in the same batch.
-        allow update: if signedIn() && resource.data.authorId == me()
+        allow update: if (signedIn() && resource.data.authorId == me()
           && resource.data.status == 'published'
           && changed().hasOnly(['status', 'text'])
           && d().status == 'deleted' && d().text == ''
           && (get(postPath(postId)).data.status != 'published'
               || (getAfter(postPath(postId)).data.commentCount == get(postPath(postId)).data.commentCount - 1
-                  && getAfter(postPath(postId)).data.lastCommentOp == {'id': cid, 'op': 'remove'}));
+                  && getAfter(postPath(postId)).data.lastCommentOp == {'id': cid, 'op': 'remove'})))
+          // Like or unlike a comment: only the caller's own name is added to or taken from the list.
+          || (isActive() && resource.data.status == 'published'
+            && changed().hasOnly(['likedBy'])
+            && d().likedBy is list && d().likedBy.size() <= 5000
+            && ((!(me() in resource.data.get('likedBy', []))
+                  && d().likedBy.size() == resource.data.get('likedBy', []).size() + 1
+                  && d().likedBy.toSet() == resource.data.get('likedBy', []).toSet().union([me()].toSet()))
+                || (me() in resource.data.get('likedBy', [])
+                  && d().likedBy.size() == resource.data.get('likedBy', []).size() - 1
+                  && d().likedBy.toSet() == resource.data.get('likedBy', []).toSet().difference([me()].toSet()))));
 
         allow delete: if false;
       }
@@ -433,6 +450,11 @@ service cloud.firestore {
               && get(postPath(d().postId)).data.authorId == uid
               && !exists(commentPath(d().postId, d().commentId))
               && getAfter(commentPath(d().postId, d().commentId)).data.authorId == me())
+            // Reply to the member's comment.
+            || (d().type == 'reply' && nid == 'reply_' + d().commentId
+              && !exists(commentPath(d().postId, d().commentId))
+              && getAfter(commentPath(d().postId, d().commentId)).data.authorId == me()
+              && getAfter(commentPath(d().postId, d().commentId)).data.get('replyToUid', '') == uid)
             // @mention in a brand-new post written by the caller.
             || (d().type == 'mention' && nid == 'mention_' + d().postId && d().commentId == null
               && !exists(postPath(d().postId))

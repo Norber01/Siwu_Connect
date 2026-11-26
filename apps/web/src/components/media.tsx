@@ -1,3 +1,4 @@
+import { useCrop } from './Cropper';
 import { autoplayOn } from '../lib/autoplay';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EXTRA_LIMITS } from '@siwu/shared';
@@ -215,13 +216,18 @@ export function MediaPicker({
     }
   };
 
-  const pick = (files: FileList | null) => {
+  const crop = useCrop();
+  const pick = async (files: FileList | null) => {
     setError(null);
     if (!files?.length) return;
     const list = [...files];
-    if (list.length > room) setError(`You can add ${EXTRA_LIMITS.mediaPerPost} photos or videos per post.`);
-    list.slice(0, Math.max(0, room)).forEach((f) => void addFile(f));
     if (input.current) input.current.value = '';
+    if (list.length > room) setError(`You can add ${EXTRA_LIMITS.mediaPerPost} photos or videos per post.`);
+    // Each photo can be cropped first (videos go straight up).
+    for (const f of list.slice(0, Math.max(0, room))) {
+      const file = await crop(f, { shapes: ['original', 'square', 'portrait', 'wide'] });
+      if (file) void addFile(file);
+    }
   };
 
   return (
@@ -304,7 +310,7 @@ export function MediaPicker({
         multiple
         className="sr-only"
         aria-label="Choose photos or videos"
-        onChange={(e) => pick(e.target.files)}
+        onChange={(e) => void pick(e.target.files)}
       />
       <p className="mt-1 text-xs text-gray-600">Up to 4 photos or videos (videos up to 3 minutes).</p>
       {error && <p className="mt-1 text-sm text-red-700">{error}</p>}

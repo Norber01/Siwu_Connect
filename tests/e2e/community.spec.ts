@@ -100,6 +100,10 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.goto('/market');
   await page.getByRole('link', { name: 'Sell' }).click();
   await page.getByLabel('Choose photo').setInputFiles('apps/web/public/icon-512.png');
+  // Crop the photo first (try a shape, then Done).
+  await expect(page.getByRole('dialog', { name: 'Crop photo' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Square' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('button', { name: 'Change' })).toBeVisible();
   await page.getByLabel('What are you selling?').fill(`Kente cloth ${tag}`);
   await page.getByLabel('Category').selectOption('clothing');
@@ -126,6 +130,7 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
     { name: 'photo.png', mimeType: 'image/png', buffer: readFileSync('apps/web/public/icon-512.png') },
     { name: 'clip.webm', mimeType: 'video/webm', buffer: webm },
   ]);
+  await page.getByRole('button', { name: 'Done' }).click(); // crop screen for the photo; the video goes straight up
   await expect(page.getByRole('button', { name: 'Remove' })).toHaveCount(2, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Post', exact: true }).click();
   await expect(page.getByText('Your post is live.')).toBeVisible();

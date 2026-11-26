@@ -6,10 +6,11 @@ import { useMe } from '../auth/AuthProvider';
 import { api } from '../lib/api';
 import { db } from '../lib/firebase';
 import { useProfileById } from '../lib/hooks';
-import { addComment, deleteComment } from '../lib/ops';
+import { addComment, deleteComment, setCommentLike } from '../lib/ops';
 import { fetchComments } from '../lib/queries';
 import type { Comment, Post } from '../lib/types';
 import { friendlyError, isPermissionDenied, timeAgo } from '../lib/util';
+import { Icon } from './Icon';
 import { Menu, type MenuItem } from './Menu';
 import { RichText } from './PostCard';
 import { ReportDialog } from './ReportDialog';
@@ -27,6 +28,8 @@ export function Comments({ post, canComment, sheet = false }: { post: Post; canC
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Replying to a comment (the reply goes under its top-level comment).
+  const [replying, setReplying] = useState<{ to: string; uid: string; name: string } | null>(null);
   const q = useQuery({ queryKey: ['comments', post.id, max], queryFn: () => fetchComments(post.id, max) });
 
   const refresh = () => {
@@ -45,8 +48,9 @@ export function Comments({ post, canComment, sheet = false }: { post: Post; canC
     setBusy(true);
     setError(null);
     try {
-      await addComment(db, user.uid, post, parsed.data);
+      await addComment(db, user.uid, post, parsed.data, replying ? { to: replying.to, uid: replying.uid } : null);
       setText('');
+      setReplying(null);
       refresh();
     } catch (err) {
       setError(
@@ -60,9 +64,28 @@ export function Comments({ post, canComment, sheet = false }: { post: Post; canC
   };
 
   const comments = (q.data ?? []).filter((c) => !blocked.has(c.authorId));
+  // Top-level comments, each followed by its replies (a reply whose comment is gone shows on its own).
+  const ids = new Set(comments.map((c) => c.id));
+  const tops = comments.filter((c) => !c.replyTo || !ids.has(c.replyTo));
+  const repliesTo = (id: string) => comments.filter((c) => c.replyTo === id);
+  const startReply = (c: Comment, name: string) => {
+    setReplying({ to: c.replyTo && ids.has(c.replyTo) ? c.replyTo : c.id, uid: c.authorId, name });
+    setTimeout(() => document.getElementById(sheet ? 'sheet-comment' : 'new-comment')?.focus(), 0);
+  };
 
   const form = canComment && (
-    <form onSubmit={submit} className={`flex items-end gap-2 ${sheet ? 'border-t border-sand-200 bg-white p-2 pb-[calc(8px+env(safe-area-inset-bottom))]' : 'rounded-2xl border border-sand-200 bg-white p-2 shadow-sm'}`}>
+    <form onSubmit={submit} className={`${sheet ? 'border-t border-sand-200 bg-white p-2 pb-[calc(8px+env(safe-area-inset-bottom))]' : 'rounded-2xl border border-sand-200 bg-white p-2 shadow-sm'}`}>
+      {replying && (
+        <p className="mb-1.5 flex items-center justify-between gap-2 px-2 text-xs text-gray-600">
+          <span>
+            Replying to <strong className="text-gray-900">{replying.name}</strong>
+          </span>
+          <button type="button" onClick={() => setReplying(null)} className="rounded-full px-2 py-1 font-semibold hover:bg-sand-100" aria-label="Cancel reply">
+            ✕
+          </button>
+        </p>
+      )}
+      <div className="flex items-end gap-2">
       <label htmlFor={sheet ? 'sheet-comment' : 'new-comment'} className="sr-only">
         Add a comment
       </label>
@@ -72,12 +95,13 @@ export function Comments({ post, canComment, sheet = false }: { post: Post; canC
         maxLength={LIMITS.commentMaxChars}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Add a comment…"
+        placeholder={replying ? `Reply to ${replying.name}…` : 'Add a comment…'}
         className="max-h-40 min-h-[44px] flex-1 resize-none rounded-full bg-sand-100 px-4 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-200"
       />
       <Button type="submit" busy={busy} disabled={!text.trim()}>
-        {sheet ? 'Send' : 'Comment'}
+        {replying ? 'Reply' : sheet ? 'Send' : 'Comment'}
       </Button>
+      </div>
     </form>
   );
 
@@ -89,8 +113,19 @@ export function Comments({ post, canComment, sheet = false }: { post: Post; canC
     <p className="py-8 text-center text-sm text-gray-600">No comments yet. Start the conversation 💬</p>
   ) : (
     <ul className="space-y-3">
-      {comments.map((c) => (
-        <CommentItem key={c.id} comment={c} post={post} onChanged={refresh} toast={toast} />
+      {tops.map((c) => (
+        <li key={c.id} className="space-y-2">
+          <CommentItem comment={c} post={post} onChanged={refresh} toast={toast} onReply={canComment ? startReply : undefined} />
+          {repliesTo(c.id).length > 0 && (
+            <ul aria-label="Replies" className="ml-10 space-y-2">
+              {repliesTo(c.id).map((r) => (
+                <li key={r.id}>
+                  <CommentItem comment={r} post={post} onChanged={refresh} toast={toast} onReply={canComment ? startReply : undefined} reply />
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
       ))}
     </ul>
   );
@@ -136,13 +171,38 @@ function CommentItem({
   post,
   onChanged,
   toast,
+  onReply,
+  reply = false,
 }: {
   comment: Comment;
   post: Post;
   onChanged: () => void;
   toast: (m: string, k?: 'success' | 'error') => void;
+  onReply?: (c: Comment, name: string) => void;
+  reply?: boolean;
 }) {
   const { user, profile, role } = useMe();
+  const { data: author } = useProfileById(comment.authorId);
+  const { data: answered } = useProfileById(reply && comment.replyToUid ? comment.replyToUid : '');
+  // Likes update on the screen at once; the server copy catches up.
+  const [liked, setLiked] = useState(comment.likedBy.includes(user.uid));
+  const [likes, setLikes] = useState(comment.likedBy.length);
+  useEffect(() => {
+    setLiked(comment.likedBy.includes(user.uid));
+    setLikes(comment.likedBy.length);
+  }, [comment.likedBy, user.uid]);
+  const toggleLike = async () => {
+    const next = !liked;
+    setLiked(next);
+    setLikes((n) => n + (next ? 1 : -1));
+    try {
+      await setCommentLike(db, user.uid, post.id, comment.id, next);
+    } catch (e) {
+      setLiked(!next);
+      setLikes((n) => n + (next ? -1 : 1));
+      toast(friendlyError(e), 'error');
+    }
+  };
   const [reporting, setReporting] = useState(false);
   const [confirm, setConfirm] = useState<null | 'delete' | 'remove'>(null);
   const [busy, setBusy] = useState(false);
@@ -170,7 +230,7 @@ function CommentItem({
   };
 
   return (
-    <li className="flex gap-2">
+    <article aria-label={reply ? 'Reply' : 'Comment'} className="flex gap-2">
       <CommentAvatar uid={comment.authorId} />
       <div className="min-w-0 flex-1">
         <div className="rounded-2xl bg-white px-3 py-2 shadow-sm ring-1 ring-sand-200">
@@ -178,9 +238,32 @@ function CommentItem({
             <CommentAuthor uid={comment.authorId} />
             <Menu items={items} label="Comment actions" />
           </div>
+          {reply && answered && answered.uid !== comment.authorId && (
+            <Link to={`/u/${answered.username}`} className="text-xs font-semibold text-brand-700">
+              ↩ @{answered.username}
+            </Link>
+          )}
           <RichText text={comment.text} />
         </div>
-        <p className="mt-1 pl-3 text-xs text-gray-600">{timeAgo(comment.createdAt)}</p>
+        <div className="mt-1 flex items-center gap-4 pl-3 text-xs text-gray-600">
+          <span>{timeAgo(comment.createdAt)}</span>
+          <button
+            type="button"
+            onClick={() => void toggleLike()}
+            disabled={profile.status !== 'active'}
+            aria-pressed={liked}
+            aria-label={liked ? 'Unlike comment' : 'Like comment'}
+            className={`inline-flex items-center gap-1 font-semibold ${liked ? 'text-pink-600' : 'hover:text-pink-600'}`}
+          >
+            <Icon name="heart" filled={liked} className="h-3.5 w-3.5" />
+            {likes > 0 ? likes : 'Like'}
+          </button>
+          {onReply && (
+            <button type="button" onClick={() => onReply(comment, author?.displayName ?? 'comment')} className="font-semibold hover:text-brand-700">
+              Reply
+            </button>
+          )}
+        </div>
       </div>
       <ReportDialog
         open={reporting}
@@ -205,7 +288,7 @@ function CommentItem({
           </Button>
         </div>
       </Modal>
-    </li>
+    </article>
   );
 }
 

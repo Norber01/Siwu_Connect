@@ -1,3 +1,4 @@
+import { CropProvider } from './components/Cropper';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -25,7 +26,9 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <ToastProvider>
-            <App />
+            <CropProvider>
+              <App />
+            </CropProvider>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>

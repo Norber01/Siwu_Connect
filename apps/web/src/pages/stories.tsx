@@ -1,3 +1,4 @@
+import { useCrop } from '../components/Cropper';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -462,7 +463,10 @@ export function NewStoryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pick = (f: File | undefined) => {
+  const crop = useCrop();
+  const pick = async (picked: File | undefined) => {
+    const f = picked && (await crop(picked, { shapes: ['story', 'original', 'square'] }));
+    if (input.current) input.current.value = '';
     if (!f) return;
     setFile(f);
     setPreview(URL.createObjectURL(f));

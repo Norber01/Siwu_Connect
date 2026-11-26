@@ -1,3 +1,4 @@
+import { useCrop } from '../components/Cropper';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { VerifiedBadge } from '../components/VerifiedBadge';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -656,6 +657,12 @@ export function ChatRoomPage() {
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [max, setMax] = useState(60);
   const [text, setText] = useState('');
+  const crop = useCrop();
+  // The message box shrinks back after sending.
+  useEffect(() => {
+    const el = document.getElementById('chat-input');
+    if (!text && el) el.style.height = '';
+  }, [text]);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [reporting, setReporting] = useState<Message | null>(null);
@@ -768,7 +775,9 @@ export function ChatRoomPage() {
     }
   };
 
-  const sendPhoto = async (file: File | undefined) => {
+  const sendPhoto = async (picked: File | undefined) => {
+    const file = picked && (await crop(picked, { shapes: ['original', 'square'] }));
+    if (fileInput.current) fileInput.current.value = '';
     if (!file) return;
     setUploading(true);
     try {
@@ -906,13 +915,20 @@ export function ChatRoomPage() {
               id="chat-input"
               rows={1}
               value={text}
-              onChange={(e) => onType(e.target.value)}
+              onChange={(e) => {
+                onType(e.target.value);
+                // Grows with the message (up to a few lines, then scrolls).
+                e.target.style.height = 'auto';
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`;
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Enter starts a new line (like WhatsApp); the Send button sends. On a computer, Ctrl+Enter sends.
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   void send();
                 }
               }}
+              enterKeyHint="enter"
               placeholder={uploading ? 'Sending photo…' : 'Message'}
               className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl bg-sand-100 px-4 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-200"
             />
@@ -1261,7 +1277,18 @@ function Bubble({
   );
   return (
     <div className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
-      {!mine && <span className="w-8 shrink-0">{showSender && <Avatar url={sender?.photoUrl} name={sender?.displayName ?? '?'} size={32} />}</span>}
+      {!mine && (
+        <span className="w-8 shrink-0">
+          {showSender &&
+            (sender ? (
+              <Link to={`/u/${sender.username}`} aria-label={`${sender.displayName}'s profile`}>
+                <Avatar url={sender.photoUrl} name={sender.displayName} size={32} />
+              </Link>
+            ) : (
+              <Avatar url={null} name="?" size={32} />
+            ))}
+        </span>
+      )}
       <div className={`group max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
         {showSender && !mine && sender && (
           <Link to={`/u/${sender.username}`} className="mb-0.5 ml-1 text-xs font-bold text-brand-700">

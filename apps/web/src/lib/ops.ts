@@ -4,6 +4,8 @@
  */
 import {
   type Firestore,
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   deleteField,
@@ -280,6 +282,8 @@ export async function addComment(
   uid: string,
   post: { id: string; townId: string; authorId: string },
   text: string,
+  /** Replying to a comment: the top-level comment's id, and the person being answered. */
+  reply: { to: string; uid: string } | null = null,
 ): Promise<string> {
   const ref = doc(collection(db, 'posts', post.id, 'comments'));
   const batch = writeBatch(db);
@@ -289,13 +293,17 @@ export async function addComment(
     text,
     status: 'published',
     createdAt: serverTimestamp(),
+    ...(reply ? { replyTo: reply.to, replyToUid: reply.uid } : {}),
   });
   batch.update(doc(db, 'posts', post.id), {
     commentCount: increment(1),
     lastCommentOp: { id: ref.id, op: 'add' },
   });
   batch.set(doc(db, 'rate_limits', uid), { lastCommentAt: serverTimestamp() }, { merge: true });
-  if (post.authorId !== uid) {
+  const notifyReply = !!reply && reply.uid !== uid;
+  // The post's author hears about every comment (unless it's their own, or they're the one being replied to).
+  const notifyAuthor = post.authorId !== uid && !(notifyReply && reply!.uid === post.authorId);
+  if (notifyAuthor) {
     batch.set(doc(db, 'users', post.authorId, 'notifications', `comment_${ref.id}`), {
       type: 'comment',
       actorId: uid,
@@ -305,9 +313,25 @@ export async function addComment(
       createdAt: serverTimestamp(),
     });
   }
+  if (notifyReply) {
+    batch.set(doc(db, 'users', reply!.uid, 'notifications', `reply_${ref.id}`), {
+      type: 'reply',
+      actorId: uid,
+      postId: post.id,
+      commentId: ref.id,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  }
   await batch.commit();
-  if (post.authorId !== uid) ping('notification', `users/${post.authorId}/notifications/comment_${ref.id}`);
+  if (notifyAuthor) ping('notification', `users/${post.authorId}/notifications/comment_${ref.id}`);
+  if (notifyReply) ping('notification', `users/${reply!.uid}/notifications/reply_${ref.id}`);
   return ref.id;
+}
+
+/** Like or unlike a comment. */
+export async function setCommentLike(db: Firestore, uid: string, postId: string, commentId: string, like: boolean): Promise<void> {
+  await updateDoc(doc(db, 'posts', postId, 'comments', commentId), { likedBy: like ? arrayUnion(uid) : arrayRemove(uid) });
 }
 
 export async function deleteComment(

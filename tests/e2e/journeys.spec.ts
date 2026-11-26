@@ -45,6 +45,8 @@ async function register(page: Page, opts: { email: string; name: string; usernam
   await page.getByLabel('Country (optional)').selectOption('GB');
   if (opts.photo) {
     await page.getByLabel('Choose profile photo').setInputFiles('apps/web/public/icon-512.png');
+    await expect(page.getByRole('dialog', { name: 'Profile photo' })).toBeVisible();
+    await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByRole('button', { name: 'Change photo' })).toBeVisible();
   }
   await page.getByRole('checkbox').check();

@@ -1,3 +1,4 @@
+import { useCrop } from './Cropper';
 import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EXTRA_LIMITS, canReportSports, feedbackSchema, hasAdminAccess } from '@siwu/shared';
@@ -16,7 +17,10 @@ export function PhotoField({ url, onChange, label = 'Photo (optional)' }: { url:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pick = async (file: File | undefined) => {
+  const crop = useCrop();
+  const pick = async (picked: File | undefined) => {
+    const file = picked && (await crop(picked, { shapes: ['original', 'landscape', 'square', 'wide'] }));
+    if (input.current) input.current.value = '';
     if (!file) return;
     setBusy(true);
     setError(null);

@@ -207,6 +207,16 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   working, so existing links, installed apps and photos/videos posted earlier still load. The setup version now
   includes the website addresses, so a new address shows the "Run setup again" banner (it allows the address for
   sign-in). The live check (`scripts/check-live.mjs`) now checks the new addresses by default.
+- **Comments: likes and replies.** Like a comment (`likedBy` list on the comment; rules allow only adding/removing
+  your own name). Reply to a comment: replies hang under their top-level comment (one level, `replyTo` +
+  `replyToUid`), notify the person answered ("replied to your comment", also on phones) and still count on the post.
+  Rules changed → **Run setup again**.
+- **Crop before upload** (react-easy-crop): profile photo (round), post photos (Original/Square/4:5/16:9), event and
+  listing photos, chat photos, story photos (9:16). Videos and GIFs skip it.
+- **Chat:** Enter makes a new line (the Send button sends; Ctrl+Enter on computers); the box grows with the message.
+  Tapping a sender's photo opens their profile.
+- Settings like WhatsApp (sections), Autoplay videos switch, X-style post action row, top/bottom bars hide while
+  scrolling, "edited" label removed, message menu always on screen.
 - **Members belong to their hometown** (founder's decision): they see and use only the All Akpafu chat room and
   their hometown's room, and post only in their hometown (choosing whether it also shows in the All Akpafu feed).
   Town admins also have the towns they look after; Super Admins have every town. Enforced in the Firestore rules

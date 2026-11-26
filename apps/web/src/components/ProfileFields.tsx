@@ -1,3 +1,4 @@
+import { useCrop } from './Cropper';
 import { useRef, useState } from 'react';
 import { COUNTRIES, LIMITS, RESIDENCE_OPTIONS, type Residence, TOWNS, type TownId } from '@siwu/shared';
 import { api } from '../lib/api';
@@ -46,8 +47,11 @@ export function PhotoPicker({ url, name, onChange }: { url: string | null; name:
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const crop = useCrop();
 
-  const pick = async (file: File | undefined) => {
+  const pick = async (picked: File | undefined) => {
+    const file = picked && (await crop(picked, { shapes: ['square'], round: true, title: 'Profile photo' }));
+    if (input.current) input.current.value = '';
     if (!file) return;
     setBusy(true);
     setError(null);

@@ -68,3 +68,27 @@ test('settings are grouped, and autoplay can be switched off', async ({ page }) 
   await page.reload();
   await expect(page.getByRole('checkbox', { name: /Autoplay videos/ })).not.toBeChecked();
 });
+
+test('comments can be liked and replied to', async ({ page }) => {
+  execFileSync('node', ['scripts/demo-data.mjs'], { stdio: 'ignore' });
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('kofi_mensah@example.com');
+  await page.getByLabel('Password').fill('demo-password-1');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  await page.goto('/p/p2');
+  const tag = Date.now().toString(36);
+  await page.getByLabel('Add a comment').fill(`Akwaaba ${tag}`);
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+  const mine = page.getByRole('article', { name: 'Comment' }).filter({ hasText: `Akwaaba ${tag}` });
+  await expect(mine).toBeVisible();
+  await mine.getByRole('button', { name: 'Like comment' }).click();
+  await expect(mine.getByRole('button', { name: 'Unlike comment' })).toContainText('1');
+  await mine.getByRole('button', { name: 'Reply' }).click();
+  await expect(page.getByText('Replying to Kofi Mensah')).toBeVisible();
+  await page.waitForTimeout(5200); // one comment every 5 seconds
+  await page.getByLabel('Add a comment').fill(`Thanks ${tag}`);
+  await page.getByRole('button', { name: 'Reply', exact: true }).first().click(); // the send button (above the list)
+  await expect(page.getByRole('list', { name: 'Replies' }).getByText(`Thanks ${tag}`)).toBeVisible();
+  await page.screenshot({ path: '/tmp/claude-0/comments.png' });
+});

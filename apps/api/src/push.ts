@@ -246,6 +246,7 @@ const CATEGORY: Record<string, string> = {
   like: 'likes',
   repost: 'likes',
   comment: 'social',
+  reply: 'social',
   mention: 'social',
   friend_request: 'friends',
   friend_accepted: 'friends',
@@ -278,6 +279,11 @@ export async function pushNotification(env: Env, fs: Firestore, recipient: strin
     case 'comment': {
       const c = await fs.get<{ text?: string }>(`posts/${n.postId}/comments/${n.commentId}`);
       msg = { title: `💬 ${actor!.name} commented on your post`, body: clip(c?.data.text), url: `${postUrl}#comments`, tag: `comments-${n.postId}` };
+      break;
+    }
+    case 'reply': {
+      const c = await fs.get<{ text?: string }>(`posts/${n.postId}/comments/${n.commentId}`);
+      msg = { title: `↩️ ${actor!.name} replied to your comment`, body: clip(c?.data.text), url: `${postUrl}#comments`, tag: `comments-${n.postId}` };
       break;
     }
     case 'mention': {
@@ -345,7 +351,7 @@ export async function handleNotify(env: Env, fs: Firestore, uid: string, input: 
       if (parts.length !== 4 || parts[0] !== 'users' || parts[2] !== 'notifications') return 0;
       const n = await fs.get<NotificationDoc & { createdAt?: Date }>(input.path);
       if (!n || n.data.actorId !== uid || !recent(n.data.createdAt)) return 0;
-      if (!['like', 'repost', 'comment', 'mention', 'friend_request', 'friend_accepted'].includes(n.data.type)) return 0;
+      if (!['like', 'repost', 'comment', 'reply', 'mention', 'friend_request', 'friend_accepted'].includes(n.data.type)) return 0;
       // A like is notified once per person and post, even after unlike + like again.
       if (!(await once(fs, n.data.type === 'like' ? input.path : `${input.path}|${(n.data.createdAt as Date).toISOString()}`))) return 0;
       return pushNotification(env, fs, parts[1]!, n.data);

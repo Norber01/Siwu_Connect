@@ -55,6 +55,10 @@ export interface Comment {
   text: string;
   status: 'published' | 'removed' | 'deleted';
   createdAt: Date | null;
+  /** Replies: the top-level comment they belong to, and who they answer. */
+  replyTo: string | null;
+  replyToUid: string | null;
+  likedBy: string[];
 }
 
 export interface Announcement {
@@ -157,6 +161,9 @@ export function toComment(s: DocumentSnapshot): Comment {
     text: d.text,
     status: d.status,
     createdAt: date(d.createdAt),
+    replyTo: d.replyTo ?? null,
+    replyToUid: d.replyToUid ?? null,
+    likedBy: Array.isArray(d.likedBy) ? d.likedBy : [],
   };
 }
 
@@ -264,7 +271,7 @@ export interface MatchUpdate {
 
 export interface AppNotification {
   id: string;
-  type: 'like' | 'comment' | 'mention' | 'repost' | 'tester' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
+  type: 'like' | 'comment' | 'reply' | 'mention' | 'repost' | 'tester' | 'friend_request' | 'friend_accepted' | 'approved' | 'rejected' | 'verified';
   actorId: string;
   postId: string | null;
   commentId: string | null;

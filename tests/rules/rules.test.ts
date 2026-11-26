@@ -335,6 +335,39 @@ describe('comments', () => {
     expect((await getDoc(doc(db('bob'), 'posts', 'p1'))).data()?.commentCount).toBe(0);
   });
 
+  it('likes on comments: each member adds or removes only their own like', async () => {
+    await seedUser('carol');
+    const post = { id: 'p1', townId: 'todzi', authorId: 'alice' };
+    const cid = await ops.addComment(db('bob'), 'bob', post, 'Nice');
+    await assertSucceeds(ops.setCommentLike(db('carol'), 'carol', 'p1', cid, true));
+    await assertSucceeds(ops.setCommentLike(db('alice'), 'alice', 'p1', cid, true));
+    expect((await getDoc(doc(db('bob'), 'posts', 'p1', 'comments', cid))).data()?.likedBy).toEqual(['carol', 'alice']);
+    // Nobody can add or remove someone else's like.
+    await assertFails(updateDoc(doc(db('carol'), 'posts', 'p1', 'comments', cid), { likedBy: ['carol', 'alice', 'bob'] }));
+    await assertFails(updateDoc(doc(db('carol'), 'posts', 'p1', 'comments', cid), { likedBy: ['carol'] }));
+    await assertFails(updateDoc(doc(db('carol'), 'posts', 'p1', 'comments', cid), { likedBy: ['alice'], text: 'changed' }));
+    await assertSucceeds(ops.setCommentLike(db('carol'), 'carol', 'p1', cid, false));
+    expect((await getDoc(doc(db('bob'), 'posts', 'p1', 'comments', cid))).data()?.likedBy).toEqual(['alice']);
+  });
+
+  it('replies go under a top-level comment and notify the person answered', async () => {
+    await seedUser('carol');
+    const post = { id: 'p1', townId: 'todzi', authorId: 'alice' };
+    const top = await ops.addComment(db('bob'), 'bob', post, 'Who is coming?');
+    await new Promise((r) => setTimeout(r, 5100)); // comment cooldown
+    const reply = await ops.addComment(db('carol'), 'carol', post, 'Me!', { to: top, uid: 'bob' });
+    const r = (await getDoc(doc(db('carol'), 'posts', 'p1', 'comments', reply))).data();
+    expect(r).toMatchObject({ replyTo: top, replyToUid: 'bob' });
+    expect((await getDoc(doc(db('bob'), 'users', 'bob', 'notifications', `reply_${reply}`))).data()).toMatchObject({ type: 'reply', actorId: 'carol' });
+    // The post's author still hears about it.
+    expect((await getDoc(doc(db('alice'), 'users', 'alice', 'notifications', `comment_${reply}`))).exists()).toBe(true);
+    // No replies to replies (one level), and no replies to comments that don't exist.
+    await new Promise((r) => setTimeout(r, 5100));
+    await assertFails(ops.addComment(db('carol'), 'carol', post, 'nested', { to: reply, uid: 'carol' }));
+    await assertFails(ops.addComment(db('carol'), 'carol', post, 'ghost', { to: 'nope', uid: 'bob' }));
+    expect((await getDoc(doc(db('bob'), 'posts', 'p1'))).data()?.commentCount).toBe(2);
+  });
+
   it('rejects wrong town, fake counters and comment flooding', async () => {
     await assertFails(ops.addComment(db('bob'), 'bob', { id: 'p1', townId: 'odomi', authorId: 'alice' }, 'wrong town'));
     await assertFails(

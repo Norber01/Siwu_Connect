@@ -63,7 +63,7 @@ function notificationLink(n: AppNotification, actorUsername: string | undefined)
     const [col, id] = (n.targetPath ?? '').split('/');
     return col === 'listings' ? `/market/${id}` : col === 'directory' ? `/directory/${id}` : '/';
   }
-  return `/p/${n.postId}${n.type === 'comment' ? '#comments' : ''}`;
+  return `/p/${n.postId}${n.type === 'comment' || n.type === 'reply' ? '#comments' : ''}`;
 }
 
 function NotificationRow({ n }: { n: AppNotification }) {
@@ -107,6 +107,8 @@ function NotificationRow({ n }: { n: AppNotification }) {
                 ? 'accepted your friend request. You can now chat 🎉'
                 : n.type === 'comment'
                   ? 'commented on your post'
+                  : n.type === 'reply'
+                    ? 'replied to your comment'
                   : n.type === 'verified'
                     ? 'verified your account. Everyone now sees the blue tick next to your name ✔'
                     : '';
