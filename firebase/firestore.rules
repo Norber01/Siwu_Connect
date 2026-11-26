@@ -62,6 +62,10 @@ service cloud.firestore {
             || m.home.townId in get(rolePath()).data.townIds
             || m.away.townId in get(rolePath()).data.townIds);
     }
+    // A sticker picture: any photo uploaded through the API (people can save stickers others sent them).
+    function stickerUrlOk(url) {
+      return str(url, 10, 300) && url.matches('^https?://[^/]+(/[^/]+)*/images/[A-Za-z0-9]+/[A-Za-z0-9_-]+[.](webp|jpg)$');
+    }
     function imageOk(url, uid) {
       return url == null
         || (str(url, 10, 300)
@@ -147,6 +151,14 @@ service cloud.firestore {
         || (signedIn() && uid == me() && changed().hasOnly(['lastActiveAt'])
             && (d().lastActiveAt == request.time || d().lastActiveAt == null));
       allow delete: if false;
+
+      // My stickers: pictures the member made (or saved) to send in chats. Private to the owner.
+      match /stickers/{sid} {
+        allow read, delete: if signedIn() && uid == me();
+        allow create: if signedIn() && uid == me() && exactKeys(['url', 'createdAt'])
+          && stickerUrlOk(d().url) && d().createdAt == request.time;
+        allow update: if false;
+      }
 
       // Saved posts (bookmarks). Private to the owner.
       match /bookmarks/{postId} {
@@ -798,7 +810,10 @@ service cloud.firestore {
           && notBlockedDm(get(chatPath(chatId)).data)
           && (get(chatPath(chatId)).data.type != 'dm' || areFriends(dmOther(get(chatPath(chatId)).data)))
           && d().keys().hasAll(['senderId', 'text', 'imageUrl', 'status', 'createdAt'])
-          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds', 'replyTo', 'story', 'post'])
+          && d().keys().hasOnly(['senderId', 'text', 'imageUrl', 'status', 'createdAt', 'audioUrl', 'audioSeconds', 'replyTo', 'story', 'post', 'sticker', 'stickerUrl'])
+          // A built-in sticker (by name) or a picture sticker.
+          && (!('sticker' in d()) || (d().sticker is string && d().sticker.matches('^[a-z0-9_]{1,30}$')))
+          && (!('stickerUrl' in d()) || stickerUrlOk(d().stickerUrl))
           // A post shared into the chat (a small preview; the post itself keeps its own visibility rules).
           && (!('post' in d()) || (d().post is map && d().post.keys().hasOnly(['id', 'authorId', 'text', 'imageUrl'])
               && str(d().post.id, 1, 40) && str(d().post.authorId, 1, 128) && str(d().post.text, 0, 120)
@@ -814,7 +829,8 @@ service cloud.firestore {
           && imageOk(d().imageUrl, me())
           && audioOk(d().get('audioUrl', null), me())
           && (!('audioSeconds' in d()) || (d().audioSeconds is int && d().audioSeconds >= 0 && d().audioSeconds <= 130))
-          && (d().text.size() > 0 || d().imageUrl != null || d().get('audioUrl', null) != null || 'post' in d())
+          && (d().text.size() > 0 || d().imageUrl != null || d().get('audioUrl', null) != null || 'post' in d()
+              || 'sticker' in d() || 'stickerUrl' in d())
           && d().status == 'sent'
           && d().createdAt == request.time
           && rateOk('lastMessageAt', 1);

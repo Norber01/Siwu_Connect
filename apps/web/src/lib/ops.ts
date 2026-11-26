@@ -329,6 +329,14 @@ export async function addComment(
   return ref.id;
 }
 
+/** My stickers: add a picture sticker (already uploaded), or remove one. */
+export async function addMySticker(db: Firestore, uid: string, url: string): Promise<void> {
+  await setDoc(doc(collection(db, 'users', uid, 'stickers')), { url, createdAt: serverTimestamp() });
+}
+export async function removeMySticker(db: Firestore, uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', uid, 'stickers', id));
+}
+
 /** Like or unlike a comment. */
 export async function setCommentLike(db: Firestore, uid: string, postId: string, commentId: string, like: boolean): Promise<void> {
   await updateDoc(doc(db, 'posts', postId, 'comments', commentId), { likedBy: like ? arrayUnion(uid) : arrayRemove(uid) });
@@ -673,6 +681,9 @@ export async function sendMessage(
     replyTo?: { id: string; senderId: string; text: string } | null;
     story?: { id: string; text: string; url: string | null } | null;
     post?: { id: string; authorId: string; text: string; imageUrl: string | null } | null;
+    /** A built-in sticker (by id) or a picture sticker (its URL). */
+    sticker?: string | null;
+    stickerUrl?: string | null;
   } = {},
 ): Promise<void> {
   const ref = doc(collection(db, 'chats', chatId, 'messages'));
@@ -687,8 +698,18 @@ export async function sendMessage(
     ...(extra.replyTo ? { replyTo: { ...extra.replyTo, text: extra.replyTo.text.slice(0, 120) } } : {}),
     ...(extra.story ? { story: { ...extra.story, text: extra.story.text.slice(0, 120) } } : {}),
     ...(extra.post ? { post: { ...extra.post, text: extra.post.text.slice(0, 120) } } : {}),
+    ...(extra.sticker ? { sticker: extra.sticker } : {}),
+    ...(extra.stickerUrl ? { stickerUrl: extra.stickerUrl } : {}),
   });
-  const preview = text ? text.slice(0, 120) : audio ? '🎤 Voice note' : extra.post ? '📝 Shared a post' : '📷 Photo';
+  const preview = text
+    ? text.slice(0, 120)
+    : audio
+      ? '🎤 Voice note'
+      : extra.post
+        ? '📝 Shared a post'
+        : extra.sticker || extra.stickerUrl
+          ? '😀 Sticker'
+          : '📷 Photo';
   batch.update(doc(db, 'chats', chatId), {
     lastMessage: { id: ref.id, senderId: uid, text: preview, at: serverTimestamp() },
     updatedAt: serverTimestamp(),

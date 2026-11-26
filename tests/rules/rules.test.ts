@@ -758,6 +758,21 @@ describe('chat', () => {
     await assertFails(getDocs(collection(db('mod2'), 'chats', 'room_odomi', 'messages')));
   });
 
+  it('stickers: built-in or picture stickers in chats; My stickers are private', async () => {
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', 'room_odomi', '', null, null, { sticker: 'akwaaba' }));
+    await new Promise((r) => setTimeout(r, 1100));
+    await assertSucceeds(ops.sendMessage(db('alice'), 'alice', 'room_odomi', '', null, null, { stickerUrl: 'https://api.example/images/bob/s1.webp' }));
+    await new Promise((r) => setTimeout(r, 1100));
+    await assertFails(ops.sendMessage(db('alice'), 'alice', 'room_odomi', '', null, null, { stickerUrl: 'https://evil.example/x.png' }));
+    await assertFails(ops.sendMessage(db('alice'), 'alice', 'room_odomi', '', null, null, { sticker: 'Bad Name!' }));
+    // My stickers
+    await assertSucceeds(ops.addMySticker(db('alice'), 'alice', 'https://api.example/images/alice/s2.webp'));
+    await assertFails(ops.addMySticker(db('alice'), 'alice', 'https://evil.example/x.png'));
+    await assertFails(setDoc(doc(db('bob'), 'users', 'alice', 'stickers', 'x'), { url: 'https://api.example/images/bob/s1.webp', createdAt: serverTimestamp() }));
+    await assertSucceeds(getDocs(collection(db('alice'), 'users', 'alice', 'stickers')));
+    await assertFails(getDocs(collection(db('bob'), 'users', 'alice', 'stickers')));
+  });
+
   const befriend = async (a: string, b: string) => {
     await ops.sendFriendRequest(db(a), a, b);
     await ops.acceptFriendRequest(db(b), b, a);

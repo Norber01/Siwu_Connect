@@ -20,6 +20,7 @@ import { Icon } from '../components/Icon';
 import { Menu, type MenuItem } from '../components/Menu';
 import { RichText } from '../components/PostCard';
 import { ReportDialog } from '../components/ReportDialog';
+import { StickerPicker, StickerView, useSaveSticker } from '../components/Stickers';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, EmptyState, ErrorState, Modal, PageHeader, PageSpinner, TextField } from '../components/ui';
 
@@ -43,6 +44,8 @@ interface Message {
   replyTo?: { id: string; senderId: string; text: string };
   story?: { id: string; text: string; url: string | null };
   post?: { id: string; authorId: string; text: string; imageUrl: string | null };
+  sticker?: string;
+  stickerUrl?: string;
   reactions?: Record<string, string>;
   status: 'sent' | 'deleted' | 'removed';
   createdAt: Date | null;
@@ -658,6 +661,8 @@ export function ChatRoomPage() {
   const [max, setMax] = useState(60);
   const [text, setText] = useState('');
   const crop = useCrop();
+  const [picker, setPicker] = useState(false);
+  const saveSticker = useSaveSticker();
   // The message box shrinks back after sending.
   useEffect(() => {
     const el = document.getElementById('chat-input');
@@ -787,13 +792,22 @@ export function ChatRoomPage() {
   const notFriends = !!otherUid && !friends.loading && friends.get(otherUid)?.status !== 'accepted';
   const canSend = profile.status === 'active' && !blockedOther && !notFriends;
 
+  const sendSticker = async (s: { sticker?: string; stickerUrl?: string }) => {
+    try {
+      const quote = replyTo ? { id: replyTo.id, senderId: replyTo.senderId, text: replyTo.text || describe(replyTo) } : null;
+      setReplyTo(null);
+      await sendMessage(db, user.uid, chatId, '', null, null, { replyTo: quote, ...s });
+    } catch (e) {
+      toast(/permission/i.test(String(e)) ? 'Slow down a little — one message per second.' : friendlyError(e), 'error');
+    }
+  };
   const send = async (imageUrl: string | null = null) => {
     const body = text.trim();
     if (!body && !imageUrl) return;
     setSending(true);
     if (!imageUrl) setText(''); // clear at once, like other chat apps; restored if sending fails
     try {
-      const quote = replyTo ? { id: replyTo.id, senderId: replyTo.senderId, text: replyTo.text || (replyTo.audioUrl ? '🎤 Voice note' : '📷 Photo') } : null;
+      const quote = replyTo ? { id: replyTo.id, senderId: replyTo.senderId, text: replyTo.text || describe(replyTo) } : null;
       setReplyTo(null);
       if (lastTyping.current) {
         lastTyping.current = 0;
@@ -902,6 +916,9 @@ export function ChatRoomPage() {
               }
               showSender={chat.type !== 'dm' && arr[i - 1]?.senderId !== m.senderId}
               items={[
+                ...(m.stickerUrl && m.status === 'sent'
+                  ? [{ label: 'Save to my stickers', icon: 'star' as const, onSelect: () => void saveSticker(m.stickerUrl!) }]
+                  : []),
                 ...(m.senderId === user.uid && m.status === 'sent'
                   ? [{ label: 'Delete message', icon: 'trash' as const, danger: true, onSelect: () => void deleteMessage(db, chatId, m.id, !!m.audioUrl).catch((e) => toast(friendlyError(e), 'error')) }]
                   : []),
@@ -930,6 +947,13 @@ export function ChatRoomPage() {
 
       <div className="sticky bottom-0 -mx-4 border-t border-sand-200 bg-white/95 px-3 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         {replyTo && canSend && <ReplyPreview m={replyTo} me={user.uid} onCancel={() => setReplyTo(null)} />}
+        {picker && canSend && (
+          <StickerPicker
+            onSticker={(id) => void sendSticker({ sticker: id })}
+            onStickerUrl={(url) => void sendSticker({ stickerUrl: url })}
+            onEmoji={(e) => onType(text + e)}
+          />
+        )}
         {canSend ? (
           <form
             className="flex items-end gap-2"
@@ -938,6 +962,15 @@ export function ChatRoomPage() {
               void send();
             }}
           >
+            <button
+              type="button"
+              onClick={() => setPicker((x) => !x)}
+              className={`rounded-full p-2 text-2xl leading-none hover:bg-brand-50 ${picker ? 'bg-brand-50' : 'grayscale-[40%]'}`}
+              aria-label="Stickers and emoji"
+              aria-expanded={picker}
+            >
+              😊
+            </button>
             <button
               type="button"
               onClick={() => fileInput.current?.click()}
@@ -1155,6 +1188,11 @@ function TypingBubble({ uids, group }: { uids: string[]; group: boolean }) {
   );
 }
 
+/** A short description of a message without text (for reply quotes). */
+function describe(m: Message): string {
+  return m.audioUrl ? '🎤 Voice note' : m.sticker || m.stickerUrl ? '😀 Sticker' : m.post ? '📝 Shared a post' : '📷 Photo';
+}
+
 function ReplyPreview({ m, me, onCancel }: { m: Message; me: string; onCancel: () => void }) {
   return (
     <div className="mb-2 flex items-start gap-2 rounded-xl border-l-4 border-brand-600 bg-sand-100 px-3 py-2">
@@ -1162,7 +1200,7 @@ function ReplyPreview({ m, me, onCancel }: { m: Message; me: string; onCancel: (
         <span className="block text-xs font-bold text-brand-700">
           Replying to <Name uid={m.senderId} me={me} />
         </span>
-        <span className="block truncate text-sm text-gray-700">{m.text || (m.audioUrl ? '🎤 Voice note' : '📷 Photo')}</span>
+        <span className="block truncate text-sm text-gray-700">{m.text || describe(m)}</span>
       </span>
       <button type="button" onClick={onCancel} className="rounded-full px-2 text-lg leading-none text-gray-600" aria-label="Cancel reply">
         ×
@@ -1338,9 +1376,13 @@ function Bubble({
         <div className="flex items-center gap-1">
           {mine && actions}
           <div
-            className={`rounded-2xl px-3 py-2 text-[15px] shadow-sm ${
-              gone ? 'bg-sand-100 italic text-gray-500' : mine ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md bg-white text-gray-900 ring-1 ring-sand-200'
-            }`}
+            className={
+              !gone && (m.sticker || m.stickerUrl) && !m.replyTo
+                ? 'py-1'
+                : `rounded-2xl px-3 py-2 text-[15px] shadow-sm ${
+                    gone ? 'bg-sand-100 italic text-gray-500' : mine ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md bg-white text-gray-900 ring-1 ring-sand-200'
+                  }`
+            }
           >
             {gone ? (
               m.status === 'removed' ? 'Message removed by a moderator' : 'Message deleted'
@@ -1370,6 +1412,7 @@ function Bubble({
                   </a>
                 )}
                 {m.audioUrl && <VoicePlayer url={m.audioUrl} seconds={m.audioSeconds} light={mine} />}
+                {(m.sticker || m.stickerUrl) && <StickerView id={m.sticker} url={m.stickerUrl} />}
                 {m.text && (mine ? <p className="whitespace-pre-wrap break-words">{m.text}</p> : <RichText text={m.text} />)}
               </>
             )}

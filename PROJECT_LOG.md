@@ -207,6 +207,13 @@ needs founder-owned Firebase/Cloudflare accounts (see `docs/DEPLOYMENT.md`).
   working, so existing links, installed apps and photos/videos posted earlier still load. The setup version now
   includes the website addresses, so a new address shows the "Run setup again" banner (it allows the address for
   sign-in). The live check (`scripts/check-live.mjs`) now checks the new addresses by default.
+- **Chat stickers** (😊 button): 22 small built-in stickers with everyday Twi/English greetings (no Siwu words until
+  speakers confirm them), **My stickers** made from gallery photos (cropped square, ~320 px; up to 60 per member,
+  private in `users/{uid}/stickers`), "Save to my stickers" on picture stickers others send, and an emoji tab.
+  Messages store `sticker` (built-in id) or `stickerUrl`. Rules changed → **Run setup again**.
+- **Chat screen like WhatsApp:** inside a conversation the header shows the person (photo, name, active status) and
+  stays put when the keyboard opens (`interactive-widget=resizes-content`; iPhone follows the visual viewport); no
+  app banner or bottom bar; newest message sits just above the message box.
 - **Comments: likes and replies.** Like a comment (`likedBy` list on the comment; rules allow only adding/removing
   your own name). Reply to a comment: replies hang under their top-level comment (one level, `replyTo` +
   `replyToUid`), notify the person answered ("replied to your comment", also on phones) and still count on the post.

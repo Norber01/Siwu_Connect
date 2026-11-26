@@ -92,3 +92,29 @@ test('comments can be liked and replied to', async ({ page }) => {
   await expect(page.getByRole('list', { name: 'Replies' }).getByText(`Thanks ${tag}`)).toBeVisible();
   await page.screenshot({ path: '/tmp/claude-0/comments.png' });
 });
+
+test('stickers in chat, including your own from the gallery', async ({ page }) => {
+  execFileSync('node', ['scripts/demo-data.mjs'], { stdio: 'ignore' });
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('kofi_mensah@example.com');
+  await page.getByLabel('Password').fill('demo-password-1');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  await page.goto('/chat/room_all');
+  await page.getByRole('button', { name: 'Stickers and emoji' }).click();
+  await page.getByRole('button', { name: 'Send sticker Akwaaba!' }).click();
+  await expect(page.getByRole('img', { name: 'Sticker: Akwaaba!' }).last()).toBeVisible();
+  // My stickers: make one from a picture.
+  await page.getByRole('tab', { name: 'My stickers' }).click();
+  await page.getByLabel('Choose a picture for a sticker').setInputFiles('apps/web/public/icon-512.png');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByText('Sticker added')).toBeVisible();
+  await page.waitForTimeout(1100);
+  await page.getByRole('button', { name: 'Send my sticker' }).first().click();
+  await expect(page.getByRole('img', { name: 'Sticker' }).last()).toBeVisible();
+  // Emoji go into the message box.
+  await page.getByRole('tab', { name: 'Emoji' }).click();
+  await page.getByRole('button', { name: 'Add 🔥' }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue('🔥');
+  await page.screenshot({ path: '/tmp/claude-0/stickers.png' });
+});

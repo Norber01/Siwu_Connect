@@ -361,7 +361,7 @@ export async function handleNotify(env: Env, fs: Firestore, uid: string, input: 
       if (parts.length !== 4 || parts[0] !== 'chats' || parts[2] !== 'messages') return 0;
       const chatPath = `chats/${parts[1]}`;
       const [m, chat] = await Promise.all([
-        fs.get<{ senderId: string; status: string; text?: string; imageUrl?: string | null; audioUrl?: string; post?: unknown; story?: unknown; createdAt?: Date }>(input.path),
+        fs.get<{ senderId: string; status: string; text?: string; imageUrl?: string | null; audioUrl?: string; post?: unknown; story?: unknown; sticker?: string; stickerUrl?: string; createdAt?: Date }>(input.path),
         fs.get<{ type: string; members?: string[]; name?: string }>(chatPath),
       ]);
       if (!m || !chat || m.data.senderId !== uid || m.data.status !== 'sent' || !recent(m.data.createdAt, 5)) return 0;
@@ -370,7 +370,17 @@ export async function handleNotify(env: Env, fs: Firestore, uid: string, input: 
       if (!(await once(fs, input.path))) return 0;
       const sender = await person(fs, uid);
       const d = m.data;
-      const preview = d.text ? clip(d.text) : d.audioUrl ? '🎤 Voice note' : d.post ? '📝 Shared a post' : d.imageUrl ? '📷 Photo' : 'New message';
+      const preview = d.text
+        ? clip(d.text)
+        : d.audioUrl
+          ? '🎤 Voice note'
+          : d.post
+            ? '📝 Shared a post'
+            : d.sticker || d.stickerUrl
+              ? '😀 Sticker'
+              : d.imageUrl
+                ? '📷 Photo'
+                : 'New message';
       const msg: PushMessage = d.story
         ? { title: `${sender.name} replied to your story`, body: preview, url: `/chat/${parts[1]}` }
         : chat.data.type === 'group'

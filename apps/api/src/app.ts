@@ -491,7 +491,7 @@ export function createApp() {
         let more = false;
         const devices = await fs.query({ collection: 'push_subs', where: [['uid', 'EQUAL', uid]], limit: 50 });
         await fs.commit([...devices.map((d) => ({ kind: 'delete' as const, path: d.path })), { kind: 'delete', path: `push_prefs/${uid}` }]);
-        for (const sub of ['notifications', 'bookmarks', 'blocks', 'chatState']) {
+        for (const sub of ['notifications', 'bookmarks', 'blocks', 'chatState', 'stickers']) {
           const docs = await fs.query({ collection: sub, parent: `users/${uid}`, limit: 200 });
           if (docs.length) await fs.commit(docs.map((d) => ({ kind: 'delete' as const, path: d.path })));
           if (docs.length === 200) more = true;
