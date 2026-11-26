@@ -1,3 +1,5 @@
+import { IosInstallSteps } from '../components/InstallPrompt';
+import { installApp, isInstalled, isIos, useCanInstall } from '../lib/install';
 import { syncPush } from '../lib/push';
 import { PushSettingsCard } from '../components/PushSettings';
 import { useEffect, useState } from 'react';
@@ -502,8 +504,9 @@ export function SettingsPage() {
             ))}
           </ul>
         </nav>
-        <div className="flex justify-center">
+        <div className="flex flex-wrap justify-center gap-2">
           <InviteButton />
+          <InstallAppButton />
         </div>
         <p className="pb-4 text-center text-xs text-gray-500">Siwu Connect · Five towns, one community</p>
       </div>
@@ -596,6 +599,33 @@ const SETTINGS_SECTIONS: { id: string; title: string; sub: string; icon: IconNam
   { id: 'help', title: 'Help and feedback', sub: 'Send feedback, community rules, privacy', icon: 'message' },
   { id: 'account', title: 'Account', sub: 'Email, sign out, delete account', icon: 'settings' },
 ];
+
+/** "Install the app" (hidden once installed): one tap on Android/computers, steps on iPhone. */
+function InstallAppButton() {
+  const canInstall = useCanInstall();
+  const toast = useToast();
+  const [steps, setSteps] = useState(false);
+  if (isInstalled()) return null;
+  return (
+    <>
+      <Button
+        type="button"
+        variant="secondary"
+        icon="phone"
+        onClick={() => {
+          if (canInstall) void installApp();
+          else if (isIos()) setSteps(true);
+          else toast("Open your browser's menu (⋮) and choose Install app or Add to Home screen.");
+        }}
+      >
+        Install the app
+      </Button>
+      <Modal open={steps} onClose={() => setSteps(false)} title="Install on iPhone">
+        <IosInstallSteps />
+      </Modal>
+    </>
+  );
+}
 
 function AutoplayCard() {
   const [on, setOn] = useAutoplay();

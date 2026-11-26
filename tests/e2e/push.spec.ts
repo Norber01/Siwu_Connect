@@ -118,3 +118,23 @@ test('stickers in chat, including your own from the gallery', async ({ page }) =
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue('🔥');
   await page.screenshot({ path: '/tmp/claude-0/stickers.png' });
 });
+
+test('iPhone visitors are shown how to install the app', async ({ browser }, info) => {
+  test.skip(info.project.name !== 'mobile');
+  const { devices } = await import('@playwright/test');
+  const { defaultBrowserType: _b, ...iphone } = devices['iPhone 13'];
+  void _b;
+  const ctx = await browser.newContext(iphone);
+  const page = await ctx.newPage();
+  await page.goto('/welcome');
+  const pop = page.getByRole('dialog', { name: 'Install Siwu Connect' });
+  await expect(pop).toBeVisible({ timeout: 10_000 });
+  await expect(pop.getByText('Add to Home Screen')).toBeVisible();
+  await page.screenshot({ path: '/tmp/claude-0/ios-install.png' });
+  await pop.getByRole('button', { name: 'Got it' }).click();
+  await expect(pop).toHaveCount(0);
+  await page.reload();
+  await page.waitForTimeout(5000);
+  await expect(page.getByRole('dialog', { name: 'Install Siwu Connect' })).toHaveCount(0); // not again for two weeks
+  await ctx.close();
+});

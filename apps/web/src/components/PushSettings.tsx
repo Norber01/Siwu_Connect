@@ -236,7 +236,8 @@ export function PushPrompt() {
     }
   });
   const [busy, setBusy] = useState(false);
-  const iosHint = isIos() && !isInstalled();
+  const iosHint = false; // iPhones are first asked to install the app (InstallPrompt); notifications follow there
+  if (isIos() && !isInstalled()) return null;
   if (hidden || deviceOn !== false || !info.data?.enabled || !info.data.publicKey) return null;
   if (!iosHint && (!pushSupported() || permission() === 'denied')) return null;
 

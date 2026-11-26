@@ -1,3 +1,4 @@
+import { InstallPrompt } from './components/InstallPrompt';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { SavedPage } from './pages/saved';
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
@@ -80,6 +81,15 @@ function RequireGuest() {
 }
 
 export function App() {
+  return (
+    <>
+      <InstallPrompt />
+      <AppRoutes />
+    </>
+  );
+}
+
+function AppRoutes() {
   return (
     <Routes>
       <Route element={<RequireGuest />}>
