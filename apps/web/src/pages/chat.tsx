@@ -808,7 +808,9 @@ export function ChatRoomPage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-11rem)] flex-col">
+    <div className="flex min-h-[100dvh] flex-col sm:min-h-[calc(100vh-11rem)]">
+      {/* Like WhatsApp: the top of the screen shows who you're talking to (no app banner in a conversation). */}
+      <div className="sticky top-0 z-20 -mx-4 border-b border-sand-200 bg-white/95 px-4 pt-[calc(8px+env(safe-area-inset-top))] backdrop-blur sm:pt-2">
       <PageHeader
         title={
           chat.type === 'dm' && other ? (
@@ -827,7 +829,9 @@ export function ChatRoomPage() {
               </span>
             </Link>
           ) : chat.type === 'group' ? (
-            <span className="min-w-0">
+            <span className="flex min-w-0 items-center gap-2">
+              <Avatar url={null} name={title} size={36} />
+              <span className="min-w-0">
               <span className="block truncate">{title}</span>
               <span className="block text-xs font-normal text-gray-600">
                 {typingUids.length ? (
@@ -838,6 +842,7 @@ export function ChatRoomPage() {
                   `${chat.members.length} members`
                 )}
               </span>
+              </span>
             </span>
           ) : (
             title
@@ -846,7 +851,8 @@ export function ChatRoomPage() {
         back
         actions={chat.type === 'group' ? <GroupMenu chat={chat} /> : undefined}
       />
-      {chat.type === 'room' && <p className="-mt-2 mb-2 text-xs text-gray-600">Visible to all Siwu Connect members. Be kind — the community rules apply.</p>}
+      </div>
+      {chat.type === 'room' && <p className="mb-2 mt-2 text-xs text-gray-600">Visible to all Siwu Connect members. Be kind — the community rules apply.</p>}
 
       <div className="flex-1 space-y-2 pb-3">
         {messages.length >= max && (

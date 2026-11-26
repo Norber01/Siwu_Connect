@@ -78,6 +78,7 @@ export function AppLayout() {
 
         <div className={`min-w-0 max-w-[600px] flex-1 border-sand-200 sm:border-x sm:pb-8 ${inChat ? 'pb-0' : 'pb-28'}`}>
           {/* Top bar (phones): soft sky gradient, logo, round search and bell buttons */}
+          {!inChat && (
           <header
             className={`sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white/95 backdrop-blur transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
               bars ? 'translate-y-0' : 'pointer-events-none -translate-y-full'
@@ -119,9 +120,10 @@ export function AppLayout() {
               )}
             </div>
           </header>
+          )}
 
           {profile && <SetupNeeded />}
-          {profile && <LiveBanner />}
+          {profile && !inChat && <LiveBanner />}
 
           {profile?.status === 'suspended' && (
             <div className="px-4 pt-3">

@@ -161,7 +161,8 @@ test('events, marketplace, sports, notifications and feedback', async ({ page })
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText(`Hello Mempeasem room ${tag}`)).toBeVisible();
 
-  // Tester feedback from the Beta badge.
+  // Tester feedback from the Beta badge (in the app banner, which a conversation replaces with the chat header).
+  await page.goto('/');
   await page.getByRole('button', { name: 'Beta' }).click();
   await page.getByLabel('Your feedback').fill(`The sports centre is brilliant ${tag}`);
   await page.getByRole('button', { name: 'Send feedback' }).click();
