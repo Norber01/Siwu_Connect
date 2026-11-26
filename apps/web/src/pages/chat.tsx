@@ -730,6 +730,25 @@ export function ChatRoomPage() {
     };
   }, [chatId, max]);
 
+  // The header with the person's photo stays at the top while the keyboard is open. Android resizes the page for the
+  // keyboard (see index.html); on iPhone only the visible part shrinks, so the header follows it.
+  const headerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const follow = () => {
+      const el = headerRef.current;
+      if (!el) return;
+      const offset = Math.max(0, vv.offsetTop);
+      el.style.transform = offset > 1 ? `translateY(${offset}px)` : '';
+    };
+    vv.addEventListener('resize', follow);
+    vv.addEventListener('scroll', follow);
+    return () => {
+      vv.removeEventListener('resize', follow);
+      vv.removeEventListener('scroll', follow);
+    };
+  }, []);
   /** Scrolls so the newest message sits just above the message box (not hidden behind it). */
   const toLatest = () => window.scrollTo({ top: document.documentElement.scrollHeight });
   // Mark as read whenever new messages arrive while the chat is open.
@@ -810,7 +829,7 @@ export function ChatRoomPage() {
   return (
     <div className="flex min-h-[100dvh] flex-col sm:min-h-[calc(100vh-11rem)]">
       {/* Like WhatsApp: the top of the screen shows who you're talking to (no app banner in a conversation). */}
-      <div className="sticky top-0 z-20 -mx-4 border-b border-sand-200 bg-white/95 px-4 pt-[calc(8px+env(safe-area-inset-top))] backdrop-blur sm:pt-2">
+      <div ref={headerRef} className="sticky top-0 z-20 -mx-4 border-b border-sand-200 bg-white/95 px-4 pt-[calc(8px+env(safe-area-inset-top))] backdrop-blur sm:pt-2">
       <PageHeader
         title={
           chat.type === 'dm' && other ? (
