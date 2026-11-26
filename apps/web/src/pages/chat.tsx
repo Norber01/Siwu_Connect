@@ -730,12 +730,27 @@ export function ChatRoomPage() {
     };
   }, [chatId, max]);
 
+  /** Scrolls so the newest message sits just above the message box (not hidden behind it). */
+  const toLatest = () => window.scrollTo({ top: document.documentElement.scrollHeight });
   // Mark as read whenever new messages arrive while the chat is open.
   const lastId = messages?.[messages.length - 1]?.id;
   useEffect(() => {
     if (lastId) void markChatRead(db, user.uid, chatId).catch(() => {});
-    bottom.current?.scrollIntoView({ block: 'end' });
+    toLatest();
+    // Photos and voice notes can take a moment to size themselves: settle at the bottom again.
+    const t = setTimeout(toLatest, 400);
+    return () => clearTimeout(t);
   }, [lastId, chatId, user.uid]);
+  // When the keyboard opens (the screen gets shorter), keep the latest message just above the message box.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      if (document.activeElement?.id === 'chat-input') toLatest();
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
 
   const otherUid = chat?.type === 'dm' ? chat.members.find((m) => m !== user.uid) : undefined;
   const { data: other } = useProfileById(otherUid);
@@ -888,7 +903,7 @@ export function ChatRoomPage() {
         <div ref={bottom} />
       </div>
 
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] -mx-4 border-t border-sand-200 bg-white/95 px-3 py-2 backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 border-t border-sand-200 bg-white/95 px-3 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         {replyTo && canSend && <ReplyPreview m={replyTo} me={user.uid} onCancel={() => setReplyTo(null)} />}
         {canSend ? (
           <form

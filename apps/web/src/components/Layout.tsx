@@ -62,7 +62,9 @@ export function AppLayout() {
   // Like X: the top and bottom bars slide away while scrolling down the feed, and come back when scrolling up.
   // (Not in a chat, where the message box sits just above the bottom bar.)
   const scrollShow = useShowOnScrollUp();
-  const bars = scrollShow || location.pathname.startsWith('/chat/');
+  // Inside a conversation the bottom bar is hidden (like WhatsApp): the message box sits at the bottom of the screen.
+  const inChat = /^\/chat\/[^/]+/.test(location.pathname);
+  const bars = scrollShow || inChat;
   const veryWide = useMedia('(min-width: 1024px)');
   useEffect(() => setDrawer(false), [location.pathname]);
   // Stable, so the open menu doesn't re-apply its scroll lock every time the layout redraws.
@@ -74,7 +76,7 @@ export function AppLayout() {
         {/* Left column (tablets and computers) */}
         {profile && wide && <SideNav badges={badges} onCreate={() => setCreating(true)} onFeedback={() => setFeedback(true)} />}
 
-        <div className="min-w-0 max-w-[600px] flex-1 border-sand-200 pb-28 sm:border-x sm:pb-8">
+        <div className={`min-w-0 max-w-[600px] flex-1 border-sand-200 sm:border-x sm:pb-8 ${inChat ? 'pb-0' : 'pb-28'}`}>
           {/* Top bar (phones): soft sky gradient, logo, round search and bell buttons */}
           <header
             className={`sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white/95 backdrop-blur transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
@@ -142,7 +144,7 @@ export function AppLayout() {
       {profile && <BadgeSource onChange={setBadges} />}
 
       {/* Bottom bar (phones) */}
-      {profile && !wide && (
+      {profile && !wide && !inChat && (
         <BottomNav badges={badges} hidden={!bars} canCreate={profile.status === 'active'} onCreate={() => setCreating(true)} onMore={() => setDrawer(true)} />
       )}
 
