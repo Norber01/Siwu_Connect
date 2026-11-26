@@ -690,10 +690,13 @@ export function ChatRoomPage() {
       () => setPresence([]),
     );
   }, [chatId, isRoom]);
+  // Re-check "typing…" every 2 seconds, only while someone is typing.
+  const someoneTyping = presence.some((p) => p.uid !== user.uid && p.typingAt && Date.now() - p.typingAt.getTime() < 6000);
   useEffect(() => {
+    if (!someoneTyping) return;
     const t = setInterval(() => setTick(Date.now()), 2000);
     return () => clearInterval(t);
-  }, []);
+  }, [someoneTyping]);
   // Stop "typing…" when leaving the chat.
   useEffect(
     () => () => {
@@ -755,12 +758,18 @@ export function ChatRoomPage() {
     };
   }, []);
   /** Scrolls so the newest message sits just above the message box (not hidden behind it). */
-  const toLatest = () => window.scrollTo({ top: document.documentElement.scrollHeight });
+  const toLatest = (smooth = false) => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  const firstLoad = useRef(true);
+  useEffect(() => {
+    firstLoad.current = true;
+  }, [chatId]);
   // Mark as read whenever new messages arrive while the chat is open.
   const lastId = messages?.[messages.length - 1]?.id;
   useEffect(() => {
     if (lastId) void markChatRead(db, user.uid, chatId).catch(() => {});
-    toLatest();
+    // Opening a chat jumps to the end; new messages glide into view.
+    toLatest(!firstLoad.current);
+    if (lastId) firstLoad.current = false;
     // Photos and voice notes can take a moment to size themselves: settle at the bottom again.
     const t = setTimeout(toLatest, 400);
     return () => clearTimeout(t);
@@ -786,11 +795,74 @@ export function ChatRoomPage() {
   }, [chat, other]);
 
   const lastMineId = [...(messages ?? [])].reverse().find((m) => m.senderId === user.uid && m.status === 'sent')?.id;
-  if (chat === undefined || messages === null) return <PageSpinner />;
-  if (chat === null) return <EmptyState title="Chat not found" icon="message" />;
   const blockedOther = !!otherUid && blocked.has(otherUid);
   const notFriends = !!otherUid && !friends.loading && friends.get(otherUid)?.status !== 'accepted';
   const canSend = profile.status === 'active' && !blockedOther && !notFriends;
+  // When the others last read the chat (for "Seen"), as one number so the list below only redraws when it changes.
+  const othersReadAt = Math.max(0, ...others.map((p) => p.readAt?.getTime() ?? 0));
+  const saveStickerRef = useRef(saveSticker);
+  saveStickerRef.current = saveSticker;
+  // When this chat was opened: messages arriving after it slide in.
+  const openedAt = useRef(Date.now());
+  useEffect(() => {
+    openedAt.current = Date.now();
+  }, [chatId]);
+
+  // The messages are drawn only when they (or "seen") change — not on every key typed in the message box.
+  const messageList = useMemo(() => {
+    if (!chat || !messages) return null;
+    return messages
+      .filter((m) => !blocked.has(m.senderId))
+      .map((m, i, arr) => (
+        <Bubble
+          key={m.id}
+          m={m}
+          mine={m.senderId === user.uid}
+          me={user.uid}
+          chatId={chatId}
+          canReact={canSend}
+          isNew={!m.createdAt || m.createdAt.getTime() > openedAt.current}
+          onReply={() => setReplyTo(m)}
+          seen={m.senderId === user.uid && m.id === lastMineId && !isRoom && m.createdAt ? (othersReadAt >= m.createdAt.getTime() ? 'Seen' : 'Sent') : null}
+          showSender={chat.type !== 'dm' && arr[i - 1]?.senderId !== m.senderId}
+          items={[
+            ...(m.stickerUrl && m.status === 'sent'
+              ? [{ label: 'Save to my stickers', icon: 'star' as const, onSelect: () => void saveStickerRef.current(m.stickerUrl!) }]
+              : []),
+            ...(m.senderId === user.uid && m.status === 'sent'
+              ? [
+                  {
+                    label: 'Delete message',
+                    icon: 'trash' as const,
+                    danger: true,
+                    onSelect: () => void deleteMessage(db, chatId, m.id, !!m.audioUrl).catch((e) => toast(friendlyError(e), 'error')),
+                  },
+                ]
+              : []),
+            ...(chat.type === 'room' && m.senderId !== user.uid && m.status === 'sent'
+              ? [{ label: 'Report message', icon: 'flag' as const, onSelect: () => setReporting(m) }]
+              : []),
+            ...(chat.type === 'room' && m.senderId !== user.uid && m.status === 'sent' && canModerate(role, chat.townId ?? '')
+              ? [
+                  {
+                    label: 'Remove (moderator)',
+                    icon: 'shield' as const,
+                    danger: true,
+                    onSelect: () =>
+                      void api(`/admin/chats/${chatId}/messages/${m.id}/remove`, { json: { note: '' } })
+                        .then(() => toast('Message removed.'))
+                        .catch((e) => toast(friendlyError(e), 'error')),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, chat, blocked, user.uid, chatId, canSend, lastMineId, isRoom, othersReadAt, role]);
+
+  if (chat === undefined || messages === null) return <PageSpinner />;
+  if (chat === null) return <EmptyState title="Chat not found" icon="message" />;
 
   const sendSticker = async (s: { sticker?: string; stickerUrl?: string }) => {
     try {
@@ -843,7 +915,7 @@ export function ChatRoomPage() {
   return (
     <div className="flex min-h-[100dvh] flex-col sm:min-h-[calc(100vh-11rem)]">
       {/* Like WhatsApp: the top of the screen shows who you're talking to (no app banner in a conversation). */}
-      <div ref={headerRef} className="sticky top-0 z-20 -mx-4 border-b border-sand-200 bg-white/95 px-4 pt-[calc(8px+env(safe-area-inset-top))] backdrop-blur sm:pt-2">
+      <div ref={headerRef} className="sticky top-0 z-20 -mx-4 border-b border-sand-200 bg-white px-4 pt-[calc(8px+env(safe-area-inset-top))] sm:pt-2">
       <PageHeader
         title={
           chat.type === 'dm' && other ? (
@@ -896,56 +968,12 @@ export function ChatRoomPage() {
           </div>
         )}
         {messages.length === 0 && <p className="py-10 text-center text-sm text-gray-600">No messages yet. Say hello 👋</p>}
-        {messages
-          .filter((m) => !blocked.has(m.senderId))
-          .map((m, i, arr) => (
-            <Bubble
-              key={m.id}
-              m={m}
-              mine={m.senderId === user.uid}
-              me={user.uid}
-              chatId={chatId}
-              canReact={canSend}
-              onReply={() => setReplyTo(m)}
-              seen={
-                m.senderId === user.uid && m.id === lastMineId && !isRoom && m.createdAt
-                  ? others.some((p) => p.readAt && p.readAt.getTime() >= m.createdAt!.getTime())
-                    ? 'Seen'
-                    : 'Sent'
-                  : null
-              }
-              showSender={chat.type !== 'dm' && arr[i - 1]?.senderId !== m.senderId}
-              items={[
-                ...(m.stickerUrl && m.status === 'sent'
-                  ? [{ label: 'Save to my stickers', icon: 'star' as const, onSelect: () => void saveSticker(m.stickerUrl!) }]
-                  : []),
-                ...(m.senderId === user.uid && m.status === 'sent'
-                  ? [{ label: 'Delete message', icon: 'trash' as const, danger: true, onSelect: () => void deleteMessage(db, chatId, m.id, !!m.audioUrl).catch((e) => toast(friendlyError(e), 'error')) }]
-                  : []),
-                ...(chat.type === 'room' && m.senderId !== user.uid && m.status === 'sent'
-                  ? [{ label: 'Report message', icon: 'flag' as const, onSelect: () => setReporting(m) }]
-                  : []),
-                ...(chat.type === 'room' && m.senderId !== user.uid && m.status === 'sent' && canModerate(role, chat.townId ?? '')
-                  ? [
-                      {
-                        label: 'Remove (moderator)',
-                        icon: 'shield' as const,
-                        danger: true,
-                        onSelect: () =>
-                          void api(`/admin/chats/${chatId}/messages/${m.id}/remove`, { json: { note: '' } })
-                            .then(() => toast('Message removed.'))
-                            .catch((e) => toast(friendlyError(e), 'error')),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-          ))}
+        {messageList}
         {typingUids.length > 0 && <TypingBubble uids={typingUids} group={chat.type === 'group'} />}
         <div ref={bottom} />
       </div>
 
-      <div className="sticky bottom-0 -mx-4 border-t border-sand-200 bg-white/95 px-3 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 border-t border-sand-200 bg-white px-3 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2">
         {replyTo && canSend && <ReplyPreview m={replyTo} me={user.uid} onCancel={() => setReplyTo(null)} />}
         {picker && canSend && (
           <StickerPicker
@@ -1332,6 +1360,7 @@ function Bubble({
   onReply,
   seen,
   canReact,
+  isNew = false,
 }: {
   m: Message;
   mine: boolean;
@@ -1342,6 +1371,8 @@ function Bubble({
   onReply: () => void;
   seen: string | null;
   canReact: boolean;
+  /** Arrived while the chat is open: slides in gently. */
+  isNew?: boolean;
 }) {
   const toast = useToast();
   const { data: sender } = useProfileById(showSender ? m.senderId : null);
@@ -1354,7 +1385,7 @@ function Bubble({
     <MessageActions mine={mine} myReaction={myReaction} onReact={react} onReply={onReply} items={items} canReact={canReact} />
   );
   return (
-    <div className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'} ${isNew ? (mine ? 'animate-msg-in-right' : 'animate-msg-in-left') : ''}`}>
       {!mine && (
         <span className="w-8 shrink-0">
           {showSender &&
@@ -1408,7 +1439,8 @@ function Bubble({
                 {m.post && <SharedPost post={m.post} mine={mine} />}
                 {m.imageUrl && (
                   <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">
-                    <img src={m.imageUrl} alt="" className="mb-1 max-h-64 rounded-xl" loading="lazy" />
+                    {/* A fixed frame, so the chat doesn't jump while the photo loads (tap to see it whole). */}
+                    <img src={m.imageUrl} alt="" className="mb-1 h-56 w-56 max-w-full rounded-xl bg-sand-100 object-cover" loading="lazy" decoding="async" />
                   </a>
                 )}
                 {m.audioUrl && <VoicePlayer url={m.audioUrl} seconds={m.audioSeconds} light={mine} />}

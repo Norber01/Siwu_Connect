@@ -80,7 +80,7 @@ export function AppLayout() {
           {/* Top bar (phones): soft sky gradient, logo, round search and bell buttons */}
           {!inChat && (
           <header
-            className={`sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white/95 backdrop-blur transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
+            className={`sticky top-0 z-30 bg-gradient-to-b from-sky-200 via-sky-100 to-white transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
               bars ? 'translate-y-0' : 'pointer-events-none -translate-y-full'
             }`}
           >
@@ -184,7 +184,7 @@ function BottomNav({
   return (
     <nav
       aria-label="Main"
-      className={`fixed inset-x-2 bottom-2 z-30 rounded-3xl border border-white/70 bg-gradient-to-b from-sky-100/95 to-white/95 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-brand-900/10 backdrop-blur transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
+      className={`fixed inset-x-2 bottom-2 z-30 rounded-3xl border border-white/70 bg-gradient-to-b from-sky-100 to-white pb-[env(safe-area-inset-bottom)] shadow-lg shadow-brand-900/10 transition-transform duration-300 motion-reduce:transition-none sm:hidden ${
         hidden ? 'pointer-events-none translate-y-[calc(100%+1rem)]' : 'translate-y-0'
       }`}
     >

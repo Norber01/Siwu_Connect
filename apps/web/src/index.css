@@ -54,3 +54,42 @@ html,
 body {
   overflow-x: clip;
 }
+
+/* Chat: new messages slide in gently (like WhatsApp). Off for people who prefer less motion. */
+@keyframes msg-in-right {
+  from {
+    opacity: 0;
+    transform: translate(12px, 8px) scale(0.98);
+  }
+}
+@keyframes msg-in-left {
+  from {
+    opacity: 0;
+    transform: translate(-12px, 8px) scale(0.98);
+  }
+}
+.animate-msg-in-right {
+  animation: msg-in-right 180ms ease-out;
+}
+.animate-msg-in-left {
+  animation: msg-in-left 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-msg-in-right,
+  .animate-msg-in-left {
+    animation: none;
+  }
+}
+
+/* Taps respond at once: no grey flash, no double-tap-zoom delay. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+a,
+button,
+input,
+textarea,
+label,
+[role='button'] {
+  touch-action: manipulation;
+}
