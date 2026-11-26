@@ -1132,26 +1132,39 @@ function MessageActions({
   canReact: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [below, setBelow] = useState(false);
+  // Where the menu goes on screen: always fully visible (never past the left or right edge).
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; below: boolean }>({ left: 8, top: 0, width: 264, below: false });
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | KeyboardEvent) => {
       if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
     };
+    const shut = () => setOpen(false); // the menu stays where it opened, so scrolling closes it
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', close);
+    window.addEventListener('scroll', shut, { passive: true });
+    window.addEventListener('resize', shut);
     return () => {
       document.removeEventListener('mousedown', close);
       document.removeEventListener('keydown', close);
+      window.removeEventListener('scroll', shut);
+      window.removeEventListener('resize', shut);
     };
   }, [open]);
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const vw = document.documentElement.clientWidth;
+          const width = Math.min(264, vw - 16);
+          // Lined up with the message's side, then kept inside the screen.
+          const ideal = mine ? r.right - width : r.left;
+          const left = Math.max(8, Math.min(ideal, vw - width - 8));
           // Open below when the message is near the top of the screen (the header would cover the menu).
-          setBelow(e.currentTarget.getBoundingClientRect().top < 320);
+          const below = r.top < 320;
+          setPos({ left, width, below, top: below ? r.bottom + 4 : r.top - 4 });
           setOpen((o) => !o);
         }}
         className="rounded-full p-1.5 text-gray-400 hover:bg-sand-100 hover:text-gray-700"
@@ -1163,7 +1176,8 @@ function MessageActions({
       {open && (
         <div
           role="menu"
-          className={`absolute z-20 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-sand-200 ${below ? 'top-full mt-1' : 'bottom-full mb-1'} ${mine ? 'left-0' : 'right-0'}`}
+          style={{ left: pos.left, top: pos.top, width: pos.width, transform: pos.below ? undefined : 'translateY(-100%)' }}
+          className="fixed z-40 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-sand-200"
         >
           {canReact && (
             <div className="flex justify-between border-b border-sand-200 px-2 py-1.5">

@@ -48,3 +48,9 @@ html.dark .text-red-800, html.dark .text-red-700 { color: #ff9c9c !important; }
 html.dark input, html.dark textarea, html.dark select { background-color: #0e1524; color: #eef2fb; border-color: #2a3753; }
 html.dark ::placeholder { color: #7d8aa5; }
 html.dark dialog { background-color: #121a2a; color: #e7ecf7; }
+
+/* Nothing may drag the page sideways on a phone (clip, unlike hidden, keeps sticky headers working). */
+html,
+body {
+  overflow-x: clip;
+}
