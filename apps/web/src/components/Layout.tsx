@@ -1,6 +1,6 @@
 import { useShowOnScrollUp } from '../lib/scroll';
 import { usePushNavigation } from './PushSettings';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { VerifiedBadge } from './VerifiedBadge';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -65,6 +65,8 @@ export function AppLayout() {
   const bars = scrollShow || location.pathname.startsWith('/chat/');
   const veryWide = useMedia('(min-width: 1024px)');
   useEffect(() => setDrawer(false), [location.pathname]);
+  // Stable, so the open menu doesn't re-apply its scroll lock every time the layout redraws.
+  const closeDrawer = useCallback(() => setDrawer(false), []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -144,7 +146,7 @@ export function AppLayout() {
         <BottomNav badges={badges} hidden={!bars} canCreate={profile.status === 'active'} onCreate={() => setCreating(true)} onMore={() => setDrawer(true)} />
       )}
 
-      {profile && drawer && !wide && <Drawer onClose={() => setDrawer(false)} onFeedback={() => setFeedback(true)} admin={hasAdminAccess(role)} />}
+      {profile && drawer && !wide && <Drawer onClose={closeDrawer} onFeedback={() => setFeedback(true)} admin={hasAdminAccess(role)} />}
       {profile && <CreateSheet open={creating} onClose={() => setCreating(false)} />}
       {profile && <FeedbackDialog open={feedback} onClose={() => setFeedback(false)} />}
     </div>

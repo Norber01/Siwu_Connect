@@ -109,7 +109,7 @@ function PollView({ post }: { post: Post }) {
   );
 }
 
-export function AuthorLine({ uid, townId, date, edited }: { uid: string; townId?: string; date: Date | null; edited?: boolean }) {
+export function AuthorLine({ uid, townId, date }: { uid: string; townId?: string; date: Date | null }) {
   const { data: author } = useProfileById(uid);
   const name = author?.displayName ?? (author === null ? 'Deleted account' : '…');
   return (
@@ -141,7 +141,6 @@ export function AuthorLine({ uid, townId, date, edited }: { uid: string; townId?
               </Link>
             </>
           )}
-          {edited && <span> · edited</span>}
         </div>
       </div>
     </div>
@@ -174,7 +173,7 @@ function shortAgo(d: Date | null): string {
 }
 
 /** X-style header line: Name @username · 2h · Town */
-function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string; date: Date | null; edited: boolean }) {
+function PostHeader({ uid, townId, date }: { uid: string; townId: string; date: Date | null }) {
   const { data: author } = useProfileById(uid);
   const name = author?.displayName ?? (author === null ? 'Deleted account' : '…');
   return (
@@ -197,7 +196,6 @@ function PostHeader({ uid, townId, date, edited }: { uid: string; townId: string
       <Link to={`/towns/${townId}`} className="text-[13px] font-semibold text-brand-700 hover:underline">
         {townShortName(townId)}
       </Link>
-      {edited && <span className="text-xs text-gray-500">· edited</span>}
     </div>
   );
 }
@@ -491,7 +489,7 @@ export function PostCard({ post, liked: initialReaction, linkToDetail = true }: 
         <PostAvatar uid={post.authorId} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <PostHeader uid={post.authorId} townId={post.townId} date={post.createdAt} edited={!!post.editedAt} />
+            <PostHeader uid={post.authorId} townId={post.townId} date={post.createdAt} />
             <div className="-mr-2 -mt-1.5">
               <Menu items={items} label="Post actions" />
             </div>

@@ -241,7 +241,8 @@ export function EditPostPage() {
       await editPost(db, postId, { text: parsed.data, visibility }, media);
       invalidate();
       toast('Post updated.');
-      navigate(`/p/${postId}`, { replace: true });
+      // Back to the post, unless the member already went somewhere else while it was saving.
+      if (window.location.pathname === `/p/${postId}/edit`) navigate(`/p/${postId}`, { replace: true });
     } catch (err) {
       setError(friendlyError(err));
     } finally {

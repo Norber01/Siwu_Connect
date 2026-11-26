@@ -93,14 +93,22 @@ test('Phase 1 journeys', async ({ page }, info) => {
   await page.getByRole('menuitem', { name: 'Edit post' }).click();
   await page.getByLabel('Your post').fill(`${postText} — bring brooms`);
   await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Post updated.')).toBeVisible();
+  await expect(page).not.toHaveURL(/\/edit$/);
   await expect(page.getByText('bring brooms')).toBeVisible();
-  await expect(page.getByText('edited')).toBeVisible();
+  await expect(page.getByText('edited')).toHaveCount(0); // edits are not labelled
 
   // Profile shows hometown and the post.
   if (await page.getByRole('button', { name: 'More', exact: true }).isVisible()) {
-    await page.getByRole('button', { name: 'More', exact: true }).click(); // phone: side menu from "More"
+    // Phone: side menu from "More" (it closes if the page changes, so open it until it stays open).
+    await expect(async () => {
+      await page.getByRole('button', { name: 'More', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15_000 });
+    await page.getByRole('dialog', { name: 'Menu' }).getByRole('link', { name: 'Profile', exact: true }).click();
+  } else {
+    await page.getByRole('link', { name: 'Profile', exact: true }).click();
   }
-  await page.getByRole('link', { name: 'Profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: alice.name })).toBeVisible();
   await expect(page.getByText('Lives in United Kingdom')).toBeVisible();
   await expect(page.getByText('bring brooms')).toBeVisible();
