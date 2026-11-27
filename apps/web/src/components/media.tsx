@@ -127,6 +127,8 @@ export function MediaPicker({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const cameraPhoto = useRef<HTMLInputElement>(null);
+  const cameraVideo = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(value);
@@ -221,7 +223,7 @@ export function MediaPicker({
     setError(null);
     if (!files?.length) return;
     const list = [...files];
-    if (input.current) input.current.value = '';
+    for (const el of [input.current, cameraPhoto.current, cameraVideo.current]) if (el) el.value = '';
     if (list.length > room) setError(`You can add ${EXTRA_LIMITS.mediaPerPost} photos or videos per post.`);
     // Each photo can be cropped first (videos go straight up).
     for (const f of list.slice(0, Math.max(0, room))) {
@@ -291,18 +293,47 @@ export function MediaPicker({
           </li>
         ))}
         {room > 0 && (
-          <li>
-            <button
-              type="button"
-              onClick={() => input.current?.click()}
-              className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-brand-200 bg-brand-50 text-xs font-semibold text-brand-800 hover:border-brand-400"
-            >
-              <Icon name="camera" className="h-6 w-6" />
-              Add
-            </button>
-          </li>
+          <>
+            {/* Phones only offer the camera for single pictures, so the camera has its own buttons. */}
+            <li>
+              <button type="button" onClick={() => cameraPhoto.current?.click()} className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-brand-200 bg-brand-50 text-xs font-semibold text-brand-800 hover:border-brand-400">
+                <Icon name="camera" className="h-6 w-6" />
+                Camera
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={() => cameraVideo.current?.click()} className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-brand-200 bg-brand-50 text-xs font-semibold text-brand-800 hover:border-brand-400">
+                <Icon name="play" className="h-6 w-6" />
+                Record video
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={() => input.current?.click()} className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-brand-200 bg-brand-50 text-xs font-semibold text-brand-800 hover:border-brand-400">
+                <Icon name="grid" className="h-6 w-6" />
+                Gallery
+              </button>
+            </li>
+          </>
         )}
       </ul>
+      <input
+        ref={cameraPhoto}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="sr-only"
+        aria-label="Take a photo"
+        onChange={(e) => void pick(e.target.files)}
+      />
+      <input
+        ref={cameraVideo}
+        type="file"
+        accept="video/*"
+        capture="environment"
+        className="sr-only"
+        aria-label="Record a video"
+        onChange={(e) => void pick(e.target.files)}
+      />
       <input
         ref={input}
         type="file"
